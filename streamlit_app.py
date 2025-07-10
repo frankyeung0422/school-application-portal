@@ -135,6 +135,438 @@ def get_kindergarten_df():
 
 df = get_kindergarten_df()
 
+# Language translations
+def get_text(key, language='en'):
+    """Get text in the specified language"""
+    translations = {
+        'home_title': {
+            'en': '🏫 Hong Kong School Application Portal',
+            'tc': '🏫 香港學校申請平台'
+        },
+        'home_subtitle': {
+            'en': 'Streamline your kindergarten application process in Hong Kong',
+            'tc': '簡化您在香港的幼稚園申請流程'
+        },
+        'find_perfect_school': {
+            'en': 'Find the Perfect School for Your Child',
+            'tc': '為您的孩子找到完美的學校'
+        },
+        'home_description': {
+            'en': 'Our comprehensive portal helps you discover and apply to kindergartens across Hong Kong. With detailed information, easy search functionality, and application tracking, we make the school selection process simple and efficient.',
+            'tc': '我們的綜合平台幫助您發現並申請香港各地的幼稚園。提供詳細信息、簡易搜索功能和申請追蹤，讓學校選擇過程變得簡單高效。'
+        },
+        'browse_kindergartens': {
+            'en': '🚀 Browse Kindergartens',
+            'tc': '🚀 瀏覽幼稚園'
+        },
+        'start_tracking': {
+            'en': '📊 Start Tracking',
+            'tc': '📊 開始追蹤'
+        },
+        'new_features': {
+            'en': 'New Features:',
+            'tc': '新功能：'
+        },
+        'app_tracking': {
+            'en': '📊 Application Tracking: Monitor application dates for your preferred schools',
+            'tc': '📊 申請追蹤：監控您首選學校的申請日期'
+        },
+        'notifications': {
+            'en': '🔔 Real-time Notifications: Get alerts when applications open or deadlines approach',
+            'tc': '🔔 實時通知：當申請開放或截止日期臨近時獲得提醒'
+        },
+        'app_status': {
+            'en': '📋 Application Status: See if schools are currently accepting applications',
+            'tc': '📋 申請狀態：查看學校是否正在接受申請'
+        },
+        'deadline_monitoring': {
+            'en': '⏰ Deadline Monitoring: Never miss an important application deadline',
+            'tc': '⏰ 截止日期監控：絕不錯過重要的申請截止日期'
+        },
+        'search_filter': {
+            'en': '🔍 Search & Filter',
+            'tc': '🔍 搜索和篩選'
+        },
+        'search_placeholder': {
+            'en': 'Search by name or district...',
+            'tc': '按名稱或地區搜索...'
+        },
+        'district': {
+            'en': 'District',
+            'tc': '地區'
+        },
+        'all_districts': {
+            'en': 'All Districts',
+            'tc': '所有地區'
+        },
+        'clear_filters': {
+            'en': 'Clear Filters',
+            'tc': '清除篩選'
+        },
+        'showing_results': {
+            'en': 'Showing {count} of {total} kindergartens',
+            'tc': '顯示 {total} 所幼稚園中的 {count} 所'
+        },
+        'no_results': {
+            'en': 'No kindergartens found matching your criteria.',
+            'tc': '未找到符合您條件的幼稚園。'
+        },
+        'school_details': {
+            'en': '📋 School Details',
+            'tc': '📋 學校詳情'
+        },
+        'back_to_list': {
+            'en': '← Back to List',
+            'tc': '← 返回列表'
+        },
+        'visit_website': {
+            'en': '🌐 Visit Website',
+            'tc': '🌐 訪問網站'
+        },
+        'track_application': {
+            'en': '📊 Application Tracking',
+            'tc': '📊 申請追蹤'
+        },
+        'start_tracking_btn': {
+            'en': '📊 Start Tracking',
+            'tc': '📊 開始追蹤'
+        },
+        'stop_tracking': {
+            'en': '❌ Stop Tracking',
+            'tc': '❌ 停止追蹤'
+        },
+        'apply_to_school': {
+            'en': '📝 Apply to School',
+            'tc': '📝 申請學校'
+        },
+        'start_application': {
+            'en': '🚀 Start Application',
+            'tc': '🚀 開始申請'
+        },
+        'login_required': {
+            'en': '💡 Log in to track application dates and apply to schools',
+            'tc': '💡 登入以追蹤申請日期並申請學校'
+        },
+        'analytics_title': {
+            'en': '📊 Analytics & Insights',
+            'tc': '📊 分析和見解'
+        },
+        'total_schools': {
+            'en': 'Total Schools',
+            'tc': '學校總數'
+        },
+        'districts': {
+            'en': 'Districts',
+            'tc': '地區'
+        },
+        'with_websites': {
+            'en': 'With Websites',
+            'tc': '有網站'
+        },
+        'website_coverage': {
+            'en': 'Website Coverage',
+            'tc': '網站覆蓋率'
+        },
+        'schools_by_district': {
+            'en': 'Schools by District',
+            'tc': '按地區劃分的學校'
+        },
+        'website_availability': {
+            'en': 'Website Availability',
+            'tc': '網站可用性'
+        },
+        'district_distribution': {
+            'en': 'District Distribution',
+            'tc': '地區分佈'
+        },
+        'no_data_available': {
+            'en': 'No data available for analytics.',
+            'tc': '沒有可用的分析數據。'
+        },
+        'no_district_data': {
+            'en': 'No district data available',
+            'tc': '沒有可用的地區數據'
+        },
+        'no_website_data': {
+            'en': 'No website data available',
+            'tc': '沒有可用的網站數據'
+        },
+        'no_district_visualization': {
+            'en': 'No district data available for visualization',
+            'tc': '沒有可用的地區數據進行可視化'
+        },
+        'profile_title': {
+            'en': '👤 User Profile',
+            'tc': '👤 用戶資料'
+        },
+        'login_required_profile': {
+            'en': 'Please log in to view your profile.',
+            'tc': '請登入以查看您的資料。'
+        },
+        'login': {
+            'en': 'Login',
+            'tc': '登入'
+        },
+        'username': {
+            'en': 'Username',
+            'tc': '用戶名'
+        },
+        'password': {
+            'en': 'Password',
+            'tc': '密碼'
+        },
+        'login_successful': {
+            'en': 'Login successful!',
+            'tc': '登入成功！'
+        },
+        'enter_credentials': {
+            'en': 'Please enter both username and password.',
+            'tc': '請輸入用戶名和密碼。'
+        },
+        'welcome': {
+            'en': 'Welcome, {name}!',
+            'tc': '歡迎，{name}！'
+        },
+        'personal_info': {
+            'en': 'Personal Information',
+            'tc': '個人資料'
+        },
+        'full_name': {
+            'en': 'Full Name',
+            'tc': '全名'
+        },
+        'email': {
+            'en': 'Email',
+            'tc': '電子郵件'
+        },
+        'phone': {
+            'en': 'Phone',
+            'tc': '電話'
+        },
+        'preferences': {
+            'en': 'Preferences',
+            'tc': '偏好設置'
+        },
+        'preferred_language': {
+            'en': 'Preferred Language',
+            'tc': '首選語言'
+        },
+        'notification_settings': {
+            'en': 'Notification Settings',
+            'tc': '通知設置'
+        },
+        'receive_updates': {
+            'en': 'Receive updates about new schools',
+            'tc': '接收新學校的更新'
+        },
+        'child_profiles': {
+            'en': '👶 Child Profiles',
+            'tc': '👶 兒童資料'
+        },
+        'no_child_profiles': {
+            'en': 'No child profiles yet.',
+            'tc': '還沒有兒童資料。'
+        },
+        'add_child_profile': {
+            'en': '➕ Add Child Profile',
+            'tc': '➕ 添加兒童資料'
+        },
+        'child_name': {
+            'en': "Child's Full Name",
+            'tc': '兒童全名'
+        },
+        'date_of_birth': {
+            'en': 'Date of Birth',
+            'tc': '出生日期'
+        },
+        'gender': {
+            'en': 'Gender',
+            'tc': '性別'
+        },
+        'male': {
+            'en': 'Male',
+            'tc': '男'
+        },
+        'female': {
+            'en': 'Female',
+            'tc': '女'
+        },
+        'other': {
+            'en': 'Other',
+            'tc': '其他'
+        },
+        'add_child': {
+            'en': 'Add Child Profile',
+            'tc': '添加兒童資料'
+        },
+        'fill_all_fields': {
+            'en': 'Please fill in all fields.',
+            'tc': '請填寫所有欄位。'
+        },
+        'application_history': {
+            'en': '📋 Application History',
+            'tc': '📋 申請歷史'
+        },
+        'no_applications': {
+            'en': 'No applications submitted yet.',
+            'tc': '還沒有提交申請。'
+        },
+        'tracker_title': {
+            'en': '📋 Application Tracker',
+            'tc': '📋 申請追蹤器'
+        },
+        'login_required_tracker': {
+            'en': 'Please log in to use the application tracker.',
+            'tc': '請登入以使用申請追蹤器。'
+        },
+        'add_school_tracker': {
+            'en': '🔍 Add School to Tracker',
+            'tc': '🔍 添加學校到追蹤器'
+        },
+        'select_school_track': {
+            'en': 'Select a school to track',
+            'tc': '選擇要追蹤的學校'
+        },
+        'selected': {
+            'en': 'Selected:',
+            'tc': '已選擇：'
+        },
+        'add_to_tracker': {
+            'en': '➕ Add to Tracker',
+            'tc': '➕ 添加到追蹤器'
+        },
+        'tracked_schools': {
+            'en': '📊 Tracked Schools',
+            'tc': '📊 追蹤的學校'
+        },
+        'no_tracked_schools': {
+            'en': 'No schools are being tracked. Add schools above to start monitoring their application dates.',
+            'tc': '沒有正在追蹤的學校。在上面添加學校以開始監控其申請日期。'
+        },
+        'check_status': {
+            'en': '🔍 Check Status',
+            'tc': '🔍 檢查狀態'
+        },
+        'remove': {
+            'en': '❌ Remove',
+            'tc': '❌ 移除'
+        },
+        'current_status': {
+            'en': '📋 Current Status',
+            'tc': '📋 當前狀態'
+        },
+        'deadline_in_days': {
+            'en': '⚠️ Deadline in {days} days',
+            'tc': '⚠️ 截止日期還有 {days} 天'
+        },
+        'deadline_passed': {
+            'en': '❌ Deadline passed',
+            'tc': '❌ 截止日期已過'
+        },
+        'opens_on': {
+            'en': '📅 Opens: {date}',
+            'tc': '📅 開放：{date}'
+        },
+        'notifications_title': {
+            'en': '🔔 Notifications',
+            'tc': '🔔 通知'
+        },
+        'login_required_notifications': {
+            'en': 'Please log in to view notifications.',
+            'tc': '請登入以查看通知。'
+        },
+        'show_read': {
+            'en': 'Show read notifications',
+            'tc': '顯示已讀通知'
+        },
+        'mark_all_read': {
+            'en': 'Mark All as Read',
+            'tc': '全部標記為已讀'
+        },
+        'no_notifications': {
+            'en': 'No notifications to display.',
+            'tc': '沒有要顯示的通知。'
+        },
+        'priority': {
+            'en': 'Priority:',
+            'tc': '優先級：'
+        },
+        'read': {
+            'en': '✓ Read',
+            'tc': '✓ 已讀'
+        },
+        'about_title': {
+            'en': 'ℹ️ About',
+            'tc': 'ℹ️ 關於'
+        },
+        'about_description': {
+            'en': 'About the Hong Kong School Application Portal',
+            'tc': '關於香港學校申請平台'
+        },
+        'about_content': {
+            'en': 'The Hong Kong School Application Portal is a comprehensive platform designed to help parents navigate the kindergarten application process in Hong Kong. Our mission is to simplify the school selection process by providing detailed information, easy search capabilities, and streamlined application management.',
+            'tc': '香港學校申請平台是一個綜合平台，旨在幫助家長在香港的幼稚園申請過程中導航。我們的使命是通過提供詳細信息、簡易搜索功能和簡化的申請管理來簡化學校選擇過程。'
+        },
+        'our_features': {
+            'en': 'Our Features',
+            'tc': '我們的功能'
+        },
+        'comprehensive_database': {
+            'en': 'Comprehensive Database: Access information about hundreds of kindergartens across Hong Kong',
+            'tc': '綜合數據庫：訪問香港各地數百所幼稚園的信息'
+        },
+        'advanced_search': {
+            'en': 'Advanced Search: Find schools by location, district, or specific criteria',
+            'tc': '高級搜索：按位置、地區或特定標準查找學校'
+        },
+        'detailed_information': {
+            'en': 'Detailed Information: Get comprehensive details about each school including contact information and websites',
+            'tc': '詳細信息：獲取每所學校的綜合詳情，包括聯繫信息和網站'
+        },
+        'app_tracking_feature': {
+            'en': 'Application Tracking: Monitor application dates and deadlines for your preferred schools',
+            'tc': '申請追蹤：監控您首選學校的申請日期和截止日期'
+        },
+        'real_time_notifications': {
+            'en': 'Real-time Notifications: Get alerts when applications open or deadlines approach',
+            'tc': '實時通知：當申請開放或截止日期臨近時獲得提醒'
+        },
+        'user_friendly': {
+            'en': 'User-Friendly Interface: Easy-to-use platform accessible from any device',
+            'tc': '用戶友好界面：可從任何設備訪問的易用平台'
+        },
+        'real_time_updates': {
+            'en': 'Real-time Updates: Stay informed about application deadlines and school updates',
+            'tc': '實時更新：及時了解申請截止日期和學校更新'
+        },
+        'contact_info': {
+            'en': 'Contact Information',
+            'tc': '聯繫信息'
+        },
+        'support_email': {
+            'en': 'For support or inquiries, please contact us:',
+            'tc': '如需支持或查詢，請聯繫我們：'
+        },
+        'email': {
+            'en': 'Email: support@schoolportal.hk',
+            'tc': '電子郵件：support@schoolportal.hk'
+        },
+        'phone_contact': {
+            'en': 'Phone: +852 1234 5678',
+            'tc': '電話：+852 1234 5678'
+        },
+        'data_sources': {
+            'en': 'Data Sources',
+            'tc': '數據來源'
+        },
+        'data_description': {
+            'en': 'Our kindergarten data is sourced from official government databases and verified through multiple channels to ensure accuracy and reliability.',
+            'tc': '我們的幼稚園數據來自官方政府數據庫，並通過多個渠道驗證以確保準確性和可靠性。'
+        }
+    }
+    
+    return translations.get(key, {}).get(language, key)
+
 # Application monitoring functions
 def analyze_application_content(content):
     """Analyze content for application information"""
@@ -555,35 +987,35 @@ def show_register_modal():
 # Home page
 def home_page():
     """Home page with hero section and features"""
-    st.markdown('<h1 class="main-header">🏫 Hong Kong School Application Portal</h1>', unsafe_allow_html=True)
-    st.markdown('<p class="sub-header">Streamline your kindergarten application process in Hong Kong</p>', unsafe_allow_html=True)
+    lang = st.session_state.selected_language
+    
+    st.markdown(f'<h1 class="main-header">{get_text("home_title", lang)}</h1>', unsafe_allow_html=True)
+    st.markdown(f'<p class="sub-header">{get_text("home_subtitle", lang)}</p>', unsafe_allow_html=True)
     
     # Hero section
     col1, col2 = st.columns([2, 1])
     
     with col1:
-        st.markdown("""
-        ### Find the Perfect School for Your Child
+        st.markdown(f"""
+        ### {get_text("find_perfect_school", lang)}
         
-        Our comprehensive portal helps you discover and apply to kindergartens across Hong Kong. 
-        With detailed information, easy search functionality, and application tracking, 
-        we make the school selection process simple and efficient.
+        {get_text("home_description", lang)}
         
-        **New Features:**
-        - 📊 **Application Tracking**: Monitor application dates for your preferred schools
-        - 🔔 **Real-time Notifications**: Get alerts when applications open or deadlines approach
-        - 📋 **Application Status**: See if schools are currently accepting applications
-        - ⏰ **Deadline Monitoring**: Never miss an important application deadline
+        **{get_text("new_features", lang)}**
+        - {get_text("app_tracking", lang)}
+        - {get_text("notifications", lang)}
+        - {get_text("app_status", lang)}
+        - {get_text("deadline_monitoring", lang)}
         """)
         
         col_a, col_b = st.columns(2)
         with col_a:
-            if st.button("🚀 Browse Kindergartens", use_container_width=True):
+            if st.button(get_text("browse_kindergartens", lang), use_container_width=True):
                 st.session_state.current_page = 'kindergartens'
                 st.rerun()
         
         with col_b:
-            if st.button("📊 Start Tracking", use_container_width=True):
+            if st.button(get_text("start_tracking", lang), use_container_width=True):
                 st.session_state.current_page = 'tracker'
                 st.rerun()
     
@@ -662,6 +1094,8 @@ def home_page():
 # Kindergartens page
 def kindergartens_page():
     """Kindergartens listing and search page"""
+    lang = st.session_state.selected_language
+    
     st.markdown('<h1 class="main-header">🏫 Hong Kong Kindergartens</h1>', unsafe_allow_html=True)
     
     if df.empty:
@@ -669,26 +1103,26 @@ def kindergartens_page():
         return
     
     # Filters section
-    st.markdown("## 🔍 Search & Filter")
+    st.markdown(f"## {get_text('search_filter', lang)}")
     
     col1, col2, col3 = st.columns([2, 1, 1])
     
     with col1:
         search_term = st.text_input(
-            "Search by name or district...",
-            placeholder="Enter school name or district..."
+            get_text("search_placeholder", lang),
+            placeholder=get_text("search_placeholder", lang)
         )
     
     with col2:
-        districts = ['All Districts']
+        districts = [get_text("all_districts", lang)]
         if 'district_en' in df.columns and not df['district_en'].empty:
             districts.extend(sorted(df['district_en'].unique().tolist()))
-        selected_district = st.selectbox("District", districts)
+        selected_district = st.selectbox(get_text("district", lang), districts)
     
     with col3:
-        if st.button("Clear Filters"):
+        if st.button(get_text("clear_filters", lang)):
             search_term = ""
-            selected_district = "All Districts"
+            selected_district = get_text("all_districts", lang)
             st.rerun()
     
     # Filter data
@@ -704,15 +1138,15 @@ def kindergartens_page():
             mask |= filtered_df['district_en'].str.contains(search_term, case=False, na=False)
         filtered_df = filtered_df[mask]
     
-    if selected_district and selected_district != "All Districts" and 'district_en' in filtered_df.columns:
+    if selected_district and selected_district != get_text("all_districts", lang) and 'district_en' in filtered_df.columns:
         filtered_df = filtered_df[filtered_df['district_en'] == selected_district]
     
     # Results info
-    st.markdown(f"**Showing {len(filtered_df)} of {len(df)} kindergartens**")
+    st.markdown(f"**{get_text('showing_results', lang).format(count=len(filtered_df), total=len(df))}**")
     
     # Show selected school details if any
     if st.session_state.selected_school:
-        st.markdown("## 📋 School Details")
+        st.markdown(f"## {get_text('school_details', lang)}")
         school = st.session_state.selected_school
         
         col1, col2 = st.columns([3, 1])
@@ -729,29 +1163,29 @@ def kindergartens_page():
             """, unsafe_allow_html=True)
         
         with col2:
-            if st.button("← Back to List"):
+            if st.button(get_text("back_to_list", lang)):
                 st.session_state.selected_school = None
                 st.rerun()
             
             if school.get('has_website') and school.get('website'):
-                st.link_button("🌐 Visit Website", school.get('website'))
+                st.link_button(get_text("visit_website", lang), school.get('website'))
             
             # Application section
             if st.session_state.user_logged_in:
-                st.markdown("### 📊 Application Tracking")
+                st.markdown(f"### {get_text('track_application', lang)}")
                 
                 if school['school_no'] in st.session_state.application_tracker:
                     tracker_info = st.session_state.application_tracker[school['school_no']]
                     st.success(f"✅ Tracking since {tracker_info['added_date'].strftime('%Y-%m-%d')}")
                     
-                    if st.button("❌ Stop Tracking", key=f"stop_track_{school['school_no']}"):
+                    if st.button(get_text("stop_tracking", lang), key=f"stop_track_{school['school_no']}"):
                         remove_from_application_tracker(school['school_no'])
                         st.rerun()
                     
                     # Show application info if available
                     if tracker_info.get('application_info'):
                         info = tracker_info['application_info']
-                        st.markdown("#### 📋 Current Status")
+                        st.markdown(f"#### {get_text('current_status', lang)}")
                         
                         status_color = "🟢" if info['status'] == 'open' else "🔴" if info['status'] == 'closed' else "🟡"
                         st.metric("Status", f"{status_color} {info['status'].title()}")
@@ -759,25 +1193,25 @@ def kindergartens_page():
                         if info['deadline']:
                             days_left = (info['deadline'] - datetime.now()).days
                             if days_left > 0:
-                                st.warning(f"⚠️ Deadline in {days_left} days")
+                                st.warning(get_text("deadline_in_days", lang).format(days=days_left))
                             else:
-                                st.error("❌ Deadline passed")
+                                st.error(get_text("deadline_passed", lang))
                         
                         if info['start_date']:
-                            st.info(f"📅 Opens: {info['start_date'].strftime('%Y-%m-%d')}")
+                            st.info(get_text("opens_on", lang).format(date=info['start_date'].strftime('%Y-%m-%d')))
                 else:
-                    if st.button("📊 Start Tracking", key=f"start_track_{school['school_no']}"):
+                    if st.button(get_text("start_tracking_btn", lang), key=f"start_track_{school['school_no']}"):
                         add_to_application_tracker(school['school_no'], school.get('name_en', 'Unknown School'))
                         st.rerun()
                 
                 # Apply to school button
-                st.markdown("### 📝 Apply to School")
-                if st.button("🚀 Start Application", key=f"apply_{school['school_no']}", use_container_width=True):
+                st.markdown(f"### {get_text('apply_to_school', lang)}")
+                if st.button(get_text("start_application", lang), key=f"apply_{school['school_no']}", use_container_width=True):
                     st.session_state.show_application_form = True
                     st.session_state.selected_school = school
                     st.rerun()
             else:
-                st.info("💡 Log in to track application dates and apply to schools")
+                st.info(get_text("login_required", lang))
         
         st.markdown("---")
     
@@ -817,40 +1251,42 @@ def kindergartens_page():
                 
                 st.markdown("---")
     else:
-        st.info("No kindergartens found matching your criteria.")
+        st.info(get_text("no_results", lang))
 
 # Analytics page
 def analytics_page():
     """Analytics and insights page"""
-    st.markdown('<h1 class="main-header">📊 Analytics & Insights</h1>', unsafe_allow_html=True)
+    lang = st.session_state.selected_language
+    
+    st.markdown(f'<h1 class="main-header">{get_text("analytics_title", lang)}</h1>', unsafe_allow_html=True)
     
     if df.empty:
-        st.error("No data available for analytics.")
+        st.error(get_text("no_data_available", lang))
         return
     
     # Overview metrics
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        st.metric("Total Schools", len(df))
+        st.metric(get_text("total_schools", lang), len(df))
     
     with col2:
         districts_count = df['district_en'].nunique() if 'district_en' in df.columns and not df['district_en'].empty else 0
-        st.metric("Districts", districts_count)
+        st.metric(get_text("districts", lang), districts_count)
     
     with col3:
         websites_count = df['has_website'].sum() if 'has_website' in df.columns else 0
-        st.metric("With Websites", websites_count)
+        st.metric(get_text("with_websites", lang), websites_count)
     
     with col4:
         website_percentage = (websites_count / len(df) * 100) if len(df) > 0 else 0
-        st.metric("Website Coverage", f"{website_percentage:.1f}%")
+        st.metric(get_text("website_coverage", lang), f"{website_percentage:.1f}%")
     
     # Charts
     col1, col2 = st.columns(2)
     
     with col1:
-        st.markdown("### Schools by District")
+        st.markdown(f"### {get_text('schools_by_district', lang)}")
         if 'district_en' in df.columns and not df['district_en'].empty:
             district_counts = df['district_en'].value_counts()
             if len(district_counts) > 0:
@@ -858,33 +1294,33 @@ def analytics_page():
                     x=district_counts.values,
                     y=district_counts.index,
                     orientation='h',
-                    title="Number of Schools by District"
+                    title=get_text('schools_by_district', lang)
                 )
                 fig.update_layout(height=400)
                 st.plotly_chart(fig, use_container_width=True)
             else:
-                st.info("No district data available")
+                st.info(get_text("no_district_data", lang))
         else:
-            st.info("No district data available")
+            st.info(get_text("no_district_data", lang))
     
     with col2:
-        st.markdown("### Website Availability")
+        st.markdown(f"### {get_text('website_availability', lang)}")
         if 'has_website' in df.columns:
             website_stats = df['has_website'].value_counts()
             if len(website_stats) > 0:
                 fig = px.pie(
                     values=website_stats.values,
                     names=['Has Website', 'No Website'],
-                    title="Website Availability"
+                    title=get_text('website_availability', lang)
                 )
                 st.plotly_chart(fig, use_container_width=True)
             else:
-                st.info("No website data available")
+                st.info(get_text("no_website_data", lang))
         else:
-            st.info("No website data available")
+            st.info(get_text("no_website_data", lang))
     
     # District map (simplified)
-    st.markdown("### District Distribution")
+    st.markdown(f"### {get_text('district_distribution', lang)}")
     if 'district_en' in df.columns and not df['district_en'].empty:
         district_data = df.groupby('district_en').size().reset_index(name='count')
         if len(district_data) > 0:
@@ -892,13 +1328,13 @@ def analytics_page():
                 district_data,
                 path=['district_en'],
                 values='count',
-                title="School Distribution by District"
+                title=get_text('district_distribution', lang)
             )
             st.plotly_chart(fig, use_container_width=True)
         else:
-            st.info("No district data available for visualization")
+            st.info(get_text("no_district_visualization", lang))
     else:
-        st.info("No district data available for visualization")
+        st.info(get_text("no_district_visualization", lang))
 
 # Profile page
 def profile_page():
