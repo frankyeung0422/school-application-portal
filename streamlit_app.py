@@ -599,7 +599,7 @@ def kindergartens_page():
                 
                 with col2:
                     if school.get('has_website', False) and school.get('website'):
-                        st.link_button("🌐 Website", school.get('website', ''), key=f"website_{school['school_no']}")
+                        st.link_button("🌐 Website", school.get('website', ''))
                     
                     if st.button(f"📋 Details", key=f"details_{school['school_no']}"):
                         st.session_state.selected_school = school.to_dict()
