@@ -159,12 +159,11 @@ def load_kindergarten_data():
                 if isinstance(data, list) and len(data) > 0:
                     # Enhance the data with additional information
                     enhanced_data = enhance_kindergarten_data(data)
-                    st.success(f"Successfully loaded {len(enhanced_data)} kindergarten records")
                     return enhanced_data
                 else:
                     st.warning("Data file is empty or invalid format")
         else:
-            st.warning("Kindergarten data file not found. Using sample data.")
+            pass
         
         # Fallback to sample data with enhanced information
         data = [
@@ -305,7 +304,7 @@ def load_primary_school_data():
                 else:
                     st.warning("Primary school data file is empty or invalid format")
         else:
-            st.warning("Primary school data file not found. Using sample data.")
+            pass
         
         # Fallback to sample data with enhanced information
         data = create_sample_primary_school_data()
@@ -2677,8 +2676,34 @@ def main_navigation():
 def show_login_modal():
     """Show login modal"""
     if st.session_state.get('show_login_modal', False):
+        # Add modal overlay effect
+        st.markdown("""
+        <style>
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+        }
+        .modal-content {
+            background-color: white;
+            padding: 2rem;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin: 2rem auto;
+            max-width: 500px;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+        
         with st.container():
-            st.markdown("### 🔐 Login")
+            st.markdown("---")
+            st.markdown("## 🔐 Login Required")
+            st.markdown("Please log in to access this feature.")
+            st.markdown("---")
             
             # Show test accounts for easy access
             with st.expander("🧪 Test Accounts (Click to expand)"):
@@ -4084,17 +4109,16 @@ def admin_utilities():
 # Main app logic
 def main():
     """Main application logic"""
-
+    
+    # Show authentication modals first if needed
+    show_login_modal()
+    show_register_modal()
     
     # Initialize test data if needed
     initialize_test_data()
     
     # Navigation
     main_navigation()
-    
-    # Show authentication modals if needed
-    show_login_modal()
-    show_register_modal()
     
     # Show application form if needed
     if st.session_state.show_application_form:

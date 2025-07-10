@@ -35,7 +35,7 @@ class CloudDatabaseManager:
             try:
                 self.storage_manager = CloudSQLiteManager()
                 if self.storage_manager.drive_service:
-                    st.success("✅ Google Drive cloud storage initialized!")
+                    pass
                 else:
                     st.warning("⚠️ Google Drive not available, falling back to local storage")
                     self.storage_type = "local"
@@ -69,7 +69,7 @@ class CloudDatabaseManager:
             if self.conn:
                 self._create_tables()
                 self._initialize_test_data()
-                st.success(f"✅ Database initialized successfully! (Storage: {self.storage_type})")
+                pass
             else:
                 st.error("❌ Failed to initialize database connection")
                 
@@ -215,7 +215,7 @@ class CloudDatabaseManager:
                     password_hash = hashlib.sha256(password.encode()).hexdigest()
                     self.create_user(username, email, password_hash, full_name, phone)
                 
-                st.info("✅ Test users created successfully!")
+                pass
         except Exception as e:
             st.error(f"Error initializing test data: {str(e)}")
     

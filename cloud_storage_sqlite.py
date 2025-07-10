@@ -67,7 +67,7 @@ class CloudSQLiteManager:
                 # Find or create the database file
                 self._find_or_create_db_file()
                 
-                st.success("✅ Google Drive connected successfully!")
+                pass
                 
             else:
                 st.error("Google Drive credentials not found in Streamlit secrets.")
@@ -103,7 +103,6 @@ class CloudSQLiteManager:
             if files:
                 # Use existing file
                 self.file_id = files[0]['id']
-                st.info(f"Found existing database: {files[0]['name']}")
             else:
                 # Create new file
                 self._create_new_db_file()
@@ -167,7 +166,7 @@ class CloudSQLiteManager:
             while done is False:
                 status, done = downloader.next_chunk()
                 if status:
-                    st.write(f"Download {int(status.progress() * 100)}%")
+                    pass  # Don't show download progress
             
             # Write to temporary file
             with open(self.temp_db_path, 'wb') as f:
@@ -208,7 +207,6 @@ class CloudSQLiteManager:
         except Exception as e:
             # Don't show error for storage quota issues - just log it
             if "storageQuotaExceeded" in str(e) or "Service Accounts do not have storage quota" in str(e):
-                st.warning("⚠️ Cloud sync disabled - using local storage only. Set up Shared Drive for cloud sync.")
                 return False
             else:
                 st.error(f"Error uploading database: {str(e)}")
