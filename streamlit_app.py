@@ -3,11 +3,8 @@ import pandas as pd
 import json
 import os
 from datetime import datetime
-import requests
-from streamlit_option_menu import option_menu
 import plotly.express as px
 import plotly.graph_objects as go
-from streamlit_autorefresh import st_autorefresh
 
 # Page configuration
 st.set_page_config(
@@ -141,24 +138,26 @@ def main_navigation():
         st.session_state.selected_language = 'en' if language == "English" else 'tc'
         
         # Navigation menu
-        selected = option_menu(
-            menu_title=None,
-            options=["🏠 Home", "🏫 Kindergartens", "📊 Analytics", "👤 Profile", "ℹ️ About"],
-            icons=["house", "building", "graph-up", "person", "info-circle"],
-            menu_icon="cast",
-            default_index=0,
-            styles={
-                "container": {"padding": "0!important", "background-color": "#fafafa"},
-                "icon": {"color": "orange", "font-size": "18px"},
-                "nav-link": {
-                    "font-size": "16px",
-                    "text-align": "left",
-                    "margin": "0px",
-                    "--hover-color": "#eee",
-                },
-                "nav-link-selected": {"background-color": "#02ab21"},
-            }
-        )
+        st.markdown("### Navigation")
+        if st.button("🏠 Home", use_container_width=True):
+            st.session_state.current_page = 'home'
+            st.rerun()
+        
+        if st.button("🏫 Kindergartens", use_container_width=True):
+            st.session_state.current_page = 'kindergartens'
+            st.rerun()
+        
+        if st.button("📊 Analytics", use_container_width=True):
+            st.session_state.current_page = 'analytics'
+            st.rerun()
+        
+        if st.button("👤 Profile", use_container_width=True):
+            st.session_state.current_page = 'profile'
+            st.rerun()
+        
+        if st.button("ℹ️ About", use_container_width=True):
+            st.session_state.current_page = 'about'
+            st.rerun()
         
         # User authentication section
         st.markdown("---")
@@ -173,8 +172,6 @@ def main_navigation():
             if st.button("Login"):
                 st.session_state.show_login = True
                 st.rerun()
-    
-    return selected
 
 # Home page
 def home_page():
@@ -500,25 +497,10 @@ def about_page():
 # Main app logic
 def main():
     """Main application logic"""
-    # Auto-refresh every 30 seconds
-    st_autorefresh(interval=30000, limit=100, key="fizzbuzzcounter")
-    
     # Navigation
-    selected = main_navigation()
+    main_navigation()
     
-    # Route to appropriate page based on navigation selection
-    if selected == "🏠 Home":
-        st.session_state.current_page = 'home'
-    elif selected == "🏫 Kindergartens":
-        st.session_state.current_page = 'kindergartens'
-    elif selected == "📊 Analytics":
-        st.session_state.current_page = 'analytics'
-    elif selected == "👤 Profile":
-        st.session_state.current_page = 'profile'
-    elif selected == "ℹ️ About":
-        st.session_state.current_page = 'about'
-    
-    # Display the appropriate page
+    # Display the appropriate page based on session state
     if st.session_state.current_page == 'home':
         home_page()
     elif st.session_state.current_page == 'kindergartens':
