@@ -259,6 +259,113 @@ def add_notification(title, message, priority='medium'):
     }
     st.session_state.notifications.append(notification)
 
+# Authentication functions
+def register_user(name, email, phone, password):
+    """Register a new user"""
+    # In a real app, this would connect to a database
+    # For now, we'll use session state to simulate user storage
+    user_id = f"user_{len(st.session_state.get('users', [])) + 1}"
+    
+    # Check if user already exists
+    existing_users = st.session_state.get('users', [])
+    if any(user['email'] == email for user in existing_users):
+        return False, "User with this email already exists"
+    
+    # Create new user
+    new_user = {
+        'id': user_id,
+        'name': name,
+        'email': email,
+        'phone': phone,
+        'password': password,  # In real app, this would be hashed
+        'created_at': datetime.now(),
+        'is_active': True
+    }
+    
+    if 'users' not in st.session_state:
+        st.session_state.users = []
+    
+    st.session_state.users.append(new_user)
+    return True, "Registration successful!"
+
+def login_user(email, password):
+    """Login a user"""
+    users = st.session_state.get('users', [])
+    
+    for user in users:
+        if user['email'] == email and user['password'] == password:
+            st.session_state.user_logged_in = True
+            st.session_state.current_user = user
+            return True, "Login successful!"
+    
+    return False, "Invalid email or password"
+
+def logout_user():
+    """Logout the current user"""
+    st.session_state.user_logged_in = False
+    st.session_state.current_user = None
+
+# Child profile functions
+def add_child_profile(child_name, date_of_birth, gender):
+    """Add a child profile"""
+    child_id = f"child_{len(st.session_state.children_profiles) + 1}"
+    
+    new_child = {
+        'id': child_id,
+        'name': child_name,
+        'date_of_birth': date_of_birth,
+        'gender': gender,
+        'created_at': datetime.now()
+    }
+    
+    st.session_state.children_profiles.append(new_child)
+    return True, "Child profile added successfully!"
+
+def calculate_age(date_of_birth):
+    """Calculate age from date of birth"""
+    today = datetime.now()
+    birth_date = datetime.strptime(date_of_birth, '%Y-%m-%d')
+    age = today.year - birth_date.year
+    if today.month < birth_date.month or (today.month == birth_date.month and today.day < birth_date.day):
+        age -= 1
+    return age
+
+# Application functions
+def submit_application(school_no, school_name, child_id, parent_name, parent_email, parent_phone, preferred_start_date, additional_notes):
+    """Submit an application to a school"""
+    application_id = f"app_{len(st.session_state.applications) + 1}"
+    
+    # Find child profile
+    child_profile = next((child for child in st.session_state.children_profiles if child['id'] == child_id), None)
+    if not child_profile:
+        return False, "Child profile not found"
+    
+    new_application = {
+        'id': application_id,
+        'school_no': school_no,
+        'school_name': school_name,
+        'child_id': child_id,
+        'child_name': child_profile['name'],
+        'parent_name': parent_name,
+        'parent_email': parent_email,
+        'parent_phone': parent_phone,
+        'preferred_start_date': preferred_start_date,
+        'additional_notes': additional_notes,
+        'submitted_at': datetime.now(),
+        'status': 'pending'
+    }
+    
+    st.session_state.applications.append(new_application)
+    
+    # Add notification
+    add_notification(
+        f"Application Submitted: {school_name}",
+        f"Your application for {child_profile['name']} has been submitted successfully. We will contact you soon.",
+        'high'
+    )
+    
+    return True, "Application submitted successfully!"
+
 # Session state initialization
 if 'user_logged_in' not in st.session_state:
     st.session_state.user_logged_in = False
@@ -270,6 +377,8 @@ if 'current_page' not in st.session_state:
     st.session_state.current_page = 'home'
 if 'show_login' not in st.session_state:
     st.session_state.show_login = False
+if 'show_register' not in st.session_state:
+    st.session_state.show_register = False
 if 'selected_school' not in st.session_state:
     st.session_state.selected_school = None
 if 'saved_schools' not in st.session_state:
@@ -296,6 +405,14 @@ if 'notifications' not in st.session_state:
     ]
 if 'application_tracker' not in st.session_state:
     st.session_state.application_tracker = {}
+if 'applications' not in st.session_state:
+    st.session_state.applications = []
+if 'children_profiles' not in st.session_state:
+    st.session_state.children_profiles = []
+if 'show_application_form' not in st.session_state:
+    st.session_state.show_application_form = False
+if 'selected_child' not in st.session_state:
+    st.session_state.selected_child = None
 
 # Navigation
 def main_navigation():
@@ -329,6 +446,10 @@ def main_navigation():
             st.session_state.current_page = 'tracker'
             st.rerun()
         
+        if st.button("📋 My Applications", use_container_width=True):
+            st.session_state.current_page = 'applications'
+            st.rerun()
+        
         # Count unread notifications
         unread_count = len([n for n in st.session_state.notifications if not n['read']])
         notification_text = f"🔔 Notifications ({unread_count})" if unread_count > 0 else "🔔 Notifications"
@@ -348,16 +469,88 @@ def main_navigation():
         # User authentication section
         st.markdown("---")
         if st.session_state.user_logged_in:
-            st.markdown(f"**Welcome, {st.session_state.current_user}!**")
-            if st.button("Logout"):
-                st.session_state.user_logged_in = False
-                st.session_state.current_user = None
+            st.markdown(f"**Welcome, {st.session_state.current_user['name']}!**")
+            if st.button("Logout", use_container_width=True):
+                logout_user()
                 st.rerun()
         else:
             st.markdown("**Guest User**")
-            if st.button("Login"):
-                st.session_state.show_login = True
-                st.rerun()
+            col_a, col_b = st.columns(2)
+            with col_a:
+                if st.button("Login", use_container_width=True):
+                    st.session_state.show_login = True
+                    st.rerun()
+            with col_b:
+                if st.button("Register", use_container_width=True):
+                    st.session_state.show_register = True
+                    st.rerun()
+
+# Authentication modals
+def show_login_modal():
+    """Show login modal"""
+    if st.session_state.show_login:
+        with st.container():
+            st.markdown("### 🔐 Login")
+            
+            with st.form("login_form"):
+                email = st.text_input("Email")
+                password = st.text_input("Password", type="password")
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    submitted = st.form_submit_button("Login")
+                with col2:
+                    if st.form_submit_button("Cancel"):
+                        st.session_state.show_login = False
+                        st.rerun()
+                
+                if submitted:
+                    if email and password:
+                        success, message = login_user(email, password)
+                        if success:
+                            st.success(message)
+                            st.session_state.show_login = False
+                            st.rerun()
+                        else:
+                            st.error(message)
+                    else:
+                        st.error("Please enter both email and password.")
+
+def show_register_modal():
+    """Show registration modal"""
+    if st.session_state.show_register:
+        with st.container():
+            st.markdown("### 📝 Register")
+            
+            with st.form("register_form"):
+                name = st.text_input("Full Name")
+                email = st.text_input("Email")
+                phone = st.text_input("Phone Number")
+                password = st.text_input("Password", type="password")
+                confirm_password = st.text_input("Confirm Password", type="password")
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    submitted = st.form_submit_button("Register")
+                with col2:
+                    if st.form_submit_button("Cancel"):
+                        st.session_state.show_register = False
+                        st.rerun()
+                
+                if submitted:
+                    if name and email and phone and password and confirm_password:
+                        if password != confirm_password:
+                            st.error("Passwords do not match!")
+                        else:
+                            success, message = register_user(name, email, phone, password)
+                            if success:
+                                st.success(message)
+                                st.session_state.show_register = False
+                                st.rerun()
+                            else:
+                                st.error(message)
+                    else:
+                        st.error("Please fill in all fields.")
 
 # Home page
 def home_page():
@@ -543,7 +736,7 @@ def kindergartens_page():
             if school.get('has_website') and school.get('website'):
                 st.link_button("🌐 Visit Website", school.get('website'))
             
-            # Application tracking section
+            # Application section
             if st.session_state.user_logged_in:
                 st.markdown("### 📊 Application Tracking")
                 
@@ -576,8 +769,15 @@ def kindergartens_page():
                     if st.button("📊 Start Tracking", key=f"start_track_{school['school_no']}"):
                         add_to_application_tracker(school['school_no'], school.get('name_en', 'Unknown School'))
                         st.rerun()
+                
+                # Apply to school button
+                st.markdown("### 📝 Apply to School")
+                if st.button("🚀 Start Application", key=f"apply_{school['school_no']}", use_container_width=True):
+                    st.session_state.show_application_form = True
+                    st.session_state.selected_school = school
+                    st.rerun()
             else:
-                st.info("💡 Log in to track application dates")
+                st.info("💡 Log in to track application dates and apply to schools")
         
         st.markdown("---")
     
@@ -727,30 +927,92 @@ def profile_page():
         return
     
     # User profile content
-    st.markdown(f"### Welcome, {st.session_state.current_user}!")
+    st.markdown(f"### Welcome, {st.session_state.current_user['name']}!")
     
     # Profile information
     col1, col2 = st.columns(2)
     
     with col1:
         st.markdown("#### Personal Information")
-        st.text_input("Full Name", value="John Doe")
-        st.text_input("Email", value="john.doe@example.com")
-        st.text_input("Phone", value="+852 1234 5678")
+        st.text_input("Full Name", value=st.session_state.current_user.get('name', ''), key="profile_name")
+        st.text_input("Email", value=st.session_state.current_user.get('email', ''), key="profile_email")
+        st.text_input("Phone", value=st.session_state.current_user.get('phone', ''), key="profile_phone")
     
     with col2:
         st.markdown("#### Preferences")
-        st.selectbox("Preferred Language", ["English", "中文"])
-        st.selectbox("Notification Settings", ["Email", "SMS", "Both", "None"])
-        st.checkbox("Receive updates about new schools")
+        st.selectbox("Preferred Language", ["English", "中文"], key="profile_language")
+        st.selectbox("Notification Settings", ["Email", "SMS", "Both", "None"], key="profile_notifications")
+        st.checkbox("Receive updates about new schools", key="profile_updates")
     
-    # Saved schools
-    st.markdown("#### Saved Schools")
-    st.info("No saved schools yet. Browse kindergartens to save your favorites!")
+    # Child profiles
+    st.markdown("#### 👶 Child Profiles")
+    
+    if st.session_state.children_profiles:
+        for child in st.session_state.children_profiles:
+            with st.container():
+                col_a, col_b = st.columns([3, 1])
+                with col_a:
+                    st.markdown(f"""
+                    <div class="school-card">
+                        <h4>{child['name']}</h4>
+                        <p><strong>Age:</strong> {calculate_age(child['date_of_birth'])} years old</p>
+                        <p><strong>Gender:</strong> {child['gender']}</p>
+                        <p><strong>Date of Birth:</strong> {child['date_of_birth']}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                with col_b:
+                    if st.button("Edit", key=f"edit_child_{child['id']}"):
+                        pass  # TODO: Add edit functionality
+    else:
+        st.info("No child profiles yet.")
+    
+    # Add child profile
+    with st.expander("➕ Add Child Profile"):
+        with st.form("profile_add_child"):
+            child_name = st.text_input("Child's Full Name")
+            date_of_birth = st.date_input("Date of Birth", min_value=datetime(2010, 1, 1), max_value=datetime.now())
+            gender = st.selectbox("Gender", ["Male", "Female", "Other"])
+            
+            if st.form_submit_button("Add Child Profile"):
+                if child_name and date_of_birth and gender:
+                    success, message = add_child_profile(child_name, date_of_birth.strftime('%Y-%m-%d'), gender)
+                    if success:
+                        st.success(message)
+                        st.rerun()
+                    else:
+                        st.error(message)
+                else:
+                    st.error("Please fill in all fields.")
     
     # Application history
-    st.markdown("#### Application History")
-    st.info("No applications submitted yet.")
+    st.markdown("#### 📋 Application History")
+    
+    if st.session_state.applications:
+        for app in st.session_state.applications:
+            with st.container():
+                col_a, col_b = st.columns([3, 1])
+                with col_a:
+                    status_color = {
+                        'pending': '🟡',
+                        'approved': '🟢',
+                        'rejected': '🔴',
+                        'waitlisted': '🟠'
+                    }.get(app['status'], '🟡')
+                    
+                    st.markdown(f"""
+                    <div class="school-card">
+                        <h4>{app['school_name']}</h4>
+                        <p><strong>Child:</strong> {app['child_name']}</p>
+                        <p><strong>Status:</strong> {status_color} {app['status'].title()}</p>
+                        <p><strong>Submitted:</strong> {app['submitted_at'].strftime('%Y-%m-%d %H:%M')}</p>
+                        <p><strong>Preferred Start:</strong> {app['preferred_start_date']}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                with col_b:
+                    if st.button("View Details", key=f"view_app_{app['id']}"):
+                        pass  # TODO: Add detailed view
+    else:
+        st.info("No applications submitted yet.")
 
 # Application Tracker page
 def application_tracker_page():
@@ -852,6 +1114,99 @@ def application_tracker_page():
                 
                 st.markdown("---")
 
+# Application Form page
+def application_form_page():
+    """Application form page"""
+    if not st.session_state.show_application_form or not st.session_state.selected_school:
+        st.rerun()
+    
+    school = st.session_state.selected_school
+    
+    st.markdown('<h1 class="main-header">📝 School Application</h1>', unsafe_allow_html=True)
+    st.markdown(f'<h2 class="sub-header">Applying to: {school.get("name_en", "Unknown School")}</h2>', unsafe_allow_html=True)
+    
+    # Back button
+    if st.button("← Back to School Details"):
+        st.session_state.show_application_form = False
+        st.session_state.selected_school = None
+        st.rerun()
+    
+    # Child profile selection
+    st.markdown("## 👶 Child Information")
+    
+    if not st.session_state.children_profiles:
+        st.warning("No child profiles found. Please add a child profile first.")
+        
+        with st.expander("➕ Add Child Profile"):
+            with st.form("add_child_form"):
+                child_name = st.text_input("Child's Full Name")
+                date_of_birth = st.date_input("Date of Birth", min_value=datetime(2010, 1, 1), max_value=datetime.now())
+                gender = st.selectbox("Gender", ["Male", "Female", "Other"])
+                
+                if st.form_submit_button("Add Child Profile"):
+                    if child_name and date_of_birth and gender:
+                        success, message = add_child_profile(child_name, date_of_birth.strftime('%Y-%m-%d'), gender)
+                        if success:
+                            st.success(message)
+                            st.rerun()
+                        else:
+                            st.error(message)
+                    else:
+                        st.error("Please fill in all fields.")
+        return
+    
+    # Select child profile
+    child_options = {f"{child['name']} ({calculate_age(child['date_of_birth'])} years old)": child['id'] 
+                    for child in st.session_state.children_profiles}
+    
+    selected_child_name = st.selectbox("Select Child", list(child_options.keys()))
+    selected_child_id = child_options[selected_child_name]
+    
+    # Application form
+    st.markdown("## 📋 Application Details")
+    
+    with st.form("application_form"):
+        st.markdown("### Parent Information")
+        parent_name = st.text_input("Parent/Guardian Full Name", value=st.session_state.current_user.get('name', ''))
+        parent_email = st.text_input("Email Address", value=st.session_state.current_user.get('email', ''))
+        parent_phone = st.text_input("Phone Number", value=st.session_state.current_user.get('phone', ''))
+        
+        st.markdown("### Application Details")
+        preferred_start_date = st.date_input("Preferred Start Date", min_value=datetime.now().date())
+        additional_notes = st.text_area("Additional Notes (Optional)", 
+                                      placeholder="Any special requirements, questions, or additional information...")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            submitted = st.form_submit_button("Submit Application", use_container_width=True)
+        with col2:
+            if st.form_submit_button("Cancel", use_container_width=True):
+                st.session_state.show_application_form = False
+                st.session_state.selected_school = None
+                st.rerun()
+        
+        if submitted:
+            if parent_name and parent_email and parent_phone:
+                success, message = submit_application(
+                    school['school_no'],
+                    school.get('name_en', 'Unknown School'),
+                    selected_child_id,
+                    parent_name,
+                    parent_email,
+                    parent_phone,
+                    preferred_start_date.strftime('%Y-%m-%d'),
+                    additional_notes
+                )
+                if success:
+                    st.success(message)
+                    st.session_state.show_application_form = False
+                    st.session_state.selected_school = None
+                    st.rerun()
+                else:
+                    st.error(message)
+            else:
+                st.error("Please fill in all required fields.")
+
 # Notifications page
 def notifications_page():
     """Notifications page"""
@@ -940,27 +1295,70 @@ def about_page():
     multiple channels to ensure accuracy and reliability.
     """)
 
+# Applications page
+def applications_page():
+    """Standalone applications management page"""
+    st.markdown('<h1 class="main-header">📋 My Applications</h1>', unsafe_allow_html=True)
+    if not st.session_state.user_logged_in:
+        st.warning("Please log in to view your applications.")
+        return
+    if st.session_state.applications:
+        for app in st.session_state.applications:
+            with st.container():
+                col_a, col_b = st.columns([3, 1])
+                with col_a:
+                    status_color = {
+                        'pending': '🟡',
+                        'approved': '🟢',
+                        'rejected': '🔴',
+                        'waitlisted': '🟠'
+                    }.get(app['status'], '🟡')
+                    st.markdown(f"""
+                    <div class="school-card">
+                        <h4>{app['school_name']}</h4>
+                        <p><strong>Child:</strong> {app['child_name']}</p>
+                        <p><strong>Status:</strong> {status_color} {app['status'].title()}</p>
+                        <p><strong>Submitted:</strong> {app['submitted_at'].strftime('%Y-%m-%d %H:%M')}</p>
+                        <p><strong>Preferred Start:</strong> {app['preferred_start_date']}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                with col_b:
+                    if st.button("View Details", key=f"view_app_page_{app['id']}"):
+                        pass  # TODO: Add detailed view
+    else:
+        st.info("No applications submitted yet.")
+
 # Main app logic
 def main():
     """Main application logic"""
     # Navigation
     main_navigation()
     
-    # Display the appropriate page based on session state
-    if st.session_state.current_page == 'home':
-        home_page()
-    elif st.session_state.current_page == 'kindergartens':
-        kindergartens_page()
-    elif st.session_state.current_page == 'analytics':
-        analytics_page()
-    elif st.session_state.current_page == 'tracker':
-        application_tracker_page()
-    elif st.session_state.current_page == 'notifications':
-        notifications_page()
-    elif st.session_state.current_page == 'profile':
-        profile_page()
-    elif st.session_state.current_page == 'about':
-        about_page()
+    # Show authentication modals if needed
+    show_login_modal()
+    show_register_modal()
+    
+    # Show application form if needed
+    if st.session_state.show_application_form:
+        application_form_page()
+    else:
+        # Display the appropriate page based on session state
+        if st.session_state.current_page == 'home':
+            home_page()
+        elif st.session_state.current_page == 'kindergartens':
+            kindergartens_page()
+        elif st.session_state.current_page == 'analytics':
+            analytics_page()
+        elif st.session_state.current_page == 'tracker':
+            application_tracker_page()
+        elif st.session_state.current_page == 'notifications':
+            notifications_page()
+        elif st.session_state.current_page == 'applications':
+            applications_page()
+        elif st.session_state.current_page == 'profile':
+            profile_page()
+        elif st.session_state.current_page == 'about':
+            about_page()
 
 if __name__ == "__main__":
     main() 
