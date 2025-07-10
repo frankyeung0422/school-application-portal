@@ -1,170 +1,117 @@
 """
-Test Google Drive Connection
-Simple script to test if Google Drive integration is working
+Simple Google Drive Connection Test
+Run this to test if your Google Drive setup is working.
 """
 
 import streamlit as st
-import hashlib
-from database_cloud import CloudDatabaseManager
+import json
+import os
 
-st.set_page_config(
-    page_title="Google Drive Test",
-    page_icon="🧪",
-    layout="wide"
-)
-
-st.title("🧪 Google Drive Connection Test")
-
-# Test database initialization
-st.header("1. Database Initialization Test")
-
-try:
-    db_manager = CloudDatabaseManager(storage_type="google_drive")
+def test_google_drive():
+    st.title("🧪 Google Drive Connection Test")
     
-    if db_manager.conn:
-        st.success("✅ Database connection successful!")
-        st.info(f"Storage type: {db_manager.storage_type}")
-        
-        if db_manager.storage_manager:
-            st.success("✅ Cloud storage manager initialized!")
+    # Check environment
+    st.write(f"**Environment:** {'Streamlit Cloud' if os.getenv('STREAMLIT_CLOUD') else 'Local'}")
+    
+    # Check if secrets are available
+    try:
+        if 'GOOGLE_DRIVE' in st.secrets:
+            st.success("✅ Google Drive secrets found")
+            secrets = st.secrets['GOOGLE_DRIVE']
+            st.write(f"Available keys: {list(secrets.keys())}")
             
-            if hasattr(db_manager.storage_manager, 'drive_service'):
-                st.success("✅ Google Drive service available!")
+            # Test credentials
+            if 'CREDENTIALS' in secrets:
+                st.success("✅ CREDENTIALS found")
+                try:
+                    creds = secrets['CREDENTIALS']
+                    if isinstance(creds, str):
+                        creds_dict = json.loads(creds)
+                    else:
+                        creds_dict = creds
+                    
+                    st.success("✅ Credentials parsed successfully")
+                    st.write(f"Service account: {creds_dict.get('client_email', 'Unknown')}")
+                    
+                except json.JSONDecodeError as e:
+                    st.error(f"❌ Invalid JSON in credentials: {e}")
+                    return False
             else:
-                st.warning("⚠️ Google Drive service not available")
+                st.error("❌ CREDENTIALS not found")
+                return False
+            
+            # Test folder ID
+            if 'FOLDER_ID' in secrets:
+                st.success("✅ FOLDER_ID found")
+                st.write(f"Folder ID: {secrets['FOLDER_ID']}")
+            else:
+                st.error("❌ FOLDER_ID not found")
+                return False
+                
         else:
-            st.warning("⚠️ No cloud storage manager")
-    else:
-        st.error("❌ Database connection failed")
-        
-except Exception as e:
-    st.error(f"❌ Database initialization error: {str(e)}")
-
-# Test user creation
-st.header("2. User Creation Test")
-
-if 'db_manager' in locals() and db_manager.conn:
-    test_username = "test_user_google_drive"
-    test_email = "test@google-drive.com"
-    test_password = "test123"
-    password_hash = hashlib.sha256(test_password.encode()).hexdigest()
-    
-    if st.button("Create Test User"):
-        try:
-            success = db_manager.create_user(test_username, test_email, password_hash, "Test User", "12345678")
-            if success:
-                st.success("✅ Test user created successfully!")
-                st.info("Check your Google Drive for the database file")
-            else:
-                st.error("❌ Failed to create test user")
-        except Exception as e:
-            st.error(f"❌ Error creating test user: {str(e)}")
-
-# Test user verification
-st.header("3. User Verification Test")
-
-if 'db_manager' in locals() and db_manager.conn:
-    if st.button("Verify Test User"):
-        try:
-            test_email = "test@google-drive.com"
-            test_password = "test123"
-            password_hash = hashlib.sha256(test_password.encode()).hexdigest()
+            st.error("❌ Google Drive secrets not found")
+            return False
             
-            user = db_manager.verify_user(test_email, password_hash)
-            if user:
-                st.success("✅ User verification successful!")
-                st.json(user)
-            else:
-                st.error("❌ User verification failed")
-        except Exception as e:
-            st.error(f"❌ Error verifying user: {str(e)}")
-
-# Test cloud sync
-st.header("4. Cloud Sync Test")
-
-if 'db_manager' in locals() and db_manager.conn:
-    if st.button("Test Cloud Sync"):
-        try:
-            db_manager.sync_to_cloud()
-            st.success("✅ Cloud sync test completed!")
-        except Exception as e:
-            st.error(f"❌ Cloud sync error: {str(e)}")
-
-# Display debug information
-st.header("5. Debug Information")
-
-if 'db_manager' in locals():
-    st.subheader("Database Manager Info")
-    st.write(f"Storage Type: {db_manager.storage_type}")
-    st.write(f"Connection Available: {db_manager.conn is not None}")
+    except Exception as e:
+        st.error(f"❌ Error checking secrets: {e}")
+        return False
     
-    if db_manager.storage_manager:
-        st.subheader("Storage Manager Info")
-        st.write(f"Type: {type(db_manager.storage_manager).__name__}")
-        
-        if hasattr(db_manager.storage_manager, 'drive_service'):
-            st.write(f"Google Drive Service: {db_manager.storage_manager.drive_service is not None}")
-        
-        if hasattr(db_manager.storage_manager, 'file_id'):
-            st.write(f"File ID: {db_manager.storage_manager.file_id}")
-        
-        if hasattr(db_manager.storage_manager, 'folder_id'):
-            st.write(f"Folder ID: {db_manager.storage_manager.folder_id}")
-
-# Check Streamlit secrets
-st.header("6. Streamlit Secrets Check")
-
-if 'GOOGLE_DRIVE' in st.secrets:
-    st.success("✅ Google Drive secrets found!")
-    
-    secrets = st.secrets['GOOGLE_DRIVE']
-    if 'CREDENTIALS' in secrets:
-        st.success("✅ Credentials found!")
-        
-        # Check if credentials are valid JSON
+    # Test Google Drive API
+    if st.button("🔍 Test Google Drive API"):
         try:
-            import json
-            if isinstance(secrets['CREDENTIALS'], str):
-                creds = json.loads(secrets['CREDENTIALS'])
-            else:
-                creds = secrets['CREDENTIALS']
+            from google.oauth2.service_account import Credentials
+            from googleapiclient.discovery import build
             
-            st.write("Project ID:", creds.get('project_id', 'N/A'))
-            st.write("Client Email:", creds.get('client_email', 'N/A'))
+            # Get credentials
+            creds_data = st.secrets['GOOGLE_DRIVE']['CREDENTIALS']
+            if isinstance(creds_data, str):
+                creds_dict = json.loads(creds_data)
+            else:
+                creds_dict = creds_data
+            
+            # Create credentials object
+            credentials = Credentials.from_service_account_info(creds_dict)
+            st.success("✅ Credentials object created")
+            
+            # Build service
+            drive_service = build('drive', 'v3', credentials=credentials)
+            st.success("✅ Drive service built")
+            
+            # Test API call
+            about = drive_service.about().get(fields="user").execute()
+            user_email = about.get('user', {}).get('emailAddress', 'Unknown')
+            st.success(f"✅ API connection successful")
+            st.write(f"Connected as: {user_email}")
+            
+            # Test folder access
+            folder_id = st.secrets['GOOGLE_DRIVE']['FOLDER_ID']
+            folder = drive_service.files().get(fileId=folder_id, fields="name,permissions").execute()
+            st.success(f"✅ Folder access successful: {folder.get('name', 'Unknown')}")
+            
+            # Check permissions
+            permissions = folder.get('permissions', [])
+            service_account_email = creds_dict.get('client_email')
+            
+            has_permission = False
+            for permission in permissions:
+                if permission.get('emailAddress') == service_account_email:
+                    role = permission.get('role', '')
+                    st.success(f"✅ Service account has {role} permission")
+                    has_permission = True
+                    break
+            
+            if not has_permission:
+                st.warning("⚠️ Service account may not have proper folder permissions")
+                st.write(f"Service account email: {service_account_email}")
+            
+            return True
             
         except Exception as e:
-            st.error(f"❌ Invalid credentials format: {str(e)}")
-    else:
-        st.error("❌ Credentials not found in secrets")
+            st.error(f"❌ API test failed: {e}")
+            st.write(f"Error type: {type(e).__name__}")
+            return False
     
-    if 'FOLDER_ID' in secrets:
-        st.success(f"✅ Folder ID found: {secrets['FOLDER_ID']}")
-    else:
-        st.warning("⚠️ Folder ID not found in secrets")
-else:
-    st.error("❌ Google Drive secrets not found")
+    return True
 
-# Instructions
-st.header("📋 Next Steps")
-
-st.markdown("""
-If all tests pass:
-
-1. **Check Google Drive**: Visit your Google Drive and look for the `School Portal Database` folder
-2. **Check for database file**: You should see a `school_portal.db` file
-3. **Deploy to Streamlit Cloud**: Your app is ready for deployment!
-
-If tests fail:
-
-1. **Check Streamlit Secrets**: Make sure credentials and folder ID are correct
-2. **Check Google Drive permissions**: Ensure the service account has access to the folder
-3. **Check Google Cloud API**: Make sure Google Drive API is enabled
-""")
-
-st.markdown("---")
-st.markdown("""
-<div style='text-align: center'>
-    <p>🧪 Google Drive Connection Test</p>
-    <p>Run this to verify your setup before deploying</p>
-</div>
-""", unsafe_allow_html=True) 
+if __name__ == "__main__":
+    test_google_drive() 

@@ -22,13 +22,36 @@ except ImportError:
 def get_db_manager():
     """Get database manager with cloud storage support"""
     try:
+        # Debug information
+        st.write(f"🔧 Debug: STREAMLIT_CLOUD env var = {os.getenv('STREAMLIT_CLOUD')}")
+        st.write(f"🔧 Debug: CLOUD_DB_AVAILABLE = {CLOUD_DB_AVAILABLE}")
+        
+        # Check Google Drive secrets
+        try:
+            google_drive_secrets = st.secrets.get('GOOGLE_DRIVE', {})
+            st.write(f"🔧 Debug: Google Drive secrets available = {bool(google_drive_secrets)}")
+            if google_drive_secrets:
+                st.write(f"🔧 Debug: Google Drive secrets keys = {list(google_drive_secrets.keys())}")
+        except Exception as e:
+            st.write(f"🔧 Debug: Error checking Google Drive secrets: {e}")
+        
         if os.getenv('STREAMLIT_CLOUD') and CLOUD_DB_AVAILABLE:
-            # Use Google Drive in Streamlit Cloud
-            return CloudDatabaseManager(storage_type="google_drive")
+            st.write("🔧 Debug: Attempting to use Google Drive storage")
+            try:
+                # Use Google Drive in Streamlit Cloud
+                db_manager = CloudDatabaseManager(storage_type="google_drive")
+                st.write(f"🔧 Debug: Google Drive initialization result: {db_manager.storage_type}")
+                return db_manager
+            except Exception as e:
+                st.error(f"🔧 Debug: Google Drive initialization failed with error: {e}")
+                st.write("🔧 Debug: Falling back to simple cloud storage")
+                return CloudDatabaseManager(storage_type="simple_cloud")
         elif CLOUD_DB_AVAILABLE:
+            st.write("🔧 Debug: Using simple cloud storage (not on Streamlit Cloud or Google Drive failed)")
             # Use simple cloud storage for development
             return CloudDatabaseManager(storage_type="simple_cloud")
         else:
+            st.write("🔧 Debug: Using local database (cloud not available)")
             # Fallback to local database
             return db
     except Exception as e:
