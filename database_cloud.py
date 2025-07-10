@@ -68,21 +68,35 @@ class CloudDatabaseManager:
         """Initialize database connection and create tables"""
         try:
             if self.storage_manager:
-                # Handle file upload for simple cloud storage
-                if hasattr(self.storage_manager, 'handle_file_upload'):
+                # Handle Supabase storage manager
+                if hasattr(self.storage_manager, 'supabase') and self.storage_manager.supabase:
+                    # Supabase doesn't need traditional database connection
+                    self.conn = None
+                    print("🔗 Using Supabase cloud database.")
+                elif hasattr(self.storage_manager, 'handle_file_upload'):
+                    # Handle file upload for simple cloud storage
                     self.storage_manager.handle_file_upload()
-                
-                # Use cloud storage
-                self.conn = self.storage_manager.get_database_connection()
+                    self.conn = self.storage_manager.get_database_connection()
+                elif hasattr(self.storage_manager, 'get_database_connection'):
+                    # Use cloud storage with database connection
+                    self.conn = self.storage_manager.get_database_connection()
+                else:
+                    # Fallback to local storage
+                    db_path = "school_portal.db"
+                    self.conn = sqlite3.connect(db_path)
             else:
                 # Use local storage (fallback)
                 db_path = "school_portal.db"
                 self.conn = sqlite3.connect(db_path)
             
+            # Only create tables if we have a SQLite connection
             if self.conn:
                 self._create_tables()
                 self._initialize_test_data()
-                pass
+            elif hasattr(self.storage_manager, 'supabase') and self.storage_manager.supabase:
+                # For Supabase, tables are created via SQL migrations
+                print("📋 Supabase tables managed via SQL migrations")
+                self._initialize_test_data()
             else:
                 st.error("❌ Failed to initialize database connection")
                 
@@ -264,18 +278,27 @@ class CloudDatabaseManager:
     def create_user(self, username: str, email: str, password_hash: str, full_name: str = None, phone: str = None) -> bool:
         """Create a new user"""
         try:
-            cursor = self.conn.cursor()
-            cursor.execute('''
-                INSERT INTO users (username, email, password_hash, full_name, phone)
-                VALUES (?, ?, ?, ?, ?)
-            ''', (username, email, password_hash, full_name, phone))
-            self.conn.commit()
+            # Check if using Supabase
+            if self.storage_manager and hasattr(self.storage_manager, 'create_user'):
+                return self.storage_manager.create_user(username, email, password_hash, full_name, phone)
             
-            # Sync to cloud if available
-            if self.storage_type == "google_drive":
-                self.sync_to_cloud()
-            
-            return True
+            # Use SQLite
+            if self.conn:
+                cursor = self.conn.cursor()
+                cursor.execute('''
+                    INSERT INTO users (username, email, password_hash, full_name, phone)
+                    VALUES (?, ?, ?, ?, ?)
+                ''', (username, email, password_hash, full_name, phone))
+                self.conn.commit()
+                
+                # Sync to cloud if available
+                if self.storage_type == "google_drive":
+                    self.sync_to_cloud()
+                
+                return True
+            else:
+                st.error("No database connection available")
+                return False
         except sqlite3.IntegrityError:
             return False
         except Exception as e:
@@ -285,22 +308,31 @@ class CloudDatabaseManager:
     def verify_user(self, email: str, password_hash: str) -> Optional[Dict]:
         """Verify user login"""
         try:
-            cursor = self.conn.cursor()
-            cursor.execute('''
-                SELECT id, username, email, full_name, phone
-                FROM users WHERE email = ? AND password_hash = ?
-            ''', (email, password_hash))
-            user = cursor.fetchone()
+            # Check if using Supabase
+            if self.storage_manager and hasattr(self.storage_manager, 'verify_user'):
+                return self.storage_manager.verify_user(email, password_hash)
             
-            if user:
-                return {
-                    'id': user[0],
-                    'username': user[1],
-                    'email': user[2],
-                    'full_name': user[3],
-                    'phone': user[4]
-                }
-            return None
+            # Use SQLite
+            if self.conn:
+                cursor = self.conn.cursor()
+                cursor.execute('''
+                    SELECT id, username, email, full_name, phone
+                    FROM users WHERE email = ? AND password_hash = ?
+                ''', (email, password_hash))
+                user = cursor.fetchone()
+                
+                if user:
+                    return {
+                        'id': user[0],
+                        'username': user[1],
+                        'email': user[2],
+                        'full_name': user[3],
+                        'phone': user[4]
+                    }
+                return None
+            else:
+                st.error("No database connection available")
+                return None
         except Exception as e:
             st.error(f"Error verifying user: {str(e)}")
             return None
