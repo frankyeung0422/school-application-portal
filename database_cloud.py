@@ -438,6 +438,50 @@ class CloudDatabaseManager:
             st.error(f"Error getting child profiles: {str(e)}")
             return []
     
+    def update_child_profile(self, child_id: int, child_name: str, date_of_birth: str, gender: str) -> tuple:
+        """Update a child profile by id"""
+        # Delegate to Supabase if available
+        if self.storage_manager and hasattr(self.storage_manager, 'update_child_profile'):
+            return self.storage_manager.update_child_profile(child_id, child_name, date_of_birth, gender)
+        # Otherwise, use SQLite
+        try:
+            if not self.conn:
+                return False, "Database not initialized"
+            cursor = self.conn.cursor()
+            cursor.execute('''
+                UPDATE child_profiles SET child_name=?, date_of_birth=?, gender=? WHERE id=?
+            ''', (child_name, date_of_birth, gender, child_id))
+            self.conn.commit()
+            if cursor.rowcount > 0:
+                if self.storage_type == "google_drive":
+                    self.sync_to_cloud()
+                return True, "Child profile updated successfully."
+            return False, "Failed to update child profile."
+        except Exception as e:
+            return False, f"Error updating child profile: {str(e)}"
+
+    def delete_child_profile(self, child_id: int) -> tuple:
+        """Delete a child profile by id"""
+        # Delegate to Supabase if available
+        if self.storage_manager and hasattr(self.storage_manager, 'delete_child_profile'):
+            return self.storage_manager.delete_child_profile(child_id)
+        # Otherwise, use SQLite
+        try:
+            if not self.conn:
+                return False, "Database not initialized"
+            cursor = self.conn.cursor()
+            cursor.execute('''
+                DELETE FROM child_profiles WHERE id=?
+            ''', (child_id,))
+            self.conn.commit()
+            if cursor.rowcount > 0:
+                if self.storage_type == "google_drive":
+                    self.sync_to_cloud()
+                return True, "Child profile deleted successfully."
+            return False, "Failed to delete child profile."
+        except Exception as e:
+            return False, f"Error deleting child profile: {str(e)}"
+    
     # Application methods
     def create_application(self, user_id: int, child_id: int, school_name: str, school_type: str,
                           application_date: str, notes: str = None) -> int:
