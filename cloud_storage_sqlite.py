@@ -55,6 +55,11 @@ class CloudSQLiteManager:
                 if isinstance(credentials_data, str):
                     st.write("🔧 Debug: Parsing credentials as JSON string...")
                     credentials_dict = json.loads(credentials_data)
+                    
+                    # Fix private key formatting - convert escaped newlines to actual newlines
+                    if 'private_key' in credentials_dict:
+                        st.write("🔧 Debug: Fixing private key formatting...")
+                        credentials_dict['private_key'] = credentials_dict['private_key'].replace('\\n', '\n')
                 else:
                     st.write("🔧 Debug: Using credentials as dict...")
                     credentials_dict = credentials_data
