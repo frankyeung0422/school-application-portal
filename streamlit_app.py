@@ -3271,25 +3271,24 @@ def profile_page():
             with st.expander("✏️ Update Profile Information"):
                 with st.form("update_profile_form"):
                     new_name = st.text_input("Full Name", value=current_user.get('name', ''), key="update_name")
-                    new_email = st.text_input("Email", value=current_user.get('email', ''), key="update_email")
+                    st.text_input("Email", value=current_user.get('email', ''), key="update_email", disabled=True)
                     new_phone = st.text_input("Phone", value=current_user.get('phone', ''), key="update_phone")
                     
                     if st.form_submit_button("Update Profile"):
-                        if new_name and new_email and new_phone:
-                            # Update the user's profile in database
+                        if new_name and new_phone:
+                            # Update the user's profile in database (email updates not supported yet)
                             user_id = current_user['id']
-                            success, message = get_db().update_user_profile(user_id, new_name, new_email, new_phone)
+                            success, message = get_db().update_user_profile(user_id, new_name, new_phone)
                             if success:
                                 # Update session state
                                 current_user['name'] = new_name
-                                current_user['email'] = new_email
                                 current_user['phone'] = new_phone
                                 st.success("Profile updated successfully!")
                                 st.rerun()
                             else:
                                 st.error(message)
                         else:
-                            st.error("Please fill in all fields.")
+                            st.error("Please fill in name and phone fields.")
         else:
             st.text_input("Full Name", value=current_user, key="profile_name")
             st.text_input("Email", value="", key="profile_email")
