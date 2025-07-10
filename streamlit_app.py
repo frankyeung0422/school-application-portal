@@ -2456,10 +2456,10 @@ if 'show_login_modal' not in st.session_state:
     st.session_state.show_login_modal = False
 if 'show_register_modal' not in st.session_state:
     st.session_state.show_register_modal = False
-if 'login_clicked' not in st.session_state:
-    st.session_state.login_clicked = False
-if 'register_clicked' not in st.session_state:
-    st.session_state.register_clicked = False
+if 'show_login_form' not in st.session_state:
+    st.session_state.show_login_form = False
+if 'show_register_form' not in st.session_state:
+    st.session_state.show_register_form = False
 if 'selected_school' not in st.session_state:
     st.session_state.selected_school = None
 if 'saved_schools' not in st.session_state:
@@ -2681,119 +2681,85 @@ def main_navigation():
                     st.rerun()
 
 # Authentication modals
-def show_login_modal():
-    """Show login modal"""
-    # Debug: Show current state
-    st.write(f"DEBUG: show_login_modal = {st.session_state.get('show_login_modal', False)}")
+def show_login_form():
+    """Show login form directly"""
+    st.markdown("## 🔐 Login Required")
+    st.markdown("Please log in to access this feature.")
+    st.markdown("---")
     
-    # Check if login button was clicked in this session
-    if st.session_state.get('show_login_modal', False) or st.session_state.get('login_clicked', False):
-        # Add modal overlay effect
+    # Show test accounts for easy access
+    with st.expander("🧪 Test Accounts (Click to expand)"):
         st.markdown("""
-        <style>
-        .modal-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.5);
-            z-index: 1000;
-        }
-        .modal-content {
-            background-color: white;
-            padding: 2rem;
-            border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            margin: 2rem auto;
-            max-width: 500px;
-        }
-        </style>
-        """, unsafe_allow_html=True)
+        **Available test accounts:**
+        - **Email:** john@example.com | **Password:** password123
+        - **Email:** mary@example.com | **Password:** password123  
+        - **Email:** david@example.com | **Password:** password123
+        """)
+    
+    with st.form("login_form"):
+        email = st.text_input("Email")
+        password = st.text_input("Password", type="password")
+        col1, col2 = st.columns(2)
         
-        with st.container():
-            st.markdown("---")
-            st.markdown("## 🔐 Login Required")
-            st.markdown("Please log in to access this feature.")
-            st.markdown("---")
-            
-            # Show test accounts for easy access
-            with st.expander("🧪 Test Accounts (Click to expand)"):
-                st.markdown("""
-                **Available test accounts:**
-                - **Email:** john@example.com | **Password:** password123
-                - **Email:** mary@example.com | **Password:** password123  
-                - **Email:** david@example.com | **Password:** password123
-                """)
-            
-            with st.form("login_form"):
-                email = st.text_input("Email")
-                password = st.text_input("Password", type="password")
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    submitted = st.form_submit_button("Login")
-                with col2:
-                    if st.form_submit_button("Cancel"):
-                        st.session_state.show_login_modal = False
-                        st.session_state.login_clicked = False
-                        st.rerun()
-                
-                if submitted:
-                    if email and password:
-                        success, message = login_user(email, password)
-                        if success:
-                            st.success(message)
-                            st.session_state.show_login_modal = False
-                            st.session_state.login_clicked = False
-                            st.rerun()
-                        else:
-                            st.error(message)
-                    else:
-                        st.error("Please enter both email and password.")
+        with col1:
+            submitted = st.form_submit_button("Login")
+        with col2:
+            if st.form_submit_button("Back"):
+                st.session_state.show_login_form = False
+                st.rerun()
+        
+        if submitted:
+            if email and password:
+                success, message = login_user(email, password)
+                if success:
+                    st.success(message)
+                    st.session_state.show_login_form = False
+                    st.rerun()
+                else:
+                    st.error(message)
+            else:
+                st.error("Please enter both email and password.")
 
-def show_register_modal():
-    """Show registration modal"""
-    if st.session_state.get('show_register_modal', False) or st.session_state.get('register_clicked', False):
-        with st.container():
-            st.markdown("### 📝 Register")
-            
-            with st.form("register_form"):
-                name = st.text_input("Full Name")
-                email = st.text_input("Email")
-                phone = st.text_input("Phone Number")
-                password = st.text_input("Password", type="password")
-                confirm_password = st.text_input("Confirm Password", type="password")
-                
-                col1, col2 = st.columns(2)
-                with col1:
-                    submitted = st.form_submit_button("Register")
-                with col2:
-                    if st.form_submit_button("Cancel"):
-                        st.session_state.show_register_modal = False
-                        st.session_state.register_clicked = False
-                        st.rerun()
-                
-                if submitted:
-                    if name and email and phone and password and confirm_password:
-                        if password != confirm_password:
-                            st.error("Passwords do not match!")
+def show_register_form():
+    """Show registration form directly"""
+    st.markdown("## 📝 Register")
+    st.markdown("Create a new account to get started.")
+    st.markdown("---")
+    
+    with st.form("register_form"):
+        name = st.text_input("Full Name")
+        email = st.text_input("Email")
+        phone = st.text_input("Phone Number")
+        password = st.text_input("Password", type="password")
+        confirm_password = st.text_input("Confirm Password", type="password")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            submitted = st.form_submit_button("Register")
+        with col2:
+            if st.form_submit_button("Back"):
+                st.session_state.show_register_form = False
+                st.rerun()
+        
+        if submitted:
+            if name and email and phone and password and confirm_password:
+                if password != confirm_password:
+                    st.error("Passwords do not match!")
+                else:
+                    success, message = register_user(name, email, phone, password)
+                    if success:
+                        # Automatically log in the user after successful registration
+                        login_success, login_message = login_user(email, password)
+                        if login_success:
+                            st.success(f"{message} You are now logged in!")
                         else:
-                            success, message = register_user(name, email, phone, password)
-                            if success:
-                                # Automatically log in the user after successful registration
-                                login_success, login_message = login_user(email, password)
-                                if login_success:
-                                    st.success(f"{message} You are now logged in!")
-                                else:
-                                    st.success(f"{message} Please log in with your credentials.")
-                                st.session_state.show_register_modal = False
-                                st.session_state.register_clicked = False
-                                st.rerun()
-                            else:
-                                st.error(message)
+                            st.success(f"{message} Please log in with your credentials.")
+                        st.session_state.show_register_form = False
+                        st.rerun()
                     else:
-                        st.error("Please fill in all fields.")
+                        st.error(message)
+            else:
+                st.error("Please fill in all fields.")
 
 # Home page
 def home_page():
@@ -3112,17 +3078,13 @@ def kindergartens_page():
                 col1, col2 = st.columns(2)
                 with col1:
                     if st.button("🔑 Login", use_container_width=True):
-                        st.write("DEBUG: Login button clicked!")
-                        st.session_state.show_login_modal = True
-                        st.session_state.login_clicked = True
-                        st.write(f"DEBUG: Set show_login_modal to {st.session_state.show_login_modal}")
-                        st.experimental_rerun()
+                        st.session_state.show_login_form = True
+                        st.rerun()
                 
                 with col2:
                     if st.button("📝 Register", use_container_width=True):
-                        st.session_state.show_register_modal = True
-                        st.session_state.register_clicked = True
-                        st.experimental_rerun()
+                        st.session_state.show_register_form = True
+                        st.rerun()
         
         st.markdown("---")
     
@@ -3173,11 +3135,8 @@ def kindergartens_page():
                     else:
                         # Show login prompt for non-logged in users
                         if st.button("🔐 Login to Track", key=f"login_track_{school['school_no']}"):
-                            st.write("DEBUG: Login to Track button clicked!")
-                            st.session_state.show_login_modal = True
-                            st.session_state.login_clicked = True
-                            st.write(f"DEBUG: Set show_login_modal to {st.session_state.show_login_modal}")
-                            st.experimental_rerun()
+                            st.session_state.show_login_form = True
+                            st.rerun()
                 
                 st.markdown("---")
     else:
@@ -4133,13 +4092,14 @@ def admin_utilities():
 def main():
     """Main application logic"""
     
-    # Debug: Show session state
-    st.write(f"DEBUG: Main function - show_login_modal = {st.session_state.get('show_login_modal', False)}")
-    st.write(f"DEBUG: Main function - show_register_modal = {st.session_state.get('show_register_modal', False)}")
+    # Show authentication forms first if needed
+    if st.session_state.get('show_login_form', False):
+        show_login_form()
+        return
     
-    # Show authentication modals first if needed
-    show_login_modal()
-    show_register_modal()
+    if st.session_state.get('show_register_form', False):
+        show_register_form()
+        return
     
     # Initialize test data if needed
     initialize_test_data()
