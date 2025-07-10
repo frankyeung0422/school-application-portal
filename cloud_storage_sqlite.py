@@ -245,9 +245,15 @@ class CloudSQLiteManager:
             # Create connection
             conn = sqlite3.connect(db_path)
             
-            # Store connection info for later upload
-            conn.cloud_manager = self
-            conn.temp_path = db_path
+            # Store connection info in a way that doesn't modify the connection object
+            # We'll use a dictionary to track connections
+            if not hasattr(self, '_connections'):
+                self._connections = {}
+            
+            self._connections[id(conn)] = {
+                'cloud_manager': self,
+                'temp_path': db_path
+            }
             
             return conn
             
@@ -257,13 +263,25 @@ class CloudSQLiteManager:
     
     def close_connection(self, conn: sqlite3.Connection):
         """Close connection and upload changes"""
-        if hasattr(conn, 'cloud_manager'):
+        conn_id = id(conn)
+        
+        if hasattr(self, '_connections') and conn_id in self._connections:
+            connection_info = self._connections[conn_id]
+            
             # Upload changes
-            conn.cloud_manager.upload_database()
+            if hasattr(connection_info['cloud_manager'], 'upload_database'):
+                connection_info['cloud_manager'].upload_database()
             
             # Clean up temporary file
-            if hasattr(conn, 'temp_path') and os.path.exists(conn.temp_path):
-                os.unlink(conn.temp_path)
+            temp_path = connection_info.get('temp_path')
+            if temp_path and os.path.exists(temp_path):
+                try:
+                    os.unlink(temp_path)
+                except Exception as e:
+                    st.warning(f"Could not delete temporary file: {e}")
+            
+            # Remove from tracking
+            del self._connections[conn_id]
         
         conn.close()
 
