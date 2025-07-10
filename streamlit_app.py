@@ -12,11 +12,15 @@ from dateutil import parser
 try:
     from database_cloud import CloudDatabaseManager
     CLOUD_DB_AVAILABLE = True
-except ImportError:
+except ImportError as e:
     # Fallback to local database
-    from database import db
-    CLOUD_DB_AVAILABLE = False
-    st.warning("Cloud database not available. Using local database.")
+    try:
+        from database import db
+        CLOUD_DB_AVAILABLE = False
+        st.warning("Cloud database not available. Using local database.")
+    except ImportError:
+        st.error("No database available!")
+        CLOUD_DB_AVAILABLE = False
 
 # Initialize database manager based on environment
 def get_db_manager():
@@ -2448,10 +2452,10 @@ if 'selected_language' not in st.session_state:
     st.session_state.selected_language = 'en'
 if 'current_page' not in st.session_state:
     st.session_state.current_page = 'home'
-if 'show_login' not in st.session_state:
-    st.session_state.show_login = False
-if 'show_register' not in st.session_state:
-    st.session_state.show_register = False
+if 'show_login_modal' not in st.session_state:
+    st.session_state.show_login_modal = False
+if 'show_register_modal' not in st.session_state:
+    st.session_state.show_register_modal = False
 if 'selected_school' not in st.session_state:
     st.session_state.selected_school = None
 if 'saved_schools' not in st.session_state:
