@@ -30,32 +30,22 @@ class CloudDatabaseManager:
         self.conn = None
         self.storage_manager = None
         
-        # Add debug information
-        st.write(f"🔧 Debug: Initializing with storage_type = {storage_type}")
-        st.write(f"🔧 Debug: CLOUD_STORAGE_AVAILABLE = {CLOUD_STORAGE_AVAILABLE}")
-        
         # Initialize storage based on type
         if storage_type == "google_drive" and CLOUD_STORAGE_AVAILABLE:
-            st.write("🔧 Debug: Attempting Google Drive initialization...")
             try:
                 self.storage_manager = CloudSQLiteManager()
                 if self.storage_manager.drive_service:
                     st.success("✅ Google Drive cloud storage initialized!")
-                    st.write(f"🔧 Debug: Google Drive service created successfully")
                 else:
                     st.warning("⚠️ Google Drive not available, falling back to local storage")
-                    st.write("🔧 Debug: drive_service is None, falling back")
                     self.storage_type = "local"
             except Exception as e:
                 st.error(f"❌ Google Drive initialization failed: {str(e)}")
-                st.write(f"🔧 Debug: Exception during Google Drive init: {type(e).__name__}: {e}")
                 st.info("Falling back to local storage")
                 self.storage_type = "local"
         elif storage_type == "simple_cloud" and CLOUD_STORAGE_AVAILABLE:
-            st.write("🔧 Debug: Using SimpleCloudSQLite...")
             self.storage_manager = SimpleCloudSQLite()
         else:
-            st.write("🔧 Debug: No cloud storage manager (using local)")
             self.storage_manager = None
         
         # Initialize database

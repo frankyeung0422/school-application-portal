@@ -37,47 +37,32 @@ class CloudSQLiteManager:
         """Initialize Google Drive API connection using Streamlit secrets"""
         if not GOOGLE_DRIVE_AVAILABLE:
             st.error("Google Drive API not available. Please install required packages.")
-            st.write("🔧 Debug: GOOGLE_DRIVE_AVAILABLE = False")
             return
-        
-        st.write("🔧 Debug: Starting Google Drive initialization...")
         
         try:
             # Get credentials from Streamlit secrets
             if 'GOOGLE_DRIVE' in st.secrets:
-                st.write("🔧 Debug: Google Drive secrets found")
                 credentials_data = st.secrets['GOOGLE_DRIVE']['CREDENTIALS']
                 self.folder_id = st.secrets['GOOGLE_DRIVE'].get('FOLDER_ID')
                 
-                st.write(f"🔧 Debug: Folder ID = {self.folder_id}")
-                
                 # Parse credentials
                 if isinstance(credentials_data, str):
-                    st.write("🔧 Debug: Parsing credentials as JSON string...")
                     credentials_dict = json.loads(credentials_data)
                     
                     # Fix private key formatting - convert escaped newlines to actual newlines
                     if 'private_key' in credentials_dict:
-                        st.write("🔧 Debug: Fixing private key formatting...")
                         credentials_dict['private_key'] = credentials_dict['private_key'].replace('\\n', '\n')
                 else:
-                    st.write("🔧 Debug: Using credentials as dict...")
                     credentials_dict = credentials_data
                 
-                st.write(f"🔧 Debug: Credentials keys = {list(credentials_dict.keys())}")
-                
                 # Create credentials object
-                st.write("🔧 Debug: Creating credentials object...")
                 credentials = Credentials.from_service_account_info(credentials_dict)
                 
                 # Build the Drive service
-                st.write("🔧 Debug: Building Drive service...")
                 self.drive_service = build('drive', 'v3', credentials=credentials)
                 
                 # Test the connection
-                st.write("🔧 Debug: Testing Drive service connection...")
                 about = self.drive_service.about().get(fields="user").execute()
-                st.write(f"🔧 Debug: Connected as {about.get('user', {}).get('emailAddress', 'Unknown')}")
                 
                 # Find or create the database file
                 self._find_or_create_db_file()
@@ -86,20 +71,14 @@ class CloudSQLiteManager:
                 
             else:
                 st.error("Google Drive credentials not found in Streamlit secrets.")
-                st.write("🔧 Debug: 'GOOGLE_DRIVE' not in st.secrets")
-                st.write(f"🔧 Debug: Available secrets keys = {list(st.secrets.keys())}")
                 st.info("Please add your Google Drive credentials to Streamlit secrets.")
                 
         except json.JSONDecodeError as e:
             st.error(f"Invalid JSON in Google Drive credentials: {str(e)}")
-            st.write(f"🔧 Debug: JSON decode error: {e}")
         except KeyError as e:
             st.error(f"Missing required field in Google Drive credentials: {str(e)}")
-            st.write(f"🔧 Debug: KeyError: {e}")
         except Exception as e:
             st.error(f"Failed to initialize Google Drive: {str(e)}")
-            st.write(f"🔧 Debug: Exception type: {type(e).__name__}")
-            st.write(f"🔧 Debug: Exception details: {e}")
             st.info("Check your credentials and folder ID in Streamlit secrets.")
     
     def _find_or_create_db_file(self):

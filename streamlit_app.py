@@ -22,40 +22,28 @@ except ImportError:
 def get_db_manager():
     """Get database manager with cloud storage support"""
     try:
-        # Debug information
-        st.write(f"🔧 Debug: STREAMLIT_CLOUD env var = {os.getenv('STREAMLIT_CLOUD')}")
-        st.write(f"🔧 Debug: CLOUD_DB_AVAILABLE = {CLOUD_DB_AVAILABLE}")
-        
         # Check Google Drive secrets
         try:
             google_drive_secrets = st.secrets.get('GOOGLE_DRIVE', {})
-            st.write(f"🔧 Debug: Google Drive secrets available = {bool(google_drive_secrets)}")
-            if google_drive_secrets:
-                st.write(f"🔧 Debug: Google Drive secrets keys = {list(google_drive_secrets.keys())}")
         except Exception as e:
-            st.write(f"🔧 Debug: Error checking Google Drive secrets: {e}")
+            pass
         
         # Check if Google Drive secrets are available
         google_drive_secrets = st.secrets.get('GOOGLE_DRIVE', {})
         has_google_drive_secrets = bool(google_drive_secrets) and 'CREDENTIALS' in google_drive_secrets and 'FOLDER_ID' in google_drive_secrets
         
         if has_google_drive_secrets and CLOUD_DB_AVAILABLE:
-            st.write("🔧 Debug: Attempting to use Google Drive storage")
             try:
                 # Use Google Drive (available both locally and on Streamlit Cloud)
                 db_manager = CloudDatabaseManager(storage_type="google_drive")
-                st.write(f"🔧 Debug: Google Drive initialization result: {db_manager.storage_type}")
                 return db_manager
             except Exception as e:
-                st.error(f"🔧 Debug: Google Drive initialization failed with error: {e}")
-                st.write("🔧 Debug: Falling back to simple cloud storage")
+                st.error(f"Google Drive initialization failed: {e}")
                 return CloudDatabaseManager(storage_type="simple_cloud")
         elif CLOUD_DB_AVAILABLE:
-            st.write("🔧 Debug: Using simple cloud storage (Google Drive secrets not available)")
             # Use simple cloud storage for development
             return CloudDatabaseManager(storage_type="simple_cloud")
         else:
-            st.write("🔧 Debug: Using local database (cloud not available)")
             # Fallback to local database
             return db
     except Exception as e:
@@ -4096,54 +4084,7 @@ def admin_utilities():
 # Main app logic
 def main():
     """Main application logic"""
-    # Debug information for Streamlit Cloud
-    if st.session_state.get('show_debug_info', False):
-        st.sidebar.markdown("---")
-        st.sidebar.markdown("### 🐛 Debug Info")
-        db_instance = get_db()
-        if db_instance is not None:
-            try:
-                st.sidebar.write(f"Database path: {db_instance.db_path}")
-                st.sidebar.write(f"Streamlit Cloud: {db_instance.is_streamlit_cloud}")
-                st.sidebar.write(f"Total users: {len(db_instance.get_all_users())}")
-            except Exception as e:
-                st.sidebar.error(f"Error accessing database: {e}")
-        else:
-            st.sidebar.error("Database not available")
-        
-        if st.sidebar.button("Toggle Debug"):
-            st.session_state.show_debug_info = not st.session_state.get('show_debug_info', False)
-            st.rerun()
-    
-    # Show database status in main area if in debug mode
-    if st.session_state.get('show_debug_info', False):
-        db_instance = get_db()
-        if db_instance is not None:
-            try:
-                st.info(f"🔧 Debug Mode: Database = {db_instance.db_path}, Cloud = {db_instance.is_streamlit_cloud}")
-                
-                # Show all users for debugging
-                users = db_instance.get_all_users()
-                if users:
-                    st.write("**Current users in database:**")
-                    for user in users:
-                        st.write(f"- {user['email']} (ID: {user['id']}, Active: {user['is_active']})")
-                else:
-                    st.write("**No users in database**")
-            except Exception as e:
-                st.error(f"Error accessing database: {e}")
-        else:
-            st.error("Database not available")
-    
-    # Quick debug mode toggle (for development)
-    if st.session_state.get('show_debug_info', False):
-        if st.button("🔧 Disable Debug Mode"):
-            st.session_state.show_debug_info = False
-            st.rerun()
-    else:
-        if st.button("🔧 Enable Debug Mode"):
-            st.session_state.show_debug_info = True
-            st.rerun()
+
     
     # Initialize test data if needed
     initialize_test_data()
