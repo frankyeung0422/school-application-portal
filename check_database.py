@@ -40,6 +40,16 @@ def check_database():
             print("📋 Child profiles table structure:")
             for col in columns:
                 print(f"   {col[1]} ({col[2]})")
+            
+            # Check child profiles data
+            try:
+                cursor.execute("SELECT * FROM child_profiles;")
+                children = cursor.fetchall()
+                print(f"📊 Found {len(children)} child profiles:")
+                for child in children:
+                    print(f"   Child data: {child}")
+            except Exception as e:
+                print(f"❌ Error reading child profiles: {e}")
         else:
             print("❌ Child profiles table does not exist")
         

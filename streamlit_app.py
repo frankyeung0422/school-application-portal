@@ -3274,7 +3274,7 @@ def profile_page():
                     new_email = st.text_input("Email", value=current_user.get('email', ''), key="update_email")
                     new_phone = st.text_input("Phone", value=current_user.get('phone', ''), key="update_phone")
                     
-                    if st.form_submit_button(get_text("update_profile", lang)):
+                    if st.form_submit_button("Update Profile"):
                         if new_name and new_email and new_phone:
                             # Update the user's profile in database
                             user_id = current_user['id']
@@ -3284,12 +3284,12 @@ def profile_page():
                                 current_user['name'] = new_name
                                 current_user['email'] = new_email
                                 current_user['phone'] = new_phone
-                                st.success(get_text("profile_updated", lang))
+                                st.success("Profile updated successfully!")
                                 st.rerun()
                             else:
                                 st.error(message)
                         else:
-                            st.error(get_text("fill_all_fields", lang))
+                            st.error("Please fill in all fields.")
         else:
             st.text_input("Full Name", value=current_user, key="profile_name")
             st.text_input("Email", value="", key="profile_email")
