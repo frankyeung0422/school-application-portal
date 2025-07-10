@@ -2688,7 +2688,7 @@ def main_navigation():
 # Authentication modals
 def show_login_modal():
     """Show login modal"""
-    if st.session_state.show_login:
+    if st.session_state.get('show_login_modal', False):
         with st.container():
             st.markdown("### 🔐 Login")
             
@@ -2710,7 +2710,7 @@ def show_login_modal():
                     submitted = st.form_submit_button("Login")
                 with col2:
                     if st.form_submit_button("Cancel"):
-                        st.session_state.show_login = False
+                        st.session_state.show_login_modal = False
                         st.rerun()
                 
                 if submitted:
@@ -2718,7 +2718,7 @@ def show_login_modal():
                         success, message = login_user(email, password)
                         if success:
                             st.success(message)
-                            st.session_state.show_login = False
+                            st.session_state.show_login_modal = False
                             st.rerun()
                         else:
                             st.error(message)
@@ -2727,7 +2727,7 @@ def show_login_modal():
 
 def show_register_modal():
     """Show registration modal"""
-    if st.session_state.show_register:
+    if st.session_state.get('show_register_modal', False):
         with st.container():
             st.markdown("### 📝 Register")
             
@@ -2743,7 +2743,7 @@ def show_register_modal():
                     submitted = st.form_submit_button("Register")
                 with col2:
                     if st.form_submit_button("Cancel"):
-                        st.session_state.show_register = False
+                        st.session_state.show_register_modal = False
                         st.rerun()
                 
                 if submitted:
@@ -2759,7 +2759,7 @@ def show_register_modal():
                                     st.success(f"{message} You are now logged in!")
                                 else:
                                     st.success(f"{message} Please log in with your credentials.")
-                                st.session_state.show_register = False
+                                st.session_state.show_register_modal = False
                                 st.rerun()
                             else:
                                 st.error(message)
@@ -3077,7 +3077,19 @@ def kindergartens_page():
                     st.session_state.selected_school = school
                     st.rerun()
             else:
-                st.info(get_text("login_required", lang))
+                st.warning("🔐 Please log in to use the application tracker")
+                
+                # Show login/register options
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button("🔑 Login", use_container_width=True):
+                        st.session_state.show_login_modal = True
+                        st.rerun()
+                
+                with col2:
+                    if st.button("📝 Register", use_container_width=True):
+                        st.session_state.show_register_modal = True
+                        st.rerun()
         
         st.markdown("---")
     
@@ -3125,6 +3137,11 @@ def kindergartens_page():
                             if st.button("📊 Track", key=f"track_{school['school_no']}"):
                                 add_to_application_tracker(school['school_no'], school.get('name_en', 'Unknown School'))
                                 st.rerun()
+                    else:
+                        # Show login prompt for non-logged in users
+                        if st.button("🔐 Login to Track", key=f"login_track_{school['school_no']}"):
+                            st.session_state.show_login_modal = True
+                            st.rerun()
                 
                 st.markdown("---")
     else:
