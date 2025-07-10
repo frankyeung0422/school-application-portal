@@ -227,8 +227,13 @@ class CloudSQLiteManager:
             return True
             
         except Exception as e:
-            st.error(f"Error uploading database: {str(e)}")
-            return False
+            # Don't show error for storage quota issues - just log it
+            if "storageQuotaExceeded" in str(e) or "Service Accounts do not have storage quota" in str(e):
+                st.warning("⚠️ Cloud sync disabled - using local storage only. Set up Shared Drive for cloud sync.")
+                return False
+            else:
+                st.error(f"Error uploading database: {str(e)}")
+                return False
     
     def get_database_connection(self) -> Optional[sqlite3.Connection]:
         """Get SQLite database connection with cloud sync"""

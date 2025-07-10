@@ -245,9 +245,12 @@ class CloudDatabaseManager:
                 if success:
                     st.success("✅ Database synced to cloud successfully!")
                 else:
-                    st.error("❌ Failed to sync database to cloud")
+                    # Don't show error for storage quota issues
+                    pass
             except Exception as e:
-                st.error(f"❌ Sync error: {str(e)}")
+                # Don't show error for storage quota issues
+                if "storageQuotaExceeded" not in str(e) and "Service Accounts do not have storage quota" not in str(e):
+                    st.error(f"❌ Sync error: {str(e)}")
     
     # User management methods
     def create_user(self, username: str, email: str, password_hash: str, full_name: str = None, phone: str = None) -> bool:
