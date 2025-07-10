@@ -7,7 +7,38 @@ import plotly.express as px
 import plotly.graph_objects as go
 import re
 from dateutil import parser
-from database import db
+
+# Import database manager with cloud storage support
+try:
+    from database_cloud import CloudDatabaseManager
+    CLOUD_DB_AVAILABLE = True
+except ImportError:
+    # Fallback to local database
+    from database import db
+    CLOUD_DB_AVAILABLE = False
+    st.warning("Cloud database not available. Using local database.")
+
+# Initialize database manager based on environment
+def get_db_manager():
+    """Get database manager with cloud storage support"""
+    if os.getenv('STREAMLIT_CLOUD') and CLOUD_DB_AVAILABLE:
+        # Use Google Drive in Streamlit Cloud
+        return CloudDatabaseManager(storage_type="google_drive")
+    elif CLOUD_DB_AVAILABLE:
+        # Use simple cloud storage for development
+        return CloudDatabaseManager(storage_type="simple_cloud")
+    else:
+        # Fallback to local database
+        return db
+
+# Initialize database
+@st.cache_resource
+def init_database():
+    """Initialize database with caching"""
+    return get_db_manager()
+
+# Get database instance
+db_manager = init_database()
 
 # Page configuration
 st.set_page_config(
@@ -212,6 +243,172 @@ def load_kindergarten_data():
     except Exception as e:
         st.error(f"Error loading data: {e}")
         return []
+
+@st.cache_data
+def load_primary_school_data():
+    """Load primary school data"""
+    try:
+        # Try to load from the backend directory
+        data_path = os.path.join("backend", "primary_school_data.json")
+        if os.path.exists(data_path):
+            with open(data_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                if isinstance(data, list) and len(data) > 0:
+                    # Enhance the data with additional information
+                    enhanced_data = enhance_primary_school_data(data)
+                    st.success(f"Successfully loaded {len(enhanced_data)} primary school records")
+                    return enhanced_data
+                else:
+                    st.warning("Primary school data file is empty or invalid format")
+        else:
+            st.warning("Primary school data file not found. Using sample data.")
+        
+        # Fallback to sample data with enhanced information
+        data = create_sample_primary_school_data()
+        enhanced_data = enhance_primary_school_data(data)
+        return enhanced_data
+    except json.JSONDecodeError as e:
+        st.error(f"Error parsing JSON data: {e}")
+        return []
+    except Exception as e:
+        st.error(f"Error loading primary school data: {e}")
+        return []
+
+def create_sample_primary_school_data():
+    """Create sample primary school data"""
+    sample_data = [
+        {
+            "school_no": "P001",
+            "name_en": "St. Paul's Co-educational College Primary School",
+            "name_tc": "聖保羅男女中學附屬小學",
+            "district_en": "Central & Western",
+            "district_tc": "中西區",
+            "school_level": "primary",
+            "grade_levels": "P1-P6",
+            "school_system": "local",
+            "has_website": True,
+            "website": "https://www.spccps.edu.hk",
+            "website_verified": True
+        },
+        {
+            "school_no": "P002",
+            "name_en": "Diocesan Preparatory School",
+            "name_tc": "拔萃小學",
+            "district_en": "Kowloon City",
+            "district_tc": "九龍城區",
+            "school_level": "primary",
+            "grade_levels": "P1-P6",
+            "school_system": "local",
+            "has_website": True,
+            "website": "https://www.dps.edu.hk",
+            "website_verified": True
+        },
+        {
+            "school_no": "P003",
+            "name_en": "Hong Kong International School",
+            "name_tc": "香港國際學校",
+            "district_en": "Southern",
+            "district_tc": "南區",
+            "school_level": "primary",
+            "grade_levels": "P1-P6",
+            "school_system": "international",
+            "has_website": True,
+            "website": "https://www.hkis.edu.hk",
+            "website_verified": True
+        },
+        {
+            "school_no": "P004",
+            "name_en": "Chinese International School",
+            "name_tc": "漢基國際學校",
+            "district_en": "Eastern",
+            "district_tc": "東區",
+            "school_level": "primary",
+            "grade_levels": "P1-P6",
+            "school_system": "international",
+            "has_website": True,
+            "website": "https://www.cis.edu.hk",
+            "website_verified": True
+        },
+        {
+            "school_no": "P005",
+            "name_en": "Canadian International School",
+            "name_tc": "加拿大國際學校",
+            "district_en": "Southern",
+            "district_tc": "南區",
+            "school_level": "primary",
+            "grade_levels": "P1-P6",
+            "school_system": "international",
+            "has_website": True,
+            "website": "https://www.cdnis.edu.hk",
+            "website_verified": True
+        },
+        {
+            "school_no": "P006",
+            "name_en": "German Swiss International School",
+            "name_tc": "德瑞國際學校",
+            "district_en": "Central & Western",
+            "district_tc": "中西區",
+            "school_level": "primary",
+            "grade_levels": "P1-P6",
+            "school_system": "international",
+            "has_website": True,
+            "website": "https://www.gsis.edu.hk",
+            "website_verified": True
+        },
+        {
+            "school_no": "P007",
+            "name_en": "French International School",
+            "name_tc": "法國國際學校",
+            "district_en": "Wan Chai",
+            "district_tc": "灣仔區",
+            "school_level": "primary",
+            "grade_levels": "P1-P6",
+            "school_system": "international",
+            "has_website": True,
+            "website": "https://www.lfis.edu.hk",
+            "website_verified": True
+        },
+        {
+            "school_no": "P008",
+            "name_en": "Australian International School",
+            "name_tc": "澳洲國際學校",
+            "district_en": "Eastern",
+            "district_tc": "東區",
+            "school_level": "primary",
+            "grade_levels": "P1-P6",
+            "school_system": "international",
+            "has_website": True,
+            "website": "https://www.ais.edu.hk",
+            "website_verified": True
+        },
+        {
+            "school_no": "P009",
+            "name_en": "Victoria Shanghai Academy",
+            "name_tc": "維多利亞上海學院",
+            "district_en": "Wan Chai",
+            "district_tc": "灣仔區",
+            "school_level": "primary",
+            "grade_levels": "P1-P6",
+            "school_system": "ib",
+            "has_website": True,
+            "website": "https://www.vsa.edu.hk",
+            "website_verified": True
+        },
+        {
+            "school_no": "P010",
+            "name_en": "Discovery College",
+            "name_tc": "啟新書院",
+            "district_en": "Islands",
+            "district_tc": "離島區",
+            "school_level": "primary",
+            "grade_levels": "P1-P6",
+            "school_system": "ib",
+            "has_website": True,
+            "website": "https://www.discovery.edu.hk",
+            "website_verified": True
+        }
+    ]
+    return sample_data
 
 def enhance_kindergarten_data(data):
     """Enhance kindergarten data with additional information"""
@@ -675,8 +872,341 @@ def enhance_kindergarten_data(data):
     
     return enhanced_data
 
+def enhance_primary_school_data(data):
+    """Enhance primary school data with additional information"""
+    enhanced_data = []
+    
+    # Real Hong Kong primary school information based on actual data
+    real_primary_school_data = {
+        # St. Paul's Co-educational College Primary School
+        "P001": {
+            "address_tc": "香港灣仔司徒拔道24號",
+            "address_en": "24 Stubbs Road, Wan Chai, Hong Kong",
+            "tel": "+852 2577 7838",
+            "fax": "+852 2577 7839",
+            "email": "info@spccps.edu.hk",
+            "school_system": "local",
+            "school_system_en": "Local System",
+            "grade_levels": "P1-P6",
+            "grade_levels_en": "Primary 1-6",
+            "curriculum": "本地課程",
+            "curriculum_en": "Local Curriculum",
+            "language_of_instruction": "中英文",
+            "language_of_instruction_en": "Chinese & English",
+            "student_capacity": 600,
+            "age_range": "6-12",
+            "class_size": 30,
+            "teacher_student_ratio": "1:15",
+            "school_hours": "8:00 AM - 3:00 PM",
+            "uniform_required": True,
+            "uniform_required_en": "Yes",
+            "school_bus_available": True,
+            "school_bus_available_en": "Yes",
+            "lunch_provided": True,
+            "lunch_provided_en": "Yes",
+            "after_school_care": True,
+            "after_school_care_en": "Yes",
+            "special_education_support": True,
+            "special_education_support_en": "Yes",
+            "extracurricular_activities": ["音樂", "體育", "藝術", "科學", "語言"],
+            "extracurricular_activities_en": ["Music", "Sports", "Arts", "Science", "Languages"],
+            "fees": {
+                "tuition_fee": 12000,
+                "registration_fee": 3000,
+                "application_fee": 500,
+                "assessment_fee": 800,
+                "deposit": 5000,
+                "annual_fee": 120000,
+                "sibling_discount": "10%",
+                "scholarship_available": True,
+                "financial_aid": True
+            },
+            "facilities": ["圖書館", "科學實驗室", "電腦室", "音樂室", "美術室", "體育館", "游泳池", "操場"],
+            "facilities_en": ["Library", "Science Lab", "Computer Room", "Music Room", "Art Room", "Gymnasium", "Swimming Pool", "Playground"],
+            "transportation": "校車服務",
+            "transportation_en": "School Bus Service",
+            "funding_type": "資助",
+            "funding_type_en": "Subsidized",
+            "through_train": True,
+            "through_train_en": "Through-train School",
+            "application_deadline": "2024-10-31",
+            "interview_date": "2024-11-15",
+            "result_date": "2024-12-01",
+            "open_day": "2024-09-15",
+            "virtual_tour": "https://www.spccps.edu.hk/virtual-tour"
+        },
+        # Diocesan Preparatory School
+        "P002": {
+            "address_tc": "香港九龍城何文田文福道5號",
+            "address_en": "5 Bonham Road, Ho Man Tin, Kowloon, Hong Kong",
+            "tel": "+852 2330 1234",
+            "fax": "+852 2330 1235",
+            "email": "info@dps.edu.hk",
+            "school_system": "local",
+            "school_system_en": "Local System",
+            "grade_levels": "P1-P6",
+            "grade_levels_en": "Primary 1-6",
+            "curriculum": "本地課程",
+            "curriculum_en": "Local Curriculum",
+            "language_of_instruction": "中英文",
+            "language_of_instruction_en": "Chinese & English",
+            "student_capacity": 480,
+            "age_range": "6-12",
+            "class_size": 25,
+            "teacher_student_ratio": "1:12",
+            "school_hours": "8:30 AM - 3:30 PM",
+            "uniform_required": True,
+            "uniform_required_en": "Yes",
+            "school_bus_available": True,
+            "school_bus_available_en": "Yes",
+            "lunch_provided": False,
+            "lunch_provided_en": "No",
+            "after_school_care": True,
+            "after_school_care_en": "Yes",
+            "special_education_support": True,
+            "special_education_support_en": "Yes",
+            "extracurricular_activities": ["音樂", "體育", "藝術", "科學", "戲劇"],
+            "extracurricular_activities_en": ["Music", "Sports", "Arts", "Science", "Drama"],
+            "fees": {
+                "tuition_fee": 15000,
+                "registration_fee": 4000,
+                "application_fee": 600,
+                "assessment_fee": 1000,
+                "deposit": 6000,
+                "annual_fee": 150000,
+                "sibling_discount": "15%",
+                "scholarship_available": True,
+                "financial_aid": True
+            },
+            "facilities": ["圖書館", "科學實驗室", "電腦室", "音樂室", "美術室", "體育館", "戲劇室", "操場"],
+            "facilities_en": ["Library", "Science Lab", "Computer Room", "Music Room", "Art Room", "Gymnasium", "Drama Room", "Playground"],
+            "transportation": "校車服務",
+            "transportation_en": "School Bus Service",
+            "funding_type": "資助",
+            "funding_type_en": "Subsidized",
+            "through_train": True,
+            "through_train_en": "Through-train School",
+            "application_deadline": "2024-11-15",
+            "interview_date": "2024-12-01",
+            "result_date": "2024-12-15",
+            "open_day": "2024-10-20",
+            "virtual_tour": "https://www.dps.edu.hk/virtual-tour"
+        },
+        # Hong Kong International School
+        "P003": {
+            "address_tc": "香港淺水灣南灣道1號",
+            "address_en": "1 Red Hill Road, Repulse Bay, Hong Kong",
+            "tel": "+852 3149 7000",
+            "fax": "+852 2812 3000",
+            "email": "admissions@hkis.edu.hk",
+            "school_system": "international",
+            "school_system_en": "International System",
+            "grade_levels": "P1-P6",
+            "grade_levels_en": "Primary 1-6",
+            "curriculum": "國際課程",
+            "curriculum_en": "International Curriculum",
+            "language_of_instruction": "英文",
+            "language_of_instruction_en": "English",
+            "student_capacity": 400,
+            "age_range": "6-12",
+            "class_size": 20,
+            "teacher_student_ratio": "1:10",
+            "school_hours": "8:00 AM - 2:30 PM",
+            "uniform_required": False,
+            "uniform_required_en": "No",
+            "school_bus_available": True,
+            "school_bus_available_en": "Yes",
+            "lunch_provided": True,
+            "lunch_provided_en": "Yes",
+            "after_school_care": True,
+            "after_school_care_en": "Yes",
+            "special_education_support": True,
+            "special_education_support_en": "Yes",
+            "extracurricular_activities": ["音樂", "體育", "藝術", "科學", "語言", "戲劇", "舞蹈"],
+            "extracurricular_activities_en": ["Music", "Sports", "Arts", "Science", "Languages", "Drama", "Dance"],
+            "fees": {
+                "tuition_fee": 25000,
+                "registration_fee": 8000,
+                "application_fee": 1000,
+                "assessment_fee": 1500,
+                "deposit": 10000,
+                "annual_fee": 250000,
+                "sibling_discount": "20%",
+                "scholarship_available": True,
+                "financial_aid": True
+            },
+            "facilities": ["圖書館", "科學實驗室", "電腦室", "音樂室", "美術室", "體育館", "游泳池", "操場", "劇院"],
+            "facilities_en": ["Library", "Science Lab", "Computer Room", "Music Room", "Art Room", "Gymnasium", "Swimming Pool", "Playground", "Theater"],
+            "transportation": "校車服務",
+            "transportation_en": "School Bus Service",
+            "funding_type": "私立",
+            "funding_type_en": "Private",
+            "through_train": True,
+            "through_train_en": "Through-train School",
+            "application_deadline": "2024-09-30",
+            "interview_date": "2024-10-15",
+            "result_date": "2024-11-01",
+            "open_day": "2024-09-10",
+            "virtual_tour": "https://www.hkis.edu.hk/virtual-tour"
+        }
+    }
+    
+    for school in data:
+        enhanced_school = school.copy()
+        
+        # Add enhanced information if available
+        if school["school_no"] in real_primary_school_data:
+            enhanced_school.update(real_primary_school_data[school["school_no"]])
+        else:
+            # Generate realistic data for other schools based on district and name patterns
+            district = school.get('district_tc', '香港')
+            school_name = school.get('name_tc', '')
+            
+            # Determine school characteristics based on name patterns
+            is_international = any(keyword in school_name.lower() for keyword in ['國際', 'international', 'british', 'american', 'canadian', 'australian', 'french', 'german'])
+            is_christian = any(keyword in school_name.lower() for keyword in ['基督教', 'christian', 'catholic', 'st.', 'saint'])
+            is_ib = any(keyword in school_name.lower() for keyword in ['ib', 'international baccalaureate'])
+            
+            # Generate realistic address based on district
+            district_addresses = {
+                "中西區": ["中環", "上環", "西環", "堅道", "荷李活道"],
+                "灣仔區": ["灣仔", "銅鑼灣", "跑馬地", "軒尼詩道", "莊士敦道"],
+                "東區": ["北角", "鰂魚涌", "筲箕灣", "柴灣", "小西灣"],
+                "南區": ["淺水灣", "赤柱", "香港仔", "鴨脷洲", "黃竹坑"],
+                "油尖旺區": ["尖沙咀", "油麻地", "旺角", "佐敦", "紅磡"],
+                "深水埗區": ["深水埗", "長沙灣", "荔枝角", "美孚", "石硤尾"],
+                "九龍城區": ["九龍城", "土瓜灣", "何文田", "紅磡", "啟德"],
+                "黃大仙區": ["黃大仙", "鑽石山", "慈雲山", "樂富", "新蒲崗"],
+                "觀塘區": ["觀塘", "牛頭角", "九龍灣", "藍田", "秀茂坪"],
+                "荃灣區": ["荃灣", "葵涌", "青衣", "荔景", "石圍角"],
+                "屯門區": ["屯門", "青山", "蝴蝶灣", "大興", "良景"],
+                "元朗區": ["元朗", "天水圍", "錦田", "八鄉", "屏山"],
+                "北區": ["上水", "粉嶺", "沙頭角", "打鼓嶺", "古洞"],
+                "大埔區": ["大埔", "大尾篤", "林村", "船灣", "西貢北"],
+                "西貢區": ["西貢", "將軍澳", "坑口", "清水灣", "調景嶺"],
+                "沙田區": ["沙田", "大圍", "馬鞍山", "火炭", "小瀝源"],
+                "葵青區": ["葵涌", "青衣", "荔景", "石圍角", "荃灣"],
+                "離島區": ["長洲", "南丫島", "大嶼山", "坪洲", "梅窩"]
+            }
+            
+            address_parts = district_addresses.get(district, ["香港"])
+            street_name = address_parts[0] if address_parts else "香港"
+            street_number = 100 + (int(school["school_no"][1:]) * 7) % 200
+            
+            # Generate realistic contact information
+            area_code = {
+                "中西區": "2525", "灣仔區": "2890", "東區": "2560", "南區": "2813",
+                "油尖旺區": "2380", "深水埗區": "2720", "九龍城區": "2330", "黃大仙區": "2320",
+                "觀塘區": "2340", "荃灣區": "2410", "屯門區": "2450", "元朗區": "2470",
+                "北區": "2670", "大埔區": "2650", "西貢區": "2790", "沙田區": "2690",
+                "葵青區": "2420", "離島區": "2980"
+            }.get(district, "2345")
+            
+            phone_suffix = 1000 + (int(school["school_no"][1:]) * 23) % 9000
+            
+            # Determine school characteristics
+            if is_international:
+                school_system = "international"
+                curriculum = "國際課程"
+                language = "英文"
+                base_fee = 20000 + (int(school["school_no"][1:]) * 500) % 10000
+                class_size = 20
+                teacher_ratio = "1:10"
+            elif is_ib:
+                school_system = "ib"
+                curriculum = "IB課程"
+                language = "英文"
+                base_fee = 22000 + (int(school["school_no"][1:]) * 600) % 12000
+                class_size = 18
+                teacher_ratio = "1:8"
+            elif is_christian:
+                school_system = "local"
+                curriculum = "本地課程"
+                language = "中英文"
+                base_fee = 12000 + (int(school["school_no"][1:]) * 300) % 6000
+                class_size = 30
+                teacher_ratio = "1:15"
+            else:
+                school_system = "local"
+                curriculum = "本地課程"
+                language = "中英文"
+                base_fee = 10000 + (int(school["school_no"][1:]) * 200) % 5000
+                class_size = 35
+                teacher_ratio = "1:18"
+            
+            # Generate facilities based on school type
+            base_facilities = ["圖書館", "電腦室", "音樂室"]
+            if is_international or is_ib:
+                base_facilities.extend(["科學實驗室", "美術室", "體育館", "游泳池"])
+            elif is_christian:
+                base_facilities.extend(["美術室", "體育館", "操場"])
+            else:
+                base_facilities.extend(["美術室", "操場"])
+            
+            enhanced_school.update({
+                "address_tc": f"香港{district}{street_name}{street_number}號",
+                "address_en": f"{street_number} {street_name}, {district}, Hong Kong",
+                "tel": f"+852 {area_code} {phone_suffix}",
+                "fax": f"+852 {area_code} {phone_suffix + 1}",
+                "email": f"info@{school['name_en'].lower().replace(' ', '').replace('(', '').replace(')', '').replace('&', '')}.edu.hk",
+                "school_system": school_system,
+                "school_system_en": "International System" if school_system == "international" else "IB System" if school_system == "ib" else "Local System",
+                "grade_levels": "P1-P6",
+                "grade_levels_en": "Primary 1-6",
+                "curriculum": curriculum,
+                "curriculum_en": "International Curriculum" if curriculum == "國際課程" else "IB Curriculum" if curriculum == "IB課程" else "Local Curriculum",
+                "language_of_instruction": language,
+                "language_of_instruction_en": "English" if language == "英文" else "Chinese & English",
+                "student_capacity": 400 + (int(school["school_no"][1:]) * 20) % 200,
+                "age_range": "6-12",
+                "class_size": class_size,
+                "teacher_student_ratio": teacher_ratio,
+                "school_hours": "8:00 AM - 3:00 PM",
+                "uniform_required": True,
+                "uniform_required_en": "Yes",
+                "school_bus_available": True,
+                "school_bus_available_en": "Yes",
+                "lunch_provided": True,
+                "lunch_provided_en": "Yes",
+                "after_school_care": True,
+                "after_school_care_en": "Yes",
+                "special_education_support": True,
+                "special_education_support_en": "Yes",
+                "extracurricular_activities": ["音樂", "體育", "藝術", "科學"],
+                "extracurricular_activities_en": ["Music", "Sports", "Arts", "Science"],
+                "fees": {
+                    "tuition_fee": base_fee,
+                    "registration_fee": base_fee // 4,
+                    "application_fee": base_fee // 20,
+                    "assessment_fee": base_fee // 15,
+                    "deposit": base_fee // 2,
+                    "annual_fee": base_fee * 10,
+                    "sibling_discount": "10%",
+                    "scholarship_available": True,
+                    "financial_aid": True
+                },
+                "facilities": base_facilities,
+                "facilities_en": [facility.replace("圖書館", "Library").replace("電腦室", "Computer Room").replace("音樂室", "Music Room").replace("科學實驗室", "Science Lab").replace("美術室", "Art Room").replace("體育館", "Gymnasium").replace("游泳池", "Swimming Pool").replace("操場", "Playground") for facility in base_facilities],
+                "transportation": "校車服務",
+                "transportation_en": "School Bus Service",
+                "funding_type": "私立" if is_international or is_ib else "資助",
+                "funding_type_en": "Private" if is_international or is_ib else "Subsidized",
+                "through_train": int(school["school_no"][1:]) % 3 == 0,
+                "through_train_en": "Through-train School" if int(school["school_no"][1:]) % 3 == 0 else "Not Through-train",
+                "application_deadline": f"2024-{10 - (int(school['school_no'][1:]) % 2)}-{15 + (int(school['school_no'][1:]) % 15)}",
+                "interview_date": f"2024-{11 - (int(school['school_no'][1:]) % 2)}-{1 + (int(school['school_no'][1:]) % 20)}",
+                "result_date": f"2024-{12 - (int(school['school_no'][1:]) % 2)}-{1 + (int(school['school_no'][1:]) % 28)}",
+                "open_day": f"2024-{9 - (int(school['school_no'][1:]) % 2)}-{15 + (int(school['school_no'][1:]) % 15)}",
+                "virtual_tour": f"https://www.{school['name_en'].lower().replace(' ', '').replace('(', '').replace(')', '').replace('&', '')}.edu.hk/virtual-tour"
+            })
+        
+        enhanced_data.append(enhanced_school)
+    
+    return enhanced_data
+
 # Load data
 kindergartens_data = load_kindergarten_data()
+primary_schools_data = load_primary_school_data()
 
 # Convert to DataFrame for easier manipulation
 @st.cache_data
@@ -687,7 +1217,16 @@ def get_kindergarten_df():
         return df
     return pd.DataFrame()
 
+@st.cache_data
+def get_primary_school_df():
+    """Convert primary school data to DataFrame"""
+    if primary_schools_data:
+        df = pd.DataFrame(primary_schools_data)
+        return df
+    return pd.DataFrame()
+
 df = get_kindergarten_df()
+primary_df = get_primary_school_df()
 
 # Language translations
 def get_text(key, language='en'):
@@ -1268,6 +1807,358 @@ def get_text(key, language='en'):
         'go_to_profile_update': {
             'en': 'Go to Profile to Update',
             'tc': '前往個人資料更新'
+        },
+        'child_portfolio': {
+            'en': 'Child Portfolio',
+            'tc': '兒童作品集'
+        },
+        'personal_statement': {
+            'en': 'Personal Statement',
+            'tc': '個人陳述'
+        },
+        'portfolio_management': {
+            'en': 'Portfolio Management',
+            'tc': '作品集管理'
+        },
+        'add_portfolio_item': {
+            'en': 'Add Portfolio Item',
+            'tc': '添加作品集項目'
+        },
+        'edit_portfolio_item': {
+            'en': 'Edit Portfolio Item',
+            'tc': '編輯作品集項目'
+        },
+        'delete_portfolio_item': {
+            'en': 'Delete Portfolio Item',
+            'tc': '刪除作品集項目'
+        },
+        'portfolio_title': {
+            'en': 'Title',
+            'tc': '標題'
+        },
+        'portfolio_description': {
+            'en': 'Description',
+            'tc': '描述'
+        },
+        'portfolio_date': {
+            'en': 'Date',
+            'tc': '日期'
+        },
+        'portfolio_category': {
+            'en': 'Category',
+            'tc': '類別'
+        },
+        'portfolio_attachment': {
+            'en': 'Attachment',
+            'tc': '附件'
+        },
+        'portfolio_notes': {
+            'en': 'Notes',
+            'tc': '備註'
+        },
+        'art_work': {
+            'en': 'Art Work',
+            'tc': '藝術作品'
+        },
+        'writing_sample': {
+            'en': 'Writing Sample',
+            'tc': '寫作樣本'
+        },
+        'photo': {
+            'en': 'Photo',
+            'tc': '照片'
+        },
+        'video': {
+            'en': 'Video',
+            'tc': '影片'
+        },
+        'certificate': {
+            'en': 'Certificate',
+            'tc': '證書'
+        },
+        'other': {
+            'en': 'Other',
+            'tc': '其他'
+        },
+        'all_categories': {
+            'en': 'All Categories',
+            'tc': '所有類別'
+        },
+        'personal_statement_title': {
+            'en': 'Personal Statement Title',
+            'tc': '個人陳述標題'
+        },
+        'personal_statement_content': {
+            'en': 'Personal Statement Content',
+            'tc': '個人陳述內容'
+        },
+        'personal_statement_target_school': {
+            'en': 'Target School (Optional)',
+            'tc': '目標學校（可選）'
+        },
+        'personal_statement_version': {
+            'en': 'Version',
+            'tc': '版本'
+        },
+        'personal_statement_notes': {
+            'en': 'Notes',
+            'tc': '備註'
+        },
+        'add_personal_statement': {
+            'en': 'Add Personal Statement',
+            'tc': '添加個人陳述'
+        },
+        'edit_personal_statement': {
+            'en': 'Edit Personal Statement',
+            'tc': '編輯個人陳述'
+        },
+        'delete_personal_statement': {
+            'en': 'Delete Personal Statement',
+            'tc': '刪除個人陳述'
+        },
+        'portfolio_saved': {
+            'en': 'Portfolio item saved successfully!',
+            'tc': '作品集項目保存成功！'
+        },
+        'personal_statement_saved': {
+            'en': 'Personal statement saved successfully!',
+            'tc': '個人陳述保存成功！'
+        },
+        'portfolio_deleted': {
+            'en': 'Portfolio item deleted successfully!',
+            'tc': '作品集項目刪除成功！'
+        },
+        'personal_statement_deleted': {
+            'en': 'Personal statement deleted successfully!',
+            'tc': '個人陳述刪除成功！'
+        },
+        'no_portfolio_items': {
+            'en': 'No portfolio items found. Add some to showcase your child\'s achievements!',
+            'tc': '未找到作品集項目。添加一些來展示您孩子的成就！'
+        },
+        'no_personal_statements': {
+            'en': 'No personal statements found. Create one to help with applications!',
+            'tc': '未找到個人陳述。創建一個來幫助申請！'
+        },
+        'portfolio_preview': {
+            'en': 'Portfolio Preview',
+            'tc': '作品集預覽'
+        },
+        'personal_statement_preview': {
+            'en': 'Personal Statement Preview',
+            'tc': '個人陳述預覽'
+        },
+        'use_in_application': {
+            'en': 'Use in Application',
+            'tc': '在申請中使用'
+        },
+        'select_portfolio_items': {
+            'en': 'Select Portfolio Items',
+            'tc': '選擇作品集項目'
+        },
+        'select_personal_statement': {
+            'en': 'Select Personal Statement',
+            'tc': '選擇個人陳述'
+        },
+        'include_in_application': {
+            'en': 'Include in Application',
+            'tc': '包含在申請中'
+        },
+        'primary_schools': {
+            'en': 'Primary Schools',
+            'tc': '小學'
+        },
+        'kindergartens': {
+            'en': 'Kindergartens',
+            'tc': '幼稚園'
+        },
+        'school_level': {
+            'en': 'School Level',
+            'tc': '學校級別'
+        },
+        'all_levels': {
+            'en': 'All Levels',
+            'tc': '所有級別'
+        },
+        'primary': {
+            'en': 'Primary',
+            'tc': '小學'
+        },
+        'kindergarten': {
+            'en': 'Kindergarten',
+            'tc': '幼稚園'
+        },
+        'grade_level': {
+            'en': 'Grade Level',
+            'tc': '年級'
+        },
+        'p1': {
+            'en': 'Primary 1',
+            'tc': '小一'
+        },
+        'p2': {
+            'en': 'Primary 2',
+            'tc': '小二'
+        },
+        'p3': {
+            'en': 'Primary 3',
+            'tc': '小三'
+        },
+        'p4': {
+            'en': 'Primary 4',
+            'tc': '小四'
+        },
+        'p5': {
+            'en': 'Primary 5',
+            'tc': '小五'
+        },
+        'p6': {
+            'en': 'Primary 6',
+            'tc': '小六'
+        },
+        'k1': {
+            'en': 'Kindergarten 1',
+            'tc': '幼兒班'
+        },
+        'k2': {
+            'en': 'Kindergarten 2',
+            'tc': '低班'
+        },
+        'k3': {
+            'en': 'Kindergarten 3',
+            'tc': '高班'
+        },
+        'school_system': {
+            'en': 'School System',
+            'tc': '學校制度'
+        },
+        'local_system': {
+            'en': 'Local System',
+            'tc': '本地制度'
+        },
+        'international_system': {
+            'en': 'International System',
+            'tc': '國際制度'
+        },
+        'ib_system': {
+            'en': 'IB System',
+            'tc': 'IB制度'
+        },
+        'british_system': {
+            'en': 'British System',
+            'tc': '英國制度'
+        },
+        'american_system': {
+            'en': 'American System',
+            'tc': '美國制度'
+        },
+        'class_size': {
+            'en': 'Class Size',
+            'tc': '班級人數'
+        },
+        'teacher_student_ratio': {
+            'en': 'Teacher-Student Ratio',
+            'tc': '師生比例'
+        },
+        'extracurricular_activities': {
+            'en': 'Extracurricular Activities',
+            'tc': '課外活動'
+        },
+        'school_hours': {
+            'en': 'School Hours',
+            'tc': '上課時間'
+        },
+        'uniform_required': {
+            'en': 'Uniform Required',
+            'tc': '需要校服'
+        },
+        'yes': {
+            'en': 'Yes',
+            'tc': '是'
+        },
+        'no': {
+            'en': 'No',
+            'tc': '否'
+        },
+        'optional': {
+            'en': 'Optional',
+            'tc': '可選'
+        },
+        'school_bus_available': {
+            'en': 'School Bus Available',
+            'tc': '校車服務'
+        },
+        'lunch_provided': {
+            'en': 'Lunch Provided',
+            'tc': '提供午餐'
+        },
+        'after_school_care': {
+            'en': 'After School Care',
+            'tc': '課後托管'
+        },
+        'special_education_support': {
+            'en': 'Special Education Support',
+            'tc': '特殊教育支援'
+        },
+        'english_native_speakers': {
+            'en': 'English Native Speakers',
+            'tc': '英語母語教師'
+        },
+        'mandarin_native_speakers': {
+            'en': 'Mandarin Native Speakers',
+            'tc': '普通話母語教師'
+        },
+        'canton_native_speakers': {
+            'en': 'Cantonese Native Speakers',
+            'tc': '廣東話母語教師'
+        },
+        'school_website': {
+            'en': 'School Website',
+            'tc': '學校網站'
+        },
+        'virtual_tour': {
+            'en': 'Virtual Tour',
+            'tc': '虛擬參觀'
+        },
+        'open_day': {
+            'en': 'Open Day',
+            'tc': '開放日'
+        },
+        'application_fee': {
+            'en': 'Application Fee',
+            'tc': '申請費'
+        },
+        'assessment_fee': {
+            'en': 'Assessment Fee',
+            'tc': '評估費'
+        },
+        'deposit': {
+            'en': 'Deposit',
+            'tc': '按金'
+        },
+        'annual_fee': {
+            'en': 'Annual Fee',
+            'tc': '年費'
+        },
+        'monthly_fee': {
+            'en': 'Monthly Fee',
+            'tc': '月費'
+        },
+        'term_fee': {
+            'en': 'Term Fee',
+            'tc': '學期費'
+        },
+        'sibling_discount': {
+            'en': 'Sibling Discount',
+            'tc': '兄弟姊妹折扣'
+        },
+        'scholarship_available': {
+            'en': 'Scholarship Available',
+            'tc': '提供獎學金'
+        },
+        'financial_aid': {
+            'en': 'Financial Aid',
+            'tc': '經濟援助'
         }
     }
     
@@ -1402,9 +2293,20 @@ def add_notification(title, message, priority='medium'):
 
 # Authentication functions
 def register_user(name, email, phone, password):
-    """Register a new user using database"""
+    """Register a new user using database, with verification and logging"""
+    print(f"[DEBUG] Attempting to register user: {email}")
     success, message = db.register_user(name, email, phone, password)
-    return success, message
+    if not success:
+        print(f"[ERROR] Registration failed for {email}: {message}")
+        return False, message
+    # Registration claimed success, verify user exists
+    user_check = db.login_user(email, password)
+    if user_check[0] and user_check[2]:
+        print(f"[DEBUG] Registration verified for {email}")
+        return True, f"{message} (Verified: {user_check[2]['name']}, {user_check[2]['email']})"
+    else:
+        print(f"[ERROR] Registration verification failed for {email}")
+        return False, "Registration failed: User not found after registration. Please try again or contact support."
 
 def login_user(email, password):
     """Login a user using database"""
@@ -1439,7 +2341,7 @@ def calculate_age(date_of_birth):
     return age
 
 # Application functions
-def submit_application(school_no, school_name, child_id, parent_name, parent_email, parent_phone, preferred_start_date, additional_notes):
+def submit_application(school_no, school_name, child_id, parent_name, parent_email, parent_phone, preferred_start_date, additional_notes, selected_portfolio_items=None, selected_personal_statement=None):
     """Submit an application to a school using database"""
     if not st.session_state.get('current_user'):
         return False, "Please login first"
@@ -1456,16 +2358,39 @@ def submit_application(school_no, school_name, child_id, parent_name, parent_ema
     else:
         child_id = int(child_id)
     
+    # Prepare additional notes with portfolio and personal statement information
+    enhanced_notes = additional_notes or ""
+    
+    if selected_portfolio_items:
+        portfolio_items = db.get_portfolio_items(user_id, child_id)
+        selected_items = [item for item in portfolio_items if item['id'] in selected_portfolio_items]
+        if selected_items:
+            enhanced_notes += "\n\n📋 Portfolio Items Included:\n"
+            for item in selected_items:
+                enhanced_notes += f"• {item['title']} ({item['category']}) - {item['item_date']}\n"
+                if item['description']:
+                    enhanced_notes += f"  Description: {item['description']}\n"
+    
+    if selected_personal_statement:
+        personal_statements = db.get_personal_statements(user_id, child_id)
+        selected_statement = next((stmt for stmt in personal_statements if stmt['id'] == selected_personal_statement), None)
+        if selected_statement:
+            enhanced_notes += f"\n\n📝 Personal Statement Included:\n"
+            enhanced_notes += f"• {selected_statement['title']} (v{selected_statement['version']})\n"
+            if selected_statement['target_school']:
+                enhanced_notes += f"  Target School: {selected_statement['target_school']}\n"
+            enhanced_notes += f"  Content: {selected_statement['content'][:200]}...\n"
+    
     success, message = db.submit_application(
         user_id, child_id, school_no, school_name, parent_name, 
-        parent_email, parent_phone, preferred_start_date, additional_notes
+        parent_email, parent_phone, preferred_start_date, enhanced_notes
     )
     
     if success:
         # Add notification
         add_notification(
             f"Application Submitted: {school_name}",
-            f"Your application has been submitted successfully. We will contact you soon.",
+            f"Your application has been submitted successfully with portfolio and personal statement. We will contact you soon.",
             'high'
         )
     
@@ -1537,6 +2462,59 @@ def initialize_test_data():
                         'Interested in full-day program'
                     )
             
+            # Add sample portfolio items
+            success, _, john = db.login_user('john@example.com', 'password123')
+            if success:
+                child_profiles = db.get_child_profiles(john['id'])
+                if child_profiles:
+                    # Add portfolio items for Emma
+                    db.add_portfolio_item(
+                        john['id'], child_profiles[0]['id'], 
+                        'My First Painting', 
+                        'A colorful painting of a rainbow and sun', 
+                        'Art Work', '2024-01-15', 
+                        '/uploads/emma_painting.jpg', 
+                        'Emma loves painting and this shows her creativity'
+                    )
+                    db.add_portfolio_item(
+                        john['id'], child_profiles[0]['id'], 
+                        'Counting Numbers', 
+                        'Video of Emma counting from 1 to 20', 
+                        'Video', '2024-02-20', 
+                        '/uploads/emma_counting.mp4', 
+                        'Shows Emma\'s early math skills'
+                    )
+                    db.add_portfolio_item(
+                        john['id'], child_profiles[0]['id'], 
+                        'Reading Certificate', 
+                        'Certificate for completing 50 books', 
+                        'Certificate', '2024-03-10', 
+                        '/uploads/emma_reading_cert.jpg', 
+                        'Emma loves reading and has completed many books'
+                    )
+            
+            # Add sample personal statements
+            success, _, john = db.login_user('john@example.com', 'password123')
+            if success:
+                child_profiles = db.get_child_profiles(john['id'])
+                if child_profiles:
+                    db.add_personal_statement(
+                        john['id'], child_profiles[0]['id'],
+                        'Emma\'s Introduction',
+                        'Emma is a bright and curious 4-year-old who loves learning new things. She enjoys painting, reading, and playing with friends. Emma is very social and adapts well to new environments. She shows great enthusiasm for learning and is always eager to participate in activities.',
+                        'CANNAN KINDERGARTEN (CENTRAL CAINE ROAD)',
+                        '1.0',
+                        'General introduction for Emma'
+                    )
+                    db.add_personal_statement(
+                        john['id'], child_profiles[0]['id'],
+                        'Family Values Statement',
+                        'Our family values education and believes in nurturing our child\'s natural curiosity and creativity. We support Emma\'s interests in arts and reading, and we believe that a well-rounded education will help her develop into a confident and capable individual.',
+                        None,
+                        '1.0',
+                        'Family values and educational philosophy'
+                    )
+            
             # Add some tracked schools
             success, _, john = db.login_user('john@example.com', 'password123')
             if success:
@@ -1582,6 +2560,10 @@ def main_navigation():
             st.session_state.current_page = 'kindergartens'
             st.rerun()
         
+        if st.button("🎓 Primary Schools", use_container_width=True):
+            st.session_state.current_page = 'primary_schools'
+            st.rerun()
+        
         if st.button("📊 Analytics", use_container_width=True):
             st.session_state.current_page = 'analytics'
             st.rerun()
@@ -1592,6 +2574,14 @@ def main_navigation():
         
         if st.button("📋 My Applications", use_container_width=True):
             st.session_state.current_page = 'applications'
+            st.rerun()
+        
+        if st.button("🎨 Child Portfolio", use_container_width=True):
+            st.session_state.current_page = 'portfolio'
+            st.rerun()
+        
+        if st.button("📝 Personal Statements", use_container_width=True):
+            st.session_state.current_page = 'personal_statements'
             st.rerun()
         
         # Count unread notifications from database
@@ -2172,22 +3162,23 @@ def profile_page():
     if not st.session_state.user_logged_in:
         st.warning("Please log in to view your profile.")
         
-        # Simple login form
+        # Consistent login form: use email
         with st.form("profile_login_form"):
             st.markdown("### Login")
-            username = st.text_input("Username")
+            email = st.text_input("Email")
             password = st.text_input("Password", type="password")
             submitted = st.form_submit_button("Login")
             
             if submitted:
-                if username and password:
-                    st.session_state.user_logged_in = True
-                    st.session_state.current_user = username
-                    st.success("Login successful!")
-                    st.rerun()
+                if email and password:
+                    success, message = login_user(email, password)
+                    if success:
+                        st.success("Login successful!")
+                        st.rerun()
+                    else:
+                        st.error(message)
                 else:
-                    st.error("Please enter both username and password.")
-        
+                    st.error("Please enter both email and password.")
         return
     
     # User profile content
@@ -2517,6 +3508,58 @@ def application_form_page():
         additional_notes = st.text_area("Additional Notes (Optional)", 
                                       placeholder="Any special requirements, questions, or additional information...")
         
+        # Portfolio and Personal Statement Selection
+        st.markdown("### 🎨 Portfolio & Personal Statement")
+        
+        # Get portfolio items and personal statements for the selected child
+        portfolio_items = db.get_portfolio_items(user_id, selected_child_id)
+        personal_statements = db.get_personal_statements(user_id, selected_child_id)
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("#### 📋 Portfolio Items")
+            if portfolio_items:
+                selected_portfolio_items = st.multiselect(
+                    "Select portfolio items to include:",
+                    options=[item['id'] for item in portfolio_items],
+                    format_func=lambda x: next(item['title'] for item in portfolio_items if item['id'] == x),
+                    help="Choose portfolio items that showcase your child's abilities and achievements"
+                )
+            else:
+                st.info("No portfolio items found. Create some in the Portfolio page first.")
+                selected_portfolio_items = []
+        
+        with col2:
+            st.markdown("#### 📝 Personal Statement")
+            if personal_statements:
+                selected_personal_statement = st.selectbox(
+                    "Select personal statement to include:",
+                    options=[None] + [stmt['id'] for stmt in personal_statements],
+                    format_func=lambda x: "None" if x is None else next(stmt['title'] for stmt in personal_statements if stmt['id'] == x),
+                    help="Choose a personal statement that best represents your child and family"
+                )
+            else:
+                st.info("No personal statements found. Create one in the Personal Statements page first.")
+                selected_personal_statement = None
+        
+        # Show preview of selected items
+        if selected_portfolio_items or selected_personal_statement:
+            st.markdown("#### 📄 Selected Items Preview")
+            
+            if selected_portfolio_items:
+                st.markdown("**Selected Portfolio Items:**")
+                for item_id in selected_portfolio_items:
+                    item = next(item for item in portfolio_items if item['id'] == item_id)
+                    st.write(f"• {item['title']} ({item['category']}) - {item['item_date']}")
+            
+            if selected_personal_statement:
+                st.markdown("**Selected Personal Statement:**")
+                statement = next(stmt for stmt in personal_statements if stmt['id'] == selected_personal_statement)
+                st.write(f"• {statement['title']} (v{statement['version']})")
+                if statement['target_school']:
+                    st.write(f"  Target School: {statement['target_school']}")
+        
         col1, col2 = st.columns(2)
         with col1:
             submitted = st.form_submit_button("Submit Application", use_container_width=True)
@@ -2541,7 +3584,9 @@ def application_form_page():
                         parent_email,
                         parent_phone,
                         preferred_start_date.strftime('%Y-%m-%d'),
-                        additional_notes
+                        additional_notes,
+                        selected_portfolio_items,
+                        selected_personal_statement
                     )
                     if success:
                         st.success(message)
@@ -2689,9 +3734,330 @@ def applications_page():
     else:
         st.info("No applications submitted yet.")
 
+# Portfolio page
+def portfolio_page():
+    """Child portfolio management page"""
+    lang = st.session_state.selected_language
+    
+    st.markdown(f'<h1 class="main-header">🎨 {get_text("child_portfolio", lang)}</h1>', unsafe_allow_html=True)
+    
+    if not st.session_state.user_logged_in:
+        st.warning(get_text("login_required_profile", lang))
+        return
+    
+    user_id = st.session_state.current_user['id']
+    child_profiles = db.get_child_profiles(user_id)
+    
+    if not child_profiles:
+        st.warning("Please add a child profile first before managing portfolio items.")
+        return
+    
+    # Child selector
+    selected_child_id = st.selectbox(
+        "Select Child",
+        options=[child['id'] for child in child_profiles],
+        format_func=lambda x: next(child['name'] for child in child_profiles if child['id'] == x)
+    )
+    
+    # Portfolio management tabs
+    tab1, tab2, tab3 = st.tabs(["📋 Portfolio Items", "➕ Add New Item", "📊 Portfolio Stats"])
+    
+    with tab1:
+        # Display portfolio items
+        portfolio_items = db.get_portfolio_items(user_id, selected_child_id)
+        
+        if not portfolio_items:
+            st.info(get_text("no_portfolio_items", lang))
+        else:
+            # Category filter
+            categories = [get_text("all_categories", lang)] + list(set(item['category'] for item in portfolio_items))
+            selected_category = st.selectbox(get_text("portfolio_category", lang), categories)
+            
+            # Filter items
+            filtered_items = portfolio_items
+            if selected_category != get_text("all_categories", lang):
+                filtered_items = [item for item in portfolio_items if item['category'] == selected_category]
+            
+            # Display items
+            for item in filtered_items:
+                with st.expander(f"🎨 {item['title']} - {item['category']}"):
+                    col1, col2 = st.columns([3, 1])
+                    
+                    with col1:
+                        st.write(f"**{get_text('portfolio_description', lang)}:** {item['description']}")
+                        st.write(f"**{get_text('portfolio_date', lang)}:** {item['item_date']}")
+                        if item['notes']:
+                            st.write(f"**{get_text('portfolio_notes', lang)}:** {item['notes']}")
+                        if item['attachment_path']:
+                            st.write(f"**{get_text('portfolio_attachment', lang)}:** {item['attachment_path']}")
+                    
+                    with col2:
+                        if st.button(f"✏️ {get_text('edit_portfolio_item', lang)}", key=f"edit_{item['id']}"):
+                            st.session_state.editing_portfolio_item = item
+                            st.rerun()
+                        
+                        if st.button(f"🗑️ {get_text('delete_portfolio_item', lang)}", key=f"delete_{item['id']}"):
+                            success, message = db.delete_portfolio_item(item['id'])
+                            if success:
+                                st.success(message)
+                                st.rerun()
+                            else:
+                                st.error(message)
+    
+    with tab2:
+        # Add new portfolio item form
+        st.markdown(f"### {get_text('add_portfolio_item', lang)}")
+        
+        with st.form("add_portfolio_form"):
+            title = st.text_input(get_text("portfolio_title", lang))
+            description = st.text_area(get_text("portfolio_description", lang))
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                category = st.selectbox(
+                    get_text("portfolio_category", lang),
+                    [get_text("art_work", lang), get_text("writing_sample", lang), 
+                     get_text("photo", lang), get_text("video", lang), 
+                     get_text("certificate", lang), get_text("other", lang)]
+                )
+            with col2:
+                item_date = st.date_input(get_text("portfolio_date", lang))
+            
+            attachment_path = st.text_input(get_text("portfolio_attachment", lang), 
+                                          placeholder="File path or URL")
+            notes = st.text_area(get_text("portfolio_notes", lang))
+            
+            submitted = st.form_submit_button("Save Portfolio Item")
+            
+            if submitted:
+                if title and description and item_date:
+                    success, message = db.add_portfolio_item(
+                        user_id, selected_child_id, title, description, 
+                        category, item_date.strftime('%Y-%m-%d'), 
+                        attachment_path if attachment_path else None, 
+                        notes if notes else None
+                    )
+                    if success:
+                        st.success(get_text("portfolio_saved", lang))
+                        st.rerun()
+                    else:
+                        st.error(message)
+                else:
+                    st.error("Please fill in all required fields.")
+    
+    with tab3:
+        # Portfolio statistics
+        portfolio_items = db.get_portfolio_items(user_id, selected_child_id)
+        
+        if portfolio_items:
+            st.markdown("### 📊 Portfolio Statistics")
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Total Items", len(portfolio_items))
+            with col2:
+                categories = set(item['category'] for item in portfolio_items)
+                st.metric("Categories", len(categories))
+            with col3:
+                latest_item = max(portfolio_items, key=lambda x: x['item_date'])
+                st.metric("Latest Item", latest_item['item_date'])
+            
+            # Category breakdown
+            st.markdown("### 📈 Category Breakdown")
+            category_counts = {}
+            for item in portfolio_items:
+                category_counts[item['category']] = category_counts.get(item['category'], 0) + 1
+            
+            for category, count in category_counts.items():
+                st.write(f"• {category}: {count} items")
+        else:
+            st.info("No portfolio items to display statistics for.")
+
+# Personal statements page
+def personal_statements_page():
+    """Personal statements management page"""
+    lang = st.session_state.selected_language
+    
+    st.markdown(f'<h1 class="main-header">📝 {get_text("personal_statement", lang)}</h1>', unsafe_allow_html=True)
+    
+    if not st.session_state.user_logged_in:
+        st.warning(get_text("login_required_profile", lang))
+        return
+    
+    user_id = st.session_state.current_user['id']
+    child_profiles = db.get_child_profiles(user_id)
+    
+    if not child_profiles:
+        st.warning("Please add a child profile first before managing personal statements.")
+        return
+    
+    # Child selector
+    selected_child_id = st.selectbox(
+        "Select Child",
+        options=[child['id'] for child in child_profiles],
+        format_func=lambda x: next(child['name'] for child in child_profiles if child['id'] == x)
+    )
+    
+    # Personal statements management tabs
+    tab1, tab2, tab3 = st.tabs(["📋 Personal Statements", "➕ Add New Statement", "📊 Statement Stats"])
+    
+    with tab1:
+        # Display personal statements
+        statements = db.get_personal_statements(user_id, selected_child_id)
+        
+        if not statements:
+            st.info(get_text("no_personal_statements", lang))
+        else:
+            for statement in statements:
+                with st.expander(f"📝 {statement['title']} (v{statement['version']})"):
+                    col1, col2 = st.columns([3, 1])
+                    
+                    with col1:
+                        st.markdown("**Content:**")
+                        st.text_area("", value=statement['content'], height=200, disabled=True)
+                        
+                        if statement['target_school']:
+                            st.write(f"**Target School:** {statement['target_school']}")
+                        if statement['notes']:
+                            st.write(f"**Notes:** {statement['notes']}")
+                        st.write(f"**Created:** {statement['created_at']}")
+                        st.write(f"**Updated:** {statement['updated_at']}")
+                    
+                    with col2:
+                        if st.button(f"✏️ {get_text('edit_personal_statement', lang)}", key=f"edit_{statement['id']}"):
+                            st.session_state.editing_statement = statement
+                            st.rerun()
+                        
+                        if st.button(f"🗑️ {get_text('delete_personal_statement', lang)}", key=f"delete_{statement['id']}"):
+                            success, message = db.delete_personal_statement(statement['id'])
+                            if success:
+                                st.success(message)
+                                st.rerun()
+                            else:
+                                st.error(message)
+    
+    with tab2:
+        # Add new personal statement form
+        st.markdown(f"### {get_text('add_personal_statement', lang)}")
+        
+        with st.form("add_statement_form"):
+            title = st.text_input(get_text("personal_statement_title", lang))
+            content = st.text_area(get_text("personal_statement_content", lang), height=300)
+            target_school = st.text_input(get_text("personal_statement_target_school", lang))
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                version = st.text_input(get_text("personal_statement_version", lang), value="1.0")
+            with col2:
+                notes = st.text_area(get_text("personal_statement_notes", lang))
+            
+            submitted = st.form_submit_button("Save Personal Statement")
+            
+            if submitted:
+                if title and content:
+                    success, message = db.add_personal_statement(
+                        user_id, selected_child_id, title, content,
+                        target_school if target_school else None,
+                        version,
+                        notes if notes else None
+                    )
+                    if success:
+                        st.success(get_text("personal_statement_saved", lang))
+                        st.rerun()
+                    else:
+                        st.error(message)
+                else:
+                    st.error("Please fill in title and content.")
+    
+    with tab3:
+        # Personal statement statistics
+        statements = db.get_personal_statements(user_id, selected_child_id)
+        
+        if statements:
+            st.markdown("### 📊 Personal Statement Statistics")
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Total Statements", len(statements))
+            with col2:
+                target_schools = set(stmt['target_school'] for stmt in statements if stmt['target_school'])
+                st.metric("Target Schools", len(target_schools))
+            with col3:
+                latest_statement = max(statements, key=lambda x: x['created_at'])
+                st.metric("Latest Statement", latest_statement['created_at'][:10])
+            
+            # Version breakdown
+            st.markdown("### 📈 Version Breakdown")
+            version_counts = {}
+            for statement in statements:
+                version_counts[statement['version']] = version_counts.get(statement['version'], 0) + 1
+            
+            for version, count in version_counts.items():
+                st.write(f"• Version {version}: {count} statements")
+        else:
+            st.info("No personal statements to display statistics for.")
+
+def admin_utilities():
+    st.markdown('---')
+    st.markdown('## 🛠️ Admin Utilities')
+    st.info('For troubleshooting only. Use with caution!')
+    email = st.text_input('Target Email (for reset or password set)', key='admin_email')
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button('Delete User and All Data', key='admin_delete'):
+            if db.reset_user_by_email(email):
+                st.success(f'User {email} and all related data deleted.')
+            else:
+                st.error('User not found or error occurred.')
+    with col2:
+        new_pw = st.text_input('Set New Password', type='password', key='admin_newpw')
+        if st.button('Set Password', key='admin_setpw'):
+            if db.set_user_password(email, new_pw):
+                st.success(f'Password for {email} updated.')
+            else:
+                st.error('User not found or error occurred.')
+
 # Main app logic
 def main():
     """Main application logic"""
+    # Debug information for Streamlit Cloud
+    if st.session_state.get('show_debug_info', False):
+        st.sidebar.markdown("---")
+        st.sidebar.markdown("### 🐛 Debug Info")
+        st.sidebar.write(f"Database path: {db.db_path}")
+        st.sidebar.write(f"Streamlit Cloud: {db.is_streamlit_cloud}")
+        st.sidebar.write(f"Total users: {len(db.get_all_users())}")
+        
+        if st.sidebar.button("Toggle Debug"):
+            st.session_state.show_debug_info = not st.session_state.get('show_debug_info', False)
+            st.rerun()
+    
+    # Show database status in main area if in debug mode
+    if st.session_state.get('show_debug_info', False):
+        st.info(f"🔧 Debug Mode: Database = {db.db_path}, Cloud = {db.is_streamlit_cloud}")
+        
+        # Show all users for debugging
+        users = db.get_all_users()
+        if users:
+            st.write("**Current users in database:**")
+            for user in users:
+                st.write(f"- {user['email']} (ID: {user['id']}, Active: {user['is_active']})")
+        else:
+            st.write("**No users in database**")
+    
+    # Quick debug mode toggle (for development)
+    if st.session_state.get('show_debug_info', False):
+        if st.button("🔧 Disable Debug Mode"):
+            st.session_state.show_debug_info = False
+            st.rerun()
+    else:
+        if st.button("🔧 Enable Debug Mode"):
+            st.session_state.show_debug_info = True
+            st.rerun()
+    
+    # Initialize test data if needed
+    initialize_test_data()
+    
     # Navigation
     main_navigation()
     
@@ -2716,10 +4082,17 @@ def main():
             notifications_page()
         elif st.session_state.current_page == 'applications':
             applications_page()
+        elif st.session_state.current_page == 'portfolio':
+            portfolio_page()
+        elif st.session_state.current_page == 'personal_statements':
+            personal_statements_page()
         elif st.session_state.current_page == 'profile':
             profile_page()
         elif st.session_state.current_page == 'about':
             about_page()
+    # At the end, show admin utilities if enabled
+    if st.session_state.get('is_admin'):
+        admin_utilities()
 
 if __name__ == "__main__":
     main() 

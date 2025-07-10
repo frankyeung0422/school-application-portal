@@ -6,9 +6,40 @@ from typing import Optional, List, Dict, Any
 
 class DatabaseManager:
     def __init__(self, db_path: str = "school_portal.db"):
-        """Initialize database manager"""
+        """Initialize database manager with Streamlit Cloud support"""
         self.db_path = db_path
+        self.is_streamlit_cloud = self._detect_streamlit_cloud()
+        
+        if self.is_streamlit_cloud:
+            print("[INFO] Running on Streamlit Cloud - using in-memory database")
+            self.db_path = ":memory:"
+        else:
+            print(f"[INFO] Running locally - using file database: {db_path}")
+        
         self.init_database()
+    
+    def _detect_streamlit_cloud(self) -> bool:
+        """Detect if running on Streamlit Cloud"""
+        # Check for Streamlit Cloud environment variables
+        cloud_indicators = [
+            'STREAMLIT_SERVER_PORT',
+            'STREAMLIT_SERVER_HEADLESS',
+            'STREAMLIT_SERVER_ENABLE_CORS',
+            'STREAMLIT_SERVER_ENABLE_XSRF_PROTECTION'
+        ]
+        
+        for indicator in cloud_indicators:
+            if os.environ.get(indicator):
+                return True
+        
+        # Check if running in Streamlit environment
+        try:
+            import streamlit as st
+            return True
+        except ImportError:
+            pass
+        
+        return False
     
     def init_database(self):
         """Initialize database tables"""
@@ -91,6 +122,43 @@ class DatabaseManager:
                 )
             ''')
             
+            # Portfolio items table
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS portfolio_items (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    child_id INTEGER NOT NULL,
+                    title TEXT NOT NULL,
+                    description TEXT,
+                    category TEXT NOT NULL,
+                    item_date DATE NOT NULL,
+                    attachment_path TEXT,
+                    notes TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users (id),
+                    FOREIGN KEY (child_id) REFERENCES child_profiles (id)
+                )
+            ''')
+            
+            # Personal statements table
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS personal_statements (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    child_id INTEGER NOT NULL,
+                    title TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    target_school TEXT,
+                    version TEXT DEFAULT '1.0',
+                    notes TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users (id),
+                    FOREIGN KEY (child_id) REFERENCES child_profiles (id)
+                )
+            ''')
+            
             conn.commit()
     
     def hash_password(self, password: str) -> str:
@@ -102,28 +170,88 @@ class DatabaseManager:
         return self.hash_password(password) == hashed
     
     def register_user(self, name: str, email: str, phone: str, password: str) -> tuple[bool, str]:
-        """Register a new user"""
+        """Register a new user with enhanced error handling"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                # Enable foreign keys and set timeout
+                conn.execute("PRAGMA foreign_keys = ON")
+                conn.execute("PRAGMA busy_timeout = 30000")  # 30 second timeout
+                
+                cursor = conn.cursor()
+                
+                # Start transaction
+                cursor.execute("BEGIN TRANSACTION")
+                
+                try:
+                    # Check if user already exists
+                    cursor.execute("SELECT id FROM users WHERE email = ?", (email,))
+                    if cursor.fetchone():
+                        cursor.execute("ROLLBACK")
+                        return False, f"User with email '{email}' already exists"
+                    
+                    # Hash password and insert user
+                    password_hash = self.hash_password(password)
+                    cursor.execute('''
+                        INSERT INTO users (name, email, phone, password_hash, is_active)
+                        VALUES (?, ?, ?, ?, 1)
+                    ''', (name, email, phone, password_hash))
+                    
+                    # Get the inserted user ID
+                    user_id = cursor.lastrowid
+                    
+                    # Commit transaction
+                    cursor.execute("COMMIT")
+                    
+                    print(f"[DB] Successfully registered user: {email} (ID: {user_id})")
+                    return True, f"Registration successful! User ID: {user_id}"
+                    
+                except Exception as e:
+                    cursor.execute("ROLLBACK")
+                    print(f"[DB ERROR] Transaction failed for {email}: {str(e)}")
+                    return False, f"Registration failed during transaction: {str(e)}"
+                
+        except Exception as e:
+            print(f"[DB ERROR] Database connection failed: {str(e)}")
+            return False, f"Registration failed: Database error - {str(e)}"
+
+    def user_exists(self, email: str) -> bool:
+        """Check if a user exists by email"""
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
-                
-                # Check if user already exists
                 cursor.execute("SELECT id FROM users WHERE email = ?", (email,))
-                if cursor.fetchone():
-                    return False, "User with this email already exists"
-                
-                # Hash password and insert user
-                password_hash = self.hash_password(password)
+                return cursor.fetchone() is not None
+        except Exception as e:
+            print(f"[DB ERROR] Error checking user existence: {str(e)}")
+            return False
+
+    def get_all_users(self) -> List[Dict]:
+        """Get all users (for debugging)"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
                 cursor.execute('''
-                    INSERT INTO users (name, email, phone, password_hash)
-                    VALUES (?, ?, ?, ?)
-                ''', (name, email, phone, password_hash))
+                    SELECT id, name, email, phone, is_active, created_at, last_login
+                    FROM users ORDER BY created_at DESC
+                ''')
                 
-                conn.commit()
-                return True, "Registration successful!"
+                users = []
+                for row in cursor.fetchall():
+                    users.append({
+                        'id': row[0],
+                        'name': row[1],
+                        'email': row[2],
+                        'phone': row[3],
+                        'is_active': bool(row[4]),
+                        'created_at': row[5],
+                        'last_login': row[6]
+                    })
+                
+                return users
                 
         except Exception as e:
-            return False, f"Registration failed: {str(e)}"
+            print(f"[DB ERROR] Error getting all users: {str(e)}")
+            return []
     
     def login_user(self, email: str, password: str) -> tuple[bool, str, Optional[Dict]]:
         """Login a user"""
@@ -474,6 +602,225 @@ class DatabaseManager:
                 
         except Exception as e:
             print(f"Error marking all notifications read: {e}")
+            return False
+    
+    # Portfolio methods
+    def add_portfolio_item(self, user_id: int, child_id: int, title: str, description: str, 
+                          category: str, item_date: str, attachment_path: str = None, 
+                          notes: str = None) -> tuple[bool, str]:
+        """Add a portfolio item"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    INSERT INTO portfolio_items (user_id, child_id, title, description, category, 
+                                               item_date, attachment_path, notes)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (user_id, child_id, title, description, category, item_date, attachment_path, notes))
+                conn.commit()
+                return True, "Portfolio item added successfully!"
+        except Exception as e:
+            return False, f"Failed to add portfolio item: {str(e)}"
+    
+    def get_portfolio_items(self, user_id: int, child_id: int = None) -> List[Dict]:
+        """Get portfolio items for a user"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                if child_id:
+                    cursor.execute('''
+                        SELECT id, child_id, title, description, category, item_date, 
+                               attachment_path, notes, created_at, updated_at
+                        FROM portfolio_items 
+                        WHERE user_id = ? AND child_id = ?
+                        ORDER BY item_date DESC
+                    ''', (user_id, child_id))
+                else:
+                    cursor.execute('''
+                        SELECT id, child_id, title, description, category, item_date, 
+                               attachment_path, notes, created_at, updated_at
+                        FROM portfolio_items 
+                        WHERE user_id = ?
+                        ORDER BY item_date DESC
+                    ''', (user_id,))
+                
+                items = []
+                for row in cursor.fetchall():
+                    items.append({
+                        'id': row[0],
+                        'child_id': row[1],
+                        'title': row[2],
+                        'description': row[3],
+                        'category': row[4],
+                        'item_date': row[5],
+                        'attachment_path': row[6],
+                        'notes': row[7],
+                        'created_at': row[8],
+                        'updated_at': row[9]
+                    })
+                return items
+        except Exception as e:
+            print(f"Error getting portfolio items: {e}")
+            return []
+    
+    def update_portfolio_item(self, item_id: int, title: str, description: str, 
+                            category: str, item_date: str, attachment_path: str = None, 
+                            notes: str = None) -> tuple[bool, str]:
+        """Update a portfolio item"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    UPDATE portfolio_items 
+                    SET title = ?, description = ?, category = ?, item_date = ?, 
+                        attachment_path = ?, notes = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                ''', (title, description, category, item_date, attachment_path, notes, item_id))
+                conn.commit()
+                return True, "Portfolio item updated successfully!"
+        except Exception as e:
+            return False, f"Failed to update portfolio item: {str(e)}"
+    
+    def delete_portfolio_item(self, item_id: int) -> tuple[bool, str]:
+        """Delete a portfolio item"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('DELETE FROM portfolio_items WHERE id = ?', (item_id,))
+                conn.commit()
+                return True, "Portfolio item deleted successfully!"
+        except Exception as e:
+            return False, f"Failed to delete portfolio item: {str(e)}"
+    
+    # Personal statement methods
+    def add_personal_statement(self, user_id: int, child_id: int, title: str, content: str,
+                              target_school: str = None, version: str = "1.0", 
+                              notes: str = None) -> tuple[bool, str]:
+        """Add a personal statement"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    INSERT INTO personal_statements (user_id, child_id, title, content, 
+                                                   target_school, version, notes)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                ''', (user_id, child_id, title, content, target_school, version, notes))
+                conn.commit()
+                return True, "Personal statement added successfully!"
+        except Exception as e:
+            return False, f"Failed to add personal statement: {str(e)}"
+    
+    def get_personal_statements(self, user_id: int, child_id: int = None) -> List[Dict]:
+        """Get personal statements for a user"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                if child_id:
+                    cursor.execute('''
+                        SELECT id, child_id, title, content, target_school, version, 
+                               notes, created_at, updated_at
+                        FROM personal_statements 
+                        WHERE user_id = ?
+                        AND child_id = ?
+                        ORDER BY created_at DESC
+                    ''', (user_id, child_id))
+                else:
+                    cursor.execute('''
+                        SELECT id, child_id, title, content, target_school, version, 
+                               notes, created_at, updated_at
+                        FROM personal_statements 
+                        WHERE user_id = ?
+                        ORDER BY created_at DESC
+                    ''', (user_id,))
+                
+                statements = []
+                for row in cursor.fetchall():
+                    statements.append({
+                        'id': row[0],
+                        'child_id': row[1],
+                        'title': row[2],
+                        'content': row[3],
+                        'target_school': row[4],
+                        'version': row[5],
+                        'notes': row[6],
+                        'created_at': row[7],
+                        'updated_at': row[8]
+                    })
+                return statements
+        except Exception as e:
+            print(f"Error getting personal statements: {e}")
+            return []
+    
+    def update_personal_statement(self, statement_id: int, title: str, content: str,
+                                target_school: str = None, version: str = None, 
+                                notes: str = None) -> tuple[bool, str]:
+        """Update a personal statement"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    UPDATE personal_statements 
+                    SET title = ?, content = ?, target_school = ?, version = ?, 
+                        notes = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                ''', (title, content, target_school, version, notes, statement_id))
+                conn.commit()
+                return True, "Personal statement updated successfully!"
+        except Exception as e:
+            return False, f"Failed to update personal statement: {str(e)}"
+    
+    def delete_personal_statement(self, statement_id: int) -> tuple[bool, str]:
+        """Delete a personal statement"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('DELETE FROM personal_statements WHERE id = ?', (statement_id,))
+                conn.commit()
+                return True, "Personal statement deleted successfully!"
+        except Exception as e:
+            return False, f"Failed to delete personal statement: {str(e)}"
+
+    def reset_user_by_email(self, email: str) -> bool:
+        """Delete a user and all their data by email (admin use only)"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT id FROM users WHERE email = ?", (email,))
+                row = cursor.fetchone()
+                if not row:
+                    return False
+                user_id = row[0]
+                # Delete child profiles
+                cursor.execute("DELETE FROM child_profiles WHERE user_id = ?", (user_id,))
+                # Delete applications
+                cursor.execute("DELETE FROM applications WHERE user_id = ?", (user_id,))
+                # Delete application tracker
+                cursor.execute("DELETE FROM application_tracker WHERE user_id = ?", (user_id,))
+                # Delete notifications
+                cursor.execute("DELETE FROM notifications WHERE user_id = ?", (user_id,))
+                # Delete portfolio items
+                cursor.execute("DELETE FROM portfolio_items WHERE user_id = ?", (user_id,))
+                # Delete personal statements
+                cursor.execute("DELETE FROM personal_statements WHERE user_id = ?", (user_id,))
+                # Delete user
+                cursor.execute("DELETE FROM users WHERE id = ?", (user_id,))
+                conn.commit()
+                return True
+        except Exception as e:
+            print(f"Error resetting user: {e}")
+            return False
+
+    def set_user_password(self, email: str, new_password: str) -> bool:
+        """Set a new password for a user by email (admin use only)"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                password_hash = self.hash_password(new_password)
+                cursor.execute("UPDATE users SET password_hash = ? WHERE email = ?", (password_hash, email))
+                conn.commit()
+                return cursor.rowcount > 0
+        except Exception as e:
+            print(f"Error setting user password: {e}")
             return False
 
 # Global database instance
