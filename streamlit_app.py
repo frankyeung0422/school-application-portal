@@ -24,46 +24,27 @@ except ImportError as e:
 
 # Initialize database manager based on environment
 def get_db_manager():
-    """Get database manager with cloud storage support"""
+    """Get database manager with Google Drive cloud storage only"""
     try:
         # Check Google Drive secrets
-        try:
-            google_drive_secrets = st.secrets.get('GOOGLE_DRIVE', {})
-        except Exception as e:
-            pass
-        
-        # Check if Google Drive secrets are available
         google_drive_secrets = st.secrets.get('GOOGLE_DRIVE', {})
         has_google_drive_secrets = bool(google_drive_secrets) and 'CREDENTIALS' in google_drive_secrets and 'FOLDER_ID' in google_drive_secrets
-        
+
         if has_google_drive_secrets and CLOUD_DB_AVAILABLE:
             try:
-                # Use Google Drive (available both locally and on Streamlit Cloud)
+                st.info("🔗 Using Google Drive cloud database.")
+                print("🔗 Using Google Drive cloud database.")
                 db_manager = CloudDatabaseManager(storage_type="google_drive")
                 return db_manager
             except Exception as e:
                 st.error(f"Google Drive initialization failed: {e}")
-                return CloudDatabaseManager(storage_type="simple_cloud")
-        elif CLOUD_DB_AVAILABLE:
-            # Use simple cloud storage for development
-            return CloudDatabaseManager(storage_type="simple_cloud")
+                raise RuntimeError("Google Drive DB required but could not be initialized.")
         else:
-            # Fallback to local database
-            return db
+            st.error("Google Drive DB is required for all operations, but is not available! Please check your Streamlit secrets and cloud setup.")
+            raise RuntimeError("Google Drive DB required but not available.")
     except Exception as e:
-        st.error(f"Failed to initialize cloud database: {e}")
-        st.info("Falling back to local database")
-        # Fallback to local database
-        if not CLOUD_DB_AVAILABLE:
-            return db
-        else:
-            # Try to import and use local database as fallback
-            try:
-                from database import db as local_db
-                return local_db
-            except ImportError:
-                st.error("No database available!")
-                return None
+        st.error(f"Failed to initialize Google Drive cloud database: {e}")
+        raise
 
 # Initialize database
 def init_database():
