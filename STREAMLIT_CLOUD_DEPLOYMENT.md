@@ -1,80 +1,131 @@
-# Streamlit Cloud Deployment Guide
+# 🚀 Streamlit Cloud Deployment with Supabase
 
-## 部署到 Streamlit Cloud Community
+## ✅ **Prerequisites Completed:**
+- ✅ Supabase project created
+- ✅ Database tables created
+- ✅ Local testing successful
+- ✅ Requirements.txt updated
 
-### 重要注意事項
+## 🔧 **Step 1: Configure Streamlit Cloud Secrets**
 
-⚠️ **Streamlit Cloud 限制：**
-- 使用臨時檔案系統，每次重啟都會重置資料庫
-- 不支援持久化檔案儲存
-- 多用戶同時訪問可能造成資料庫鎖定
+### **1.1 Access Streamlit Cloud Dashboard**
+1. Go to: https://share.streamlit.io/
+2. Sign in with your GitHub account
+3. Find your `school-application-portal` app
 
-### 部署步驟
+### **1.2 Add Supabase Secrets**
+1. Click on your app
+2. Click **"Settings"** (gear icon)
+3. Scroll down to **"Secrets"**
+4. **Replace** the existing content with:
 
-1. **準備 GitHub Repository**
-   - 確保所有檔案都已推送到 GitHub
-   - 確保 `requirements.txt` 包含所有依賴
+```toml
+[SUPABASE]
+URL = "https://ilviebfcodaxnfzcpnqi.supabase.co"
+ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlsdmllYmZjb2RheG5memNwbnFpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTIxODYwOTcsImV4cCI6MjA2Nzc2MjA5N30.qhN1e0RtzH6vNMOM26qfBM-qfr3rBfGglFROIDAoZhw"
+```
 
-2. **部署到 Streamlit Cloud**
-   - 前往 [share.streamlit.io](https://share.streamlit.io)
-   - 使用 GitHub 帳號登入
-   - 選擇你的 repository
-   - 設定主檔案路徑：`streamlit_app.py`
-   - 點擊 "Deploy"
+### **1.3 Save and Deploy**
+1. Click **"Save"**
+2. Your app will automatically redeploy
 
-3. **環境變數設定**
-   - 在 Streamlit Cloud 設定中，可以添加環境變數
-   - 目前不需要額外設定
+## 🔧 **Step 2: Verify Deployment**
 
-### 資料庫解決方案
+### **2.1 Check App Status**
+- Go to your app URL
+- Check if it loads without errors
+- Look for: `🔗 Using Supabase cloud database.`
 
-**當前實現：**
-- 自動檢測 Streamlit Cloud 環境
-- 在雲端使用記憶體資料庫 (`:memory:`)
-- 在本地使用檔案資料庫 (`school_portal.db`)
+### **2.2 Test Login**
+Try logging in with:
+- **Email**: `frankyeung422@hotmail.com`
+- **Password**: `password123`
 
-**限制：**
-- 雲端部署中，用戶資料會在應用重啟後消失
-- 每次部署都會重置資料庫
+## 🔧 **Step 3: Troubleshooting**
 
-### 建議的長期解決方案
+### **3.1 If App Won't Load**
+1. **Check Streamlit Cloud Logs**:
+   - Go to your app in Streamlit Cloud
+   - Click **"Manage app"**
+   - Click **"Logs"**
+   - Look for error messages
 
-1. **使用外部資料庫**
-   - PostgreSQL (Supabase, Railway)
-   - MongoDB Atlas
-   - SQLite with cloud storage
+2. **Common Issues**:
+   - **Missing secrets**: Make sure Supabase credentials are in Streamlit Cloud secrets
+   - **Import errors**: Check if all requirements are installed
+   - **Connection errors**: Verify Supabase is online
 
-2. **使用 Streamlit 的 secrets 管理**
-   - 儲存資料庫連線字串
-   - 管理 API 金鑰
+### **3.2 If Login Fails**
+1. **Check Database Connection**:
+   - Look for `🔗 Using Supabase cloud database.` in app output
+   - If you see `⚠️ Supabase not available, using local database`, secrets are missing
 
-3. **實作資料匯出/匯入功能**
-   - 讓用戶可以備份資料
-   - 支援資料恢復
+2. **Verify User Data**:
+   - Users should be in Supabase, not local SQLite
+   - Check Supabase dashboard: https://supabase.com/dashboard/project/ilviebfcodaxnfzcpnqi
 
-### 測試部署
+### **3.3 If Secrets Don't Work**
+1. **Format Check**:
+   - Make sure there are no extra spaces
+   - Ensure TOML format is correct
+   - Check that URL and ANON_KEY are on separate lines
 
-部署完成後，測試以下功能：
-1. 用戶註冊
-2. 用戶登入
-3. 資料庫操作
-4. 應用程式功能
+2. **Redeploy**:
+   - After saving secrets, wait for automatic redeploy
+   - Or manually trigger redeploy from Streamlit Cloud
 
-### 故障排除
+## 🔧 **Step 4: Production Checklist**
 
-**常見問題：**
-1. **模組找不到**：檢查 `requirements.txt`
-2. **資料庫錯誤**：檢查是否為記憶體資料庫模式
-3. **部署失敗**：檢查檔案路徑和語法錯誤
+### **4.1 Before Going Live**
+- ✅ Supabase secrets configured in Streamlit Cloud
+- ✅ App loads without errors
+- ✅ Login works with existing users
+- ✅ Registration works for new users
+- ✅ All features (applications, profiles, etc.) work
 
-**除錯技巧：**
-- 查看 Streamlit Cloud 的日誌
-- 使用 `st.write()` 輸出除錯資訊
-- 檢查環境變數設定
+### **4.2 Monitoring**
+- **Supabase Dashboard**: Monitor database usage
+- **Streamlit Cloud Logs**: Check for errors
+- **App Performance**: Monitor response times
 
-### 聯絡支援
+## 🎯 **Expected Behavior**
 
-如果遇到問題：
-1. 檢查 Streamlit Cloud 狀態頁面
-2. 查看應用程式日誌
-3. 在 GitHub Issues 中報告問題 
+### **✅ Success Indicators:**
+1. **App loads** with Supabase connection message
+2. **Login works** with existing users
+3. **Registration works** for new users
+4. **All features** (profiles, applications, etc.) work
+5. **Data persists** between sessions
+
+### **❌ Failure Indicators:**
+1. **App won't load** - Check logs and secrets
+2. **Login fails** - Check database connection
+3. **Data doesn't save** - Check Supabase connection
+4. **Features broken** - Check database schema
+
+## 🚀 **Your App URL**
+
+Once deployed successfully, your app will be available at:
+```
+https://school-application-portal-[your-username].streamlit.app
+```
+
+## 📞 **Need Help?**
+
+If you're still having issues:
+
+1. **Check Streamlit Cloud Logs** for specific error messages
+2. **Verify Supabase Dashboard** - ensure tables exist
+3. **Test locally first** - make sure it works on your machine
+4. **Check this guide** - ensure all steps are followed
+
+## 🎉 **Success!**
+
+Once everything is working:
+- ✅ Your app is live on Streamlit Cloud
+- ✅ Using Supabase cloud database
+- ✅ All users can register and login
+- ✅ Data is safely stored in the cloud
+- ✅ No more Google Drive issues!
+
+**Your School Application Portal is now fully deployed and operational!** 🚀 
