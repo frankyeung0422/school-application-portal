@@ -2456,6 +2456,10 @@ if 'show_login_modal' not in st.session_state:
     st.session_state.show_login_modal = False
 if 'show_register_modal' not in st.session_state:
     st.session_state.show_register_modal = False
+if 'login_clicked' not in st.session_state:
+    st.session_state.login_clicked = False
+if 'register_clicked' not in st.session_state:
+    st.session_state.register_clicked = False
 if 'selected_school' not in st.session_state:
     st.session_state.selected_school = None
 if 'saved_schools' not in st.session_state:
@@ -2682,7 +2686,8 @@ def show_login_modal():
     # Debug: Show current state
     st.write(f"DEBUG: show_login_modal = {st.session_state.get('show_login_modal', False)}")
     
-    if st.session_state.get('show_login_modal', False):
+    # Check if login button was clicked in this session
+    if st.session_state.get('show_login_modal', False) or st.session_state.get('login_clicked', False):
         # Add modal overlay effect
         st.markdown("""
         <style>
@@ -2731,6 +2736,7 @@ def show_login_modal():
                 with col2:
                     if st.form_submit_button("Cancel"):
                         st.session_state.show_login_modal = False
+                        st.session_state.login_clicked = False
                         st.rerun()
                 
                 if submitted:
@@ -2739,6 +2745,7 @@ def show_login_modal():
                         if success:
                             st.success(message)
                             st.session_state.show_login_modal = False
+                            st.session_state.login_clicked = False
                             st.rerun()
                         else:
                             st.error(message)
@@ -2747,7 +2754,7 @@ def show_login_modal():
 
 def show_register_modal():
     """Show registration modal"""
-    if st.session_state.get('show_register_modal', False):
+    if st.session_state.get('show_register_modal', False) or st.session_state.get('register_clicked', False):
         with st.container():
             st.markdown("### 📝 Register")
             
@@ -2764,6 +2771,7 @@ def show_register_modal():
                 with col2:
                     if st.form_submit_button("Cancel"):
                         st.session_state.show_register_modal = False
+                        st.session_state.register_clicked = False
                         st.rerun()
                 
                 if submitted:
@@ -2780,6 +2788,7 @@ def show_register_modal():
                                 else:
                                     st.success(f"{message} Please log in with your credentials.")
                                 st.session_state.show_register_modal = False
+                                st.session_state.register_clicked = False
                                 st.rerun()
                             else:
                                 st.error(message)
@@ -3105,13 +3114,15 @@ def kindergartens_page():
                     if st.button("🔑 Login", use_container_width=True):
                         st.write("DEBUG: Login button clicked!")
                         st.session_state.show_login_modal = True
+                        st.session_state.login_clicked = True
                         st.write(f"DEBUG: Set show_login_modal to {st.session_state.show_login_modal}")
-                        # Remove st.rerun() to see if session state persists
+                        st.experimental_rerun()
                 
                 with col2:
                     if st.button("📝 Register", use_container_width=True):
                         st.session_state.show_register_modal = True
-                        # Remove st.rerun() to see if session state persists
+                        st.session_state.register_clicked = True
+                        st.experimental_rerun()
         
         st.markdown("---")
     
@@ -3164,8 +3175,9 @@ def kindergartens_page():
                         if st.button("🔐 Login to Track", key=f"login_track_{school['school_no']}"):
                             st.write("DEBUG: Login to Track button clicked!")
                             st.session_state.show_login_modal = True
+                            st.session_state.login_clicked = True
                             st.write(f"DEBUG: Set show_login_modal to {st.session_state.show_login_modal}")
-                            # Remove st.rerun() to see if session state persists
+                            st.experimental_rerun()
                 
                 st.markdown("---")
     else:
