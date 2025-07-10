@@ -141,6 +141,249 @@ class SupabaseDatabaseManager:
             st.error(f"Error getting users: {str(e)}")
             return []
     
+    # Child profile methods
+    def create_child_profile(self, user_id: int, child_name: str, date_of_birth: str = None,
+                           gender: str = None, nationality: str = None, address: str = None,
+                           parent_name: str = None, parent_phone: str = None, parent_email: str = None) -> int:
+        """Create a new child profile"""
+        try:
+            if not self.supabase:
+                return None
+            
+            data = {
+                'user_id': user_id,
+                'child_name': child_name,
+                'date_of_birth': date_of_birth,
+                'gender': gender,
+                'nationality': nationality,
+                'address': address,
+                'parent_name': parent_name,
+                'parent_phone': parent_phone,
+                'parent_email': parent_email,
+                'created_at': datetime.now().isoformat()
+            }
+            
+            result = self.supabase.table('child_profiles').insert(data).execute()
+            if result.data:
+                return result.data[0]['id']
+            return None
+            
+        except Exception as e:
+            st.error(f"Error creating child profile: {str(e)}")
+            return None
+    
+    def get_child_profiles(self, user_id: int) -> List[Dict]:
+        """Get all child profiles for a user"""
+        try:
+            if not self.supabase:
+                return []
+            
+            result = self.supabase.table('child_profiles').select('*').eq('user_id', user_id).order('created_at', desc=True).execute()
+            return result.data
+            
+        except Exception as e:
+            st.error(f"Error getting child profiles: {str(e)}")
+            return []
+    
+    # Application methods
+    def create_application(self, user_id: int, child_id: int, school_name: str, school_type: str,
+                          application_date: str, notes: str = None) -> int:
+        """Create a new application"""
+        try:
+            if not self.supabase:
+                return None
+            
+            data = {
+                'user_id': user_id,
+                'child_id': child_id,
+                'school_name': school_name,
+                'school_type': school_type,
+                'application_date': application_date,
+                'notes': notes,
+                'created_at': datetime.now().isoformat()
+            }
+            
+            result = self.supabase.table('applications').insert(data).execute()
+            if result.data:
+                return result.data[0]['id']
+            return None
+            
+        except Exception as e:
+            st.error(f"Error creating application: {str(e)}")
+            return None
+    
+    def get_applications(self, user_id: int) -> List[Dict]:
+        """Get all applications for a user"""
+        try:
+            if not self.supabase:
+                return []
+            
+            result = self.supabase.table('applications').select('*, child_profiles(child_name)').eq('user_id', user_id).order('created_at', desc=True).execute()
+            return result.data
+            
+        except Exception as e:
+            st.error(f"Error getting applications: {str(e)}")
+            return []
+    
+    # Portfolio methods
+    def create_portfolio_item(self, user_id: int, child_id: int, title: str, description: str = None,
+                            category: str = None, attachment_path: str = None, item_date: str = None, notes: str = None) -> int:
+        """Create a new portfolio item"""
+        try:
+            if not self.supabase:
+                return None
+            
+            data = {
+                'user_id': user_id,
+                'child_id': child_id,
+                'title': title,
+                'description': description,
+                'category': category,
+                'attachment_path': attachment_path,
+                'item_date': item_date,
+                'notes': notes,
+                'created_at': datetime.now().isoformat()
+            }
+            
+            result = self.supabase.table('portfolio_items').insert(data).execute()
+            if result.data:
+                return result.data[0]['id']
+            return None
+            
+        except Exception as e:
+            st.error(f"Error creating portfolio item: {str(e)}")
+            return None
+    
+    def get_portfolio_items(self, user_id: int, child_id: int = None) -> List[Dict]:
+        """Get all portfolio items for a user"""
+        try:
+            if not self.supabase:
+                return []
+            
+            query = self.supabase.table('portfolio_items').select('*').eq('user_id', user_id)
+            if child_id:
+                query = query.eq('child_id', child_id)
+            
+            result = query.order('created_at', desc=True).execute()
+            return result.data
+            
+        except Exception as e:
+            st.error(f"Error getting portfolio items: {str(e)}")
+            return []
+    
+    # Personal statements methods
+    def create_personal_statement(self, user_id: int, child_id: int, title: str, content: str, 
+                                 target_school: str = None, version: str = "1.0", notes: str = None) -> int:
+        """Create a new personal statement"""
+        try:
+            if not self.supabase:
+                return None
+            
+            data = {
+                'user_id': user_id,
+                'child_id': child_id,
+                'title': title,
+                'content': content,
+                'target_school': target_school,
+                'version': version,
+                'notes': notes,
+                'created_at': datetime.now().isoformat()
+            }
+            
+            result = self.supabase.table('personal_statements').insert(data).execute()
+            if result.data:
+                return result.data[0]['id']
+            return None
+            
+        except Exception as e:
+            st.error(f"Error creating personal statement: {str(e)}")
+            return None
+    
+    def get_personal_statements(self, user_id: int, child_id: int = None) -> List[Dict]:
+        """Get all personal statements for a user"""
+        try:
+            if not self.supabase:
+                return []
+            
+            query = self.supabase.table('personal_statements').select('*').eq('user_id', user_id)
+            if child_id:
+                query = query.eq('child_id', child_id)
+            
+            result = query.order('created_at', desc=True).execute()
+            return result.data
+            
+        except Exception as e:
+            st.error(f"Error getting personal statements: {str(e)}")
+            return []
+    
+    # Notification methods
+    def create_notification(self, user_id: int, title: str, message: str) -> int:
+        """Create a new notification"""
+        try:
+            if not self.supabase:
+                return None
+            
+            data = {
+                'user_id': user_id,
+                'title': title,
+                'message': message,
+                'is_read': False,
+                'created_at': datetime.now().isoformat()
+            }
+            
+            result = self.supabase.table('notifications').insert(data).execute()
+            if result.data:
+                return result.data[0]['id']
+            return None
+            
+        except Exception as e:
+            st.error(f"Error creating notification: {str(e)}")
+            return None
+    
+    def get_notifications(self, user_id: int, unread_only: bool = False) -> List[Dict]:
+        """Get all notifications for a user"""
+        try:
+            if not self.supabase:
+                return []
+            
+            query = self.supabase.table('notifications').select('*').eq('user_id', user_id)
+            if unread_only:
+                query = query.eq('is_read', False)
+            
+            result = query.order('created_at', desc=True).execute()
+            return result.data
+            
+        except Exception as e:
+            st.error(f"Error getting notifications: {str(e)}")
+            return []
+    
+    def mark_notification_read(self, notification_id: int) -> bool:
+        """Mark a notification as read"""
+        try:
+            if not self.supabase:
+                return False
+            
+            result = self.supabase.table('notifications').update({'is_read': True}).eq('id', notification_id).execute()
+            return len(result.data) > 0
+            
+        except Exception as e:
+            st.error(f"Error marking notification read: {str(e)}")
+            return False
+    
+    def mark_all_notifications_read(self, user_id: int) -> bool:
+        """Mark all notifications as read for a user"""
+        try:
+            if not self.supabase:
+                return False
+            
+            result = self.supabase.table('notifications').update({'is_read': True}).eq('user_id', user_id).execute()
+            return len(result.data) > 0
+            
+        except Exception as e:
+            st.error(f"Error marking notifications read: {str(e)}")
+            return False
+    
+    # High-level methods for backward compatibility
     def register_user(self, name: str, email: str, phone: str, password: str) -> Tuple[bool, str]:
         """Register a new user"""
         try:
@@ -185,6 +428,184 @@ class SupabaseDatabaseManager:
                 
         except Exception as e:
             return False, f"Login error: {str(e)}", {}
+    
+    def add_child_profile(self, user_id: int, child_name: str, date_of_birth: str, gender: str) -> Tuple[bool, str]:
+        """Add a child profile"""
+        try:
+            if not self.supabase:
+                return False, "Database not initialized"
+            
+            profile_id = self.create_child_profile(user_id, child_name, date_of_birth, gender)
+            if profile_id:
+                return True, f"Child profile created with ID: {profile_id}"
+            else:
+                return False, "Failed to create child profile"
+        except Exception as e:
+            return False, f"Error creating child profile: {str(e)}"
+    
+    def add_portfolio_item(self, user_id: int, child_id: int, title: str, description: str, 
+                          category: str, item_date: str, attachment_path: str = None, notes: str = None) -> Tuple[bool, str]:
+        """Add a portfolio item"""
+        try:
+            if not self.supabase:
+                return False, "Database not initialized"
+            
+            item_id = self.create_portfolio_item(user_id, child_id, title, description, category, item_date, attachment_path, notes)
+            if item_id:
+                return True, f"Portfolio item created with ID: {item_id}"
+            else:
+                return False, "Failed to create portfolio item"
+        except Exception as e:
+            return False, f"Error creating portfolio item: {str(e)}"
+    
+    def add_personal_statement(self, user_id: int, child_id: int, title: str, content: str,
+                              target_school: str = None, version: str = "1.0", notes: str = None) -> Tuple[bool, str]:
+        """Add a personal statement"""
+        try:
+            if not self.supabase:
+                return False, "Database not initialized"
+            
+            statement_id = self.create_personal_statement(user_id, child_id, title, content, target_school, version, notes)
+            if statement_id:
+                return True, f"Personal statement created with ID: {statement_id}"
+            else:
+                return False, "Failed to create personal statement"
+        except Exception as e:
+            return False, f"Error creating personal statement: {str(e)}"
+    
+    def add_notification(self, user_id: int, title: str, message: str, priority: str = 'medium') -> Tuple[bool, str]:
+        """Add a notification"""
+        try:
+            if not self.supabase:
+                return False, "Database not initialized"
+            
+            notification_id = self.create_notification(user_id, title, message)
+            if notification_id:
+                return True, f"Notification created with ID: {notification_id}"
+            else:
+                return False, "Failed to create notification"
+        except Exception as e:
+            return False, f"Error creating notification: {str(e)}"
+    
+    def submit_application(self, user_id: int, child_id: int, school_no: str, school_name: str,
+                          parent_name: str, parent_email: str, parent_phone: str,
+                          preferred_start_date: str, notes: str = None) -> Tuple[bool, str]:
+        """Submit an application"""
+        try:
+            if not self.supabase:
+                return False, "Database not initialized"
+            
+            application_id = self.create_application(user_id, child_id, school_name, "kindergarten", preferred_start_date, notes)
+            if application_id:
+                return True, f"Application submitted with ID: {application_id}"
+            else:
+                return False, "Failed to submit application"
+        except Exception as e:
+            return False, f"Error submitting application: {str(e)}"
+    
+    def add_to_tracker(self, user_id: int, school_no: str, school_name: str) -> Tuple[bool, str]:
+        """Add school to application tracker"""
+        try:
+            if not self.supabase:
+                return False, "Database not initialized"
+            
+            data = {
+                'user_id': user_id,
+                'school_no': school_no,
+                'school_name': school_name,
+                'status': 'tracking',
+                'date_updated': datetime.now().isoformat()
+            }
+            
+            result = self.supabase.table('application_tracking').upsert(data).execute()
+            if result.data:
+                return True, "School added to tracker"
+            else:
+                return False, "Failed to add school to tracker"
+        except Exception as e:
+            return False, f"Error adding to tracker: {str(e)}"
+    
+    def remove_from_tracker(self, user_id: int, school_no: str) -> Tuple[bool, str]:
+        """Remove school from application tracker"""
+        try:
+            if not self.supabase:
+                return False, "Database not initialized"
+            
+            result = self.supabase.table('application_tracking').delete().eq('user_id', user_id).eq('school_no', school_no).execute()
+            return True, "School removed from tracker"
+        except Exception as e:
+            return False, f"Error removing from tracker: {str(e)}"
+    
+    def get_tracked_schools(self, user_id: int) -> List[Dict]:
+        """Get tracked schools for a user"""
+        try:
+            if not self.supabase:
+                return []
+            
+            result = self.supabase.table('application_tracking').select('*').eq('user_id', user_id).order('date_updated', desc=True).execute()
+            return result.data
+        except Exception as e:
+            st.error(f"Error getting tracked schools: {str(e)}")
+            return []
+    
+    def delete_portfolio_item(self, item_id: int) -> Tuple[bool, str]:
+        """Delete a portfolio item"""
+        try:
+            if not self.supabase:
+                return False, "Database not initialized"
+            
+            result = self.supabase.table('portfolio_items').delete().eq('id', item_id).execute()
+            return True, "Portfolio item deleted"
+        except Exception as e:
+            return False, f"Error deleting portfolio item: {str(e)}"
+    
+    def delete_personal_statement(self, statement_id: int) -> Tuple[bool, str]:
+        """Delete a personal statement"""
+        try:
+            if not self.supabase:
+                return False, "Database not initialized"
+            
+            result = self.supabase.table('personal_statements').delete().eq('id', statement_id).execute()
+            return True, "Personal statement deleted"
+        except Exception as e:
+            return False, f"Error deleting personal statement: {str(e)}"
+    
+    def reset_user_by_email(self, email: str) -> bool:
+        """Reset user data by email (for testing)"""
+        try:
+            if not self.supabase:
+                return False
+            
+            # Get user ID first
+            user = self.get_user_by_email(email)
+            if user:
+                user_id = user['id']
+                # Delete related data
+                self.supabase.table('notifications').delete().eq('user_id', user_id).execute()
+                self.supabase.table('portfolio_items').delete().eq('user_id', user_id).execute()
+                self.supabase.table('personal_statements').delete().eq('user_id', user_id).execute()
+                self.supabase.table('applications').delete().eq('user_id', user_id).execute()
+                self.supabase.table('child_profiles').delete().eq('user_id', user_id).execute()
+                self.supabase.table('application_tracking').delete().eq('user_id', user_id).execute()
+                self.supabase.table('users').delete().eq('id', user_id).execute()
+                return True
+            return False
+        except Exception as e:
+            st.error(f"Error resetting user: {str(e)}")
+            return False
+    
+    def set_user_password(self, email: str, new_password: str) -> bool:
+        """Set user password"""
+        try:
+            if not self.supabase:
+                return False
+            
+            password_hash = hashlib.sha256(new_password.encode()).hexdigest()
+            result = self.supabase.table('users').update({'password_hash': password_hash}).eq('email', email).execute()
+            return len(result.data) > 0
+        except Exception as e:
+            st.error(f"Error setting password: {str(e)}")
+            return False
     
     def migrate_from_sqlite(self, sqlite_db_path: str) -> bool:
         """Migrate users from SQLite database"""
