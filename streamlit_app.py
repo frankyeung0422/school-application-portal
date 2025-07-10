@@ -2679,6 +2679,9 @@ def main_navigation():
 # Authentication modals
 def show_login_modal():
     """Show login modal"""
+    # Debug: Show current state
+    st.write(f"DEBUG: show_login_modal = {st.session_state.get('show_login_modal', False)}")
+    
     if st.session_state.get('show_login_modal', False):
         # Add modal overlay effect
         st.markdown("""
@@ -3100,7 +3103,9 @@ def kindergartens_page():
                 col1, col2 = st.columns(2)
                 with col1:
                     if st.button("🔑 Login", use_container_width=True):
+                        st.write("DEBUG: Login button clicked!")
                         st.session_state.show_login_modal = True
+                        st.write(f"DEBUG: Set show_login_modal to {st.session_state.show_login_modal}")
                         st.rerun()
                 
                 with col2:
@@ -3157,7 +3162,9 @@ def kindergartens_page():
                     else:
                         # Show login prompt for non-logged in users
                         if st.button("🔐 Login to Track", key=f"login_track_{school['school_no']}"):
+                            st.write("DEBUG: Login to Track button clicked!")
                             st.session_state.show_login_modal = True
+                            st.write(f"DEBUG: Set show_login_modal to {st.session_state.show_login_modal}")
                             st.rerun()
                 
                 st.markdown("---")
@@ -4113,6 +4120,10 @@ def admin_utilities():
 # Main app logic
 def main():
     """Main application logic"""
+    
+    # Debug: Show session state
+    st.write(f"DEBUG: Main function - show_login_modal = {st.session_state.get('show_login_modal', False)}")
+    st.write(f"DEBUG: Main function - show_register_modal = {st.session_state.get('show_register_modal', False)}")
     
     # Show authentication modals first if needed
     show_login_modal()
