@@ -3323,7 +3323,37 @@ def profile_page():
                         """, unsafe_allow_html=True)
                     with col_b:
                         if st.button("Edit", key=f"edit_child_{child['id']}"):
-                            pass  # TODO: Add edit functionality
+                            st.session_state.editing_child_id = child['id']
+                        if st.button("Delete", key=f"delete_child_{child['id']}"):
+                            success, message = get_db().delete_child_profile(child['id'])
+                            if success:
+                                st.success(message)
+                                st.rerun()
+                            else:
+                                st.error(message)
+
+        # Show edit form if a child is being edited
+        editing_child_id = st.session_state.get('editing_child_id')
+        if editing_child_id:
+            child_to_edit = next((c for c in child_profiles if c['id'] == editing_child_id), None)
+            if child_to_edit:
+                with st.form(f"edit_child_form_{editing_child_id}"):
+                    new_name = st.text_input("Child's Full Name", value=child_to_edit['child_name'])
+                    new_dob = st.date_input("Date of Birth", value=pd.to_datetime(child_to_edit['date_of_birth']))
+                    new_gender = st.selectbox("Gender", ["Male", "Female", "Other"], index=["Male", "Female", "Other"].index(child_to_edit['gender']) if child_to_edit['gender'] in ["Male", "Female", "Other"] else 0)
+                    save = st.form_submit_button("Save Changes")
+                    cancel = st.form_submit_button("Cancel")
+                    if save:
+                        success, message = get_db().update_child_profile(editing_child_id, new_name, new_dob.strftime('%Y-%m-%d'), new_gender)
+                        if success:
+                            st.success(message)
+                            del st.session_state.editing_child_id
+                            st.rerun()
+                        else:
+                            st.error(message)
+                    if cancel:
+                        del st.session_state.editing_child_id
+                        st.rerun()
         else:
             st.info("No child profiles yet.")
     else:

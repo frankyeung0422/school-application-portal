@@ -185,6 +185,35 @@ class SupabaseDatabaseManager:
             st.error(f"Error getting child profiles: {str(e)}")
             return []
     
+    def update_child_profile(self, child_id: int, child_name: str, date_of_birth: str, gender: str) -> tuple:
+        """Update a child profile by id"""
+        try:
+            if not self.supabase:
+                return False, "Database not initialized"
+            data = {
+                'child_name': child_name,
+                'date_of_birth': date_of_birth,
+                'gender': gender
+            }
+            result = self.supabase.table('child_profiles').update(data).eq('id', child_id).execute()
+            if result.data:
+                return True, "Child profile updated successfully."
+            return False, "Failed to update child profile."
+        except Exception as e:
+            return False, f"Error updating child profile: {str(e)}"
+
+    def delete_child_profile(self, child_id: int) -> tuple:
+        """Delete a child profile by id"""
+        try:
+            if not self.supabase:
+                return False, "Database not initialized"
+            result = self.supabase.table('child_profiles').delete().eq('id', child_id).execute()
+            if result.data:
+                return True, "Child profile deleted successfully."
+            return False, "Failed to delete child profile."
+        except Exception as e:
+            return False, f"Error deleting child profile: {str(e)}"
+    
     # Application methods
     def create_application(self, user_id: int, child_id: int, school_name: str, school_type: str,
                           application_date: str, notes: str = None) -> int:
