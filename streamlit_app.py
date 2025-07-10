@@ -3315,7 +3315,7 @@ def profile_page():
                     with col_a:
                         st.markdown(f"""
                         <div class="school-card">
-                            <h4>{child['name']}</h4>
+                            <h4>{child['child_name']}</h4>
                             <p><strong>Age:</strong> {calculate_age(child['date_of_birth'])} years old</p>
                             <p><strong>Gender:</strong> {child['gender']}</p>
                             <p><strong>Date of Birth:</strong> {child['date_of_birth']}</p>
@@ -3534,8 +3534,8 @@ def application_form_page():
         return
     
     # Select child profile
-    child_options = {f"{child['name']} ({calculate_age(child['date_of_birth'])} years old)": child['id'] 
-                    for child in child_profiles}
+    child_options = {f"{child['child_name']} ({calculate_age(child['date_of_birth'])} years old)": child['id'] 
+        for child in child_profiles}
     
     selected_child_name = st.selectbox("Select Child", list(child_options.keys()))
     selected_child_id = child_options[selected_child_name]
@@ -3824,7 +3824,7 @@ def portfolio_page():
     selected_child_id = st.selectbox(
         "Select Child",
         options=[child['id'] for child in child_profiles],
-        format_func=lambda x: next(child['name'] for child in child_profiles if child['id'] == x)
+        format_func=lambda x: next(child['child_name'] for child in child_profiles if child['id'] == x)
     )
     
     # Portfolio management tabs
@@ -3963,7 +3963,7 @@ def personal_statements_page():
     selected_child_id = st.selectbox(
         "Select Child",
         options=[child['id'] for child in child_profiles],
-        format_func=lambda x: next(child['name'] for child in child_profiles if child['id'] == x)
+        format_func=lambda x: next(child['child_name'] for child in child_profiles if child['id'] == x)
     )
     
     # Personal statements management tabs

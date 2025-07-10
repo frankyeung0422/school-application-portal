@@ -16,7 +16,7 @@ def test_child_profile_creation():
     
     try:
         # Import the functions
-        from streamlit_app import get_db, add_child_profile
+        from streamlit_app import get_db, add_child_profile, login_user
         
         # Get database instance
         db_instance = get_db()
@@ -37,21 +37,21 @@ def test_child_profile_creation():
             print("❌ No storage manager found")
             return False
         
+        # First, login a user to set up session state
+        print("\n🔐 Logging in user for testing...")
+        success, message = login_user("frankyeung422@hotmail.com", "password123")
+        if not success:
+            print(f"❌ Login failed: {message}")
+            return False
+        
+        print(f"✅ Login successful: {message}")
+        print(f"   Current user: {st.session_state.current_user}")
+        
         # Test child profile creation
         print("\n👶 Testing child profile creation...")
         
-        # First, get a user to test with
-        users = db_instance.storage_manager.get_all_users()
-        if not users:
-            print("❌ No users found to test with")
-            return False
-        
-        test_user = users[0]  # Use the first user
-        print(f"   Using user: {test_user['email']} (ID: {test_user['id']})")
-        
-        # Test creating a child profile
+        # Test creating a child profile using the correct function signature
         success, message = add_child_profile(
-            test_user['id'],
             "Test Child",
             "2020-01-01",
             "Male"
@@ -62,7 +62,8 @@ def test_child_profile_creation():
         if success:
             # Test getting child profiles
             print("\n📋 Testing get child profiles...")
-            child_profiles = db_instance.get_child_profiles(test_user['id'])
+            user_id = st.session_state.current_user['id']
+            child_profiles = db_instance.get_child_profiles(user_id)
             print(f"   Found {len(child_profiles)} child profiles")
             
             for profile in child_profiles:
@@ -71,7 +72,6 @@ def test_child_profile_creation():
             # Test creating another child profile
             print("\n👶 Testing second child profile creation...")
             success2, message2 = add_child_profile(
-                test_user['id'],
                 "Test Child 2",
                 "2021-06-15",
                 "Female"
@@ -80,7 +80,7 @@ def test_child_profile_creation():
             print(f"   Second child profile: {success2} - {message2}")
             
             # Get updated child profiles
-            child_profiles_updated = db_instance.get_child_profiles(test_user['id'])
+            child_profiles_updated = db_instance.get_child_profiles(user_id)
             print(f"   Updated: Found {len(child_profiles_updated)} child profiles")
             
             return True
