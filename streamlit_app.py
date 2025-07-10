@@ -1098,7 +1098,11 @@ def main_navigation():
         # User authentication section
         st.markdown("---")
         if st.session_state.user_logged_in:
-            st.markdown(f"**Welcome, {st.session_state.current_user['name']}!**")
+            current_user = st.session_state.current_user
+            if isinstance(current_user, dict):
+                st.markdown(f"**Welcome, {current_user.get('name', 'User')}!**")
+            else:
+                st.markdown(f"**Welcome, {current_user}!**")
             if st.button("Logout", use_container_width=True):
                 logout_user()
                 st.rerun()
@@ -1599,7 +1603,7 @@ def profile_page():
         st.warning("Please log in to view your profile.")
         
         # Simple login form
-        with st.form("login_form"):
+        with st.form("profile_login_form"):
             st.markdown("### Login")
             username = st.text_input("Username")
             password = st.text_input("Password", type="password")
@@ -1617,16 +1621,25 @@ def profile_page():
         return
     
     # User profile content
-    st.markdown(f"### Welcome, {st.session_state.current_user['name']}!")
+    current_user = st.session_state.current_user
+    if isinstance(current_user, str):
+        st.markdown(f"### Welcome, {current_user}!")
+    else:
+        st.markdown(f"### Welcome, {current_user.get('name', 'User')}!")
     
     # Profile information
     col1, col2 = st.columns(2)
     
     with col1:
         st.markdown("#### Personal Information")
-        st.text_input("Full Name", value=st.session_state.current_user.get('name', ''), key="profile_name")
-        st.text_input("Email", value=st.session_state.current_user.get('email', ''), key="profile_email")
-        st.text_input("Phone", value=st.session_state.current_user.get('phone', ''), key="profile_phone")
+        if isinstance(current_user, dict):
+            st.text_input("Full Name", value=current_user.get('name', ''), key="profile_name")
+            st.text_input("Email", value=current_user.get('email', ''), key="profile_email")
+            st.text_input("Phone", value=current_user.get('phone', ''), key="profile_phone")
+        else:
+            st.text_input("Full Name", value=current_user, key="profile_name")
+            st.text_input("Email", value="", key="profile_email")
+            st.text_input("Phone", value="", key="profile_phone")
     
     with col2:
         st.markdown("#### Preferences")
@@ -1857,9 +1870,15 @@ def application_form_page():
     
     with st.form("application_form"):
         st.markdown("### Parent Information")
-        parent_name = st.text_input("Parent/Guardian Full Name", value=st.session_state.current_user.get('name', ''))
-        parent_email = st.text_input("Email Address", value=st.session_state.current_user.get('email', ''))
-        parent_phone = st.text_input("Phone Number", value=st.session_state.current_user.get('phone', ''))
+        current_user = st.session_state.current_user
+        if isinstance(current_user, dict):
+            parent_name = st.text_input("Parent/Guardian Full Name", value=current_user.get('name', ''))
+            parent_email = st.text_input("Email Address", value=current_user.get('email', ''))
+            parent_phone = st.text_input("Phone Number", value=current_user.get('phone', ''))
+        else:
+            parent_name = st.text_input("Parent/Guardian Full Name", value=current_user if isinstance(current_user, str) else '')
+            parent_email = st.text_input("Email Address", value="")
+            parent_phone = st.text_input("Phone Number", value="")
         
         st.markdown("### Application Details")
         preferred_start_date = st.date_input("Preferred Start Date", min_value=datetime.now().date())
