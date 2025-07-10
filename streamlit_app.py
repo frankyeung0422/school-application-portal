@@ -123,6 +123,8 @@ if 'current_user' not in st.session_state:
     st.session_state.current_user = None
 if 'selected_language' not in st.session_state:
     st.session_state.selected_language = 'en'
+if 'current_page' not in st.session_state:
+    st.session_state.current_page = 'home'
 
 # Navigation
 def main_navigation():
@@ -193,7 +195,8 @@ def home_page():
         """)
         
         if st.button("🚀 Browse Kindergartens", use_container_width=True):
-            st.switch_page("pages/kindergartens.py")
+            st.session_state.current_page = 'kindergartens'
+            st.rerun()
     
     with col2:
         st.markdown("""
@@ -503,16 +506,28 @@ def main():
     # Navigation
     selected = main_navigation()
     
-    # Route to appropriate page
+    # Route to appropriate page based on navigation selection
     if selected == "🏠 Home":
-        home_page()
+        st.session_state.current_page = 'home'
     elif selected == "🏫 Kindergartens":
-        kindergartens_page()
+        st.session_state.current_page = 'kindergartens'
     elif selected == "📊 Analytics":
-        analytics_page()
+        st.session_state.current_page = 'analytics'
     elif selected == "👤 Profile":
-        profile_page()
+        st.session_state.current_page = 'profile'
     elif selected == "ℹ️ About":
+        st.session_state.current_page = 'about'
+    
+    # Display the appropriate page
+    if st.session_state.current_page == 'home':
+        home_page()
+    elif st.session_state.current_page == 'kindergartens':
+        kindergartens_page()
+    elif st.session_state.current_page == 'analytics':
+        analytics_page()
+    elif st.session_state.current_page == 'profile':
+        profile_page()
+    elif st.session_state.current_page == 'about':
         about_page()
 
 if __name__ == "__main__":
