@@ -2293,7 +2293,7 @@ def add_to_application_tracker(school_no, school_name):
         return
     
     user_id = st.session_state.current_user['id']
-            success, message = get_db().add_to_tracker(user_id, school_no, school_name)
+    success, message = get_db().add_to_tracker(user_id, school_no, school_name)
     if success:
         st.success(f"Added {school_name} to application tracker!")
     else:
