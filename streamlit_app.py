@@ -24,9 +24,24 @@ except ImportError as e:
 
 # Initialize database manager based on environment
 def get_db_manager():
-    """Get database manager with Google Drive cloud storage only"""
+    """Get database manager with Supabase cloud storage, fallback to local"""
     try:
-        # Check Google Drive secrets
+        # Check Supabase secrets first
+        supabase_secrets = st.secrets.get('SUPABASE', {})
+        has_supabase_secrets = bool(supabase_secrets) and 'URL' in supabase_secrets and 'ANON_KEY' in supabase_secrets
+
+        if has_supabase_secrets:
+            try:
+                st.info("🔗 Using Supabase cloud database.")
+                print("🔗 Using Supabase cloud database.")
+                db_manager = CloudDatabaseManager(storage_type="supabase")
+                return db_manager
+            except Exception as e:
+                st.error(f"Supabase initialization failed: {e}")
+                st.info("Falling back to local database.")
+                return CloudDatabaseManager(storage_type="local")
+        
+        # Check Google Drive secrets as fallback
         google_drive_secrets = st.secrets.get('GOOGLE_DRIVE', {})
         has_google_drive_secrets = bool(google_drive_secrets) and 'CREDENTIALS' in google_drive_secrets and 'FOLDER_ID' in google_drive_secrets
 
@@ -38,13 +53,18 @@ def get_db_manager():
                 return db_manager
             except Exception as e:
                 st.error(f"Google Drive initialization failed: {e}")
-                raise RuntimeError("Google Drive DB required but could not be initialized.")
-        else:
-            st.error("Google Drive DB is required for all operations, but is not available! Please check your Streamlit secrets and cloud setup.")
-            raise RuntimeError("Google Drive DB required but not available.")
+                st.info("Falling back to local database.")
+                return CloudDatabaseManager(storage_type="local")
+        
+        # Fallback to local database
+        st.info("📁 Using local SQLite database.")
+        print("📁 Using local SQLite database.")
+        return CloudDatabaseManager(storage_type="local")
+        
     except Exception as e:
-        st.error(f"Failed to initialize Google Drive cloud database: {e}")
-        raise
+        st.error(f"Failed to initialize database: {e}")
+        st.info("Falling back to local database.")
+        return CloudDatabaseManager(storage_type="local")
 
 # Initialize database
 def init_database():

@@ -31,7 +31,20 @@ class CloudDatabaseManager:
         self.storage_manager = None
         
         # Initialize storage based on type
-        if storage_type == "google_drive" and CLOUD_STORAGE_AVAILABLE:
+        if storage_type == "supabase":
+            try:
+                from database_supabase import SupabaseDatabaseManager
+                self.storage_manager = SupabaseDatabaseManager()
+                if self.storage_manager.supabase:
+                    print("🔗 Using Supabase cloud database.")
+                else:
+                    st.warning("⚠️ Supabase not available, falling back to local storage")
+                    self.storage_type = "local"
+            except Exception as e:
+                st.error(f"❌ Supabase initialization failed: {str(e)}")
+                st.info("Falling back to local storage")
+                self.storage_type = "local"
+        elif storage_type == "google_drive" and CLOUD_STORAGE_AVAILABLE:
             try:
                 self.storage_manager = CloudSQLiteManager()
                 if self.storage_manager.drive_service:
@@ -203,6 +216,12 @@ class CloudDatabaseManager:
             user_count = cursor.fetchone()[0]
             
             if user_count == 0:
+                # Temporarily disabled test data initialization to allow migration
+                print("⚠️ Test data initialization disabled - database is empty")
+                pass
+                
+                # Original test data creation (commented out)
+                """
                 # Create test users
                 test_users = [
                     ('john', 'john@example.com', 'password123', 'John Smith', '+852 1234 5678'),
@@ -214,8 +233,7 @@ class CloudDatabaseManager:
                     import hashlib
                     password_hash = hashlib.sha256(password.encode()).hexdigest()
                     self.create_user(username, email, password_hash, full_name, phone)
-                
-                pass
+                """
         except Exception as e:
             st.error(f"Error initializing test data: {str(e)}")
     

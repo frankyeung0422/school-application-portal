@@ -181,13 +181,15 @@ class CloudSQLiteManager:
     def upload_database(self):
         """Upload database from temporary file to Google Drive"""
         if not self.file_id or not self.temp_db_path:
-            st.error("No database file to upload")
+            print("No database file to upload")
             return False
         
         try:
             # Read temporary file
             with open(self.temp_db_path, 'rb') as f:
                 file_data = f.read()
+            
+            print(f"Uploading {len(file_data)} bytes to Google Drive...")
             
             # Upload to Google Drive
             media = MediaIoBaseUpload(
@@ -201,15 +203,16 @@ class CloudSQLiteManager:
                 media_body=media
             ).execute()
             
-            st.success("Database uploaded successfully!")
+            print("Database uploaded successfully!")
             return True
             
         except Exception as e:
             # Don't show error for storage quota issues - just log it
             if "storageQuotaExceeded" in str(e) or "Service Accounts do not have storage quota" in str(e):
+                print(f"Storage quota exceeded: {str(e)}")
                 return False
             else:
-                st.error(f"Error uploading database: {str(e)}")
+                print(f"Error uploading database: {str(e)}")
                 return False
     
     def get_database_connection(self) -> Optional[sqlite3.Connection]:
