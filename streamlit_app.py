@@ -243,6 +243,10 @@ def enhance_kindergarten_data(data):
             "facilities_en": ["Outdoor Playground", "Library", "Music Room", "Art Room", "Computer Room"],
             "transportation": "校車服務",
             "transportation_en": "School Bus Service",
+            "funding_type": "資助",
+            "funding_type_en": "Subsidized",
+            "through_train": True,
+            "through_train_en": "Through-train School",
             "application_deadline": "2024-12-31",
             "interview_date": "2025-01-15",
             "result_date": "2025-02-01"
@@ -271,6 +275,10 @@ def enhance_kindergarten_data(data):
             "facilities_en": ["Indoor Playground", "Computer Room", "Science Lab", "Multimedia Room"],
             "transportation": "地鐵站附近",
             "transportation_en": "Near MTR Station",
+            "funding_type": "私立",
+            "funding_type_en": "Private",
+            "through_train": False,
+            "through_train_en": "Not Through-train",
             "application_deadline": "2024-11-30",
             "interview_date": "2024-12-15",
             "result_date": "2025-01-15"
@@ -299,6 +307,10 @@ def enhance_kindergarten_data(data):
             "facilities_en": ["Outdoor Playground", "Library", "Music Room", "Art Room", "Gymnasium"],
             "transportation": "校車服務",
             "transportation_en": "School Bus Service",
+            "funding_type": "資助",
+            "funding_type_en": "Subsidized",
+            "through_train": True,
+            "through_train_en": "Through-train School",
             "application_deadline": "2024-12-15",
             "interview_date": "2025-01-20",
             "result_date": "2025-02-10"
@@ -327,6 +339,10 @@ def enhance_kindergarten_data(data):
             "facilities_en": ["Outdoor Playground", "Library", "Music Room", "Art Room", "Science Lab", "Swimming Pool"],
             "transportation": "校車服務",
             "transportation_en": "School Bus Service",
+            "funding_type": "私立",
+            "funding_type_en": "Private",
+            "through_train": False,
+            "through_train_en": "Not Through-train",
             "application_deadline": "2024-10-31",
             "interview_date": "2024-11-15",
             "result_date": "2024-12-01"
@@ -355,6 +371,10 @@ def enhance_kindergarten_data(data):
             "facilities_en": ["Outdoor Playground", "Library", "Music Room", "Art Room", "Computer Room", "Multimedia Room"],
             "transportation": "校車服務",
             "transportation_en": "School Bus Service",
+            "funding_type": "私立",
+            "funding_type_en": "Private",
+            "through_train": True,
+            "through_train_en": "Through-train School",
             "application_deadline": "2024-11-15",
             "interview_date": "2024-12-01",
             "result_date": "2024-12-15"
@@ -383,6 +403,10 @@ def enhance_kindergarten_data(data):
             "facilities_en": ["Outdoor Playground", "Library", "Music Room", "Art Room", "Gymnasium"],
             "transportation": "校車服務",
             "transportation_en": "School Bus Service",
+            "funding_type": "資助",
+            "funding_type_en": "Subsidized",
+            "through_train": True,
+            "through_train_en": "Through-train School",
             "application_deadline": "2024-12-20",
             "interview_date": "2025-01-25",
             "result_date": "2025-02-15"
@@ -411,6 +435,10 @@ def enhance_kindergarten_data(data):
             "facilities_en": ["Outdoor Playground", "Library", "Music Room", "Art Room", "Science Lab"],
             "transportation": "校車服務",
             "transportation_en": "School Bus Service",
+            "funding_type": "私立",
+            "funding_type_en": "Private",
+            "through_train": False,
+            "through_train_en": "Not Through-train",
             "application_deadline": "2024-10-15",
             "interview_date": "2024-11-01",
             "result_date": "2024-11-15"
@@ -439,6 +467,10 @@ def enhance_kindergarten_data(data):
             "facilities_en": ["Outdoor Playground", "Library", "Music Room", "Art Room", "Computer Room"],
             "transportation": "校車服務",
             "transportation_en": "School Bus Service",
+            "funding_type": "私立",
+            "funding_type_en": "Private",
+            "through_train": False,
+            "through_train_en": "Not Through-train",
             "application_deadline": "2024-11-30",
             "interview_date": "2024-12-15",
             "result_date": "2025-01-15"
@@ -467,6 +499,10 @@ def enhance_kindergarten_data(data):
             "facilities_en": ["Outdoor Playground", "Library", "Music Room", "Art Room", "Science Lab", "Gymnasium"],
             "transportation": "校車服務",
             "transportation_en": "School Bus Service",
+            "funding_type": "私立",
+            "funding_type_en": "Private",
+            "through_train": True,
+            "through_train_en": "Through-train School",
             "application_deadline": "2024-11-01",
             "interview_date": "2024-11-20",
             "result_date": "2024-12-05"
@@ -495,6 +531,10 @@ def enhance_kindergarten_data(data):
             "facilities_en": ["Outdoor Playground", "Library", "Music Room", "Art Room", "Computer Room"],
             "transportation": "校車服務",
             "transportation_en": "School Bus Service",
+            "funding_type": "私立",
+            "funding_type_en": "Private",
+            "through_train": False,
+            "through_train_en": "Not Through-train",
             "application_deadline": "2024-12-10",
             "interview_date": "2024-12-25",
             "result_date": "2025-01-10"
@@ -554,22 +594,28 @@ def enhance_kindergarten_data(data):
             
             phone_suffix = 1000 + (int(school["school_no"]) * 23) % 9000
             
-            # Determine school type and curriculum
+            # Determine school type, curriculum, funding type, and through-train status
             if is_international:
                 school_type = "全日"
                 curriculum = "國際課程"
                 language = "英文"
                 base_fee = 8000 + (int(school["school_no"]) * 200) % 4000
+                funding_type = "私立"
+                through_train = int(school["school_no"]) % 3 == 0  # 30% chance of being through-train
             elif is_christian:
                 school_type = "全日" if int(school["school_no"]) % 2 == 0 else "半日"
                 curriculum = "本地課程"
                 language = "中英文"
                 base_fee = 5000 + (int(school["school_no"]) * 150) % 2000
+                funding_type = "資助" if int(school["school_no"]) % 2 == 0 else "私立"
+                through_train = int(school["school_no"]) % 4 == 0  # 25% chance of being through-train
             else:
                 school_type = "全日" if int(school["school_no"]) % 3 == 0 else "半日"
                 curriculum = "本地課程" if int(school["school_no"]) % 2 == 0 else "國際課程"
                 language = "中文" if int(school["school_no"]) % 2 == 0 else "中英文"
                 base_fee = 4000 + (int(school["school_no"]) * 100) % 3000
+                funding_type = "資助" if int(school["school_no"]) % 3 == 0 else "私立"
+                through_train = int(school["school_no"]) % 5 == 0  # 20% chance of being through-train
             
             # Generate facilities based on school type
             base_facilities = ["戶外遊樂場", "圖書館", "音樂室"]
@@ -588,6 +634,10 @@ def enhance_kindergarten_data(data):
                 "email": f"info@{school['name_en'].lower().replace(' ', '').replace('(', '').replace(')', '').replace('&', '')}.edu.hk",
                 "school_type": school_type,
                 "school_type_en": "Full-day" if school_type == "全日" else "Half-day",
+                "funding_type": funding_type,
+                "funding_type_en": "Subsidized" if funding_type == "資助" else "Private",
+                "through_train": through_train,
+                "through_train_en": "Through-train School" if through_train else "Not Through-train",
                 "curriculum": curriculum,
                 "curriculum_en": "International Curriculum" if curriculum == "國際課程" else "Local Curriculum",
                 "language_of_instruction": language,
@@ -1095,6 +1145,46 @@ def get_text(key, language='en'):
             'en': 'All Curriculums',
             'tc': '所有課程'
         },
+        'funding_type': {
+            'en': 'Funding Type',
+            'tc': '資助類型'
+        },
+        'all_funding': {
+            'en': 'All Funding Types',
+            'tc': '所有資助類型'
+        },
+        'subsidized': {
+            'en': 'Subsidized',
+            'tc': '資助'
+        },
+        'private': {
+            'en': 'Private',
+            'tc': '私立'
+        },
+        'through_train': {
+            'en': 'Through-train School',
+            'tc': '龍校'
+        },
+        'not_through_train': {
+            'en': 'Not Through-train',
+            'tc': '非龍校'
+        },
+        'all_through_train': {
+            'en': 'All Through-train Types',
+            'tc': '所有龍校類型'
+        },
+        'view_on_map': {
+            'en': '🗺️ View on Map',
+            'tc': '🗺️ 在地圖上查看'
+        },
+        'funding_status': {
+            'en': 'Funding Status',
+            'tc': '資助狀況'
+        },
+        'through_train_status': {
+            'en': 'Through-train Status',
+            'tc': '龍校狀況'
+        },
         'language': {
             'en': 'Language',
             'tc': '語言'
@@ -1504,8 +1594,11 @@ def main_navigation():
             st.session_state.current_page = 'applications'
             st.rerun()
         
-        # Count unread notifications
-        unread_count = len([n for n in st.session_state.notifications if not n['read']])
+        # Count unread notifications from database
+        unread_count = 0
+        if st.session_state.user_logged_in and st.session_state.current_user:
+            notifications = db.get_notifications(st.session_state.current_user['id'], include_read=False)
+            unread_count = len(notifications)
         notification_text = f"🔔 Notifications ({unread_count})" if unread_count > 0 else "🔔 Notifications"
         
         if st.button(notification_text, use_container_width=True):
@@ -1611,7 +1704,12 @@ def show_register_modal():
                         else:
                             success, message = register_user(name, email, phone, password)
                             if success:
-                                st.success(message)
+                                # Automatically log in the user after successful registration
+                                login_success, login_message = login_user(email, password)
+                                if login_success:
+                                    st.success(f"{message} You are now logged in!")
+                                else:
+                                    st.success(f"{message} Please log in with your credentials.")
                                 st.session_state.show_register = False
                                 st.rerun()
                             else:
@@ -1740,7 +1838,7 @@ def kindergartens_page():
     # Filters section
     st.markdown(f"## {get_text('search_filter', lang)}")
     
-    col1, col2, col3, col4, col5 = st.columns([2, 1, 1, 1, 1])
+    col1, col2, col3, col4, col5, col6, col7 = st.columns([2, 1, 1, 1, 1, 1, 1])
     
     with col1:
         search_term = st.text_input(
@@ -1763,11 +1861,21 @@ def kindergartens_page():
         selected_curriculum = st.selectbox(get_text("curriculum", lang), curriculum_options)
     
     with col5:
+        funding_options = [get_text("all_funding", lang), get_text("subsidized", lang), get_text("private", lang)]
+        selected_funding = st.selectbox(get_text("funding_type", lang), funding_options)
+    
+    with col6:
+        through_train_options = [get_text("all_through_train", lang), get_text("through_train", lang), get_text("not_through_train", lang)]
+        selected_through_train = st.selectbox(get_text("through_train_status", lang), through_train_options)
+    
+    with col7:
         if st.button(get_text("clear_filters", lang)):
             search_term = ""
             selected_district = get_text("all_districts", lang)
             selected_school_type = get_text("all_types", lang)
             selected_curriculum = get_text("all_curriculums", lang)
+            selected_funding = get_text("all_funding", lang)
+            selected_through_train = get_text("all_through_train", lang)
             st.rerun()
     
     # Filter data
@@ -1798,6 +1906,18 @@ def kindergartens_page():
         elif selected_curriculum == get_text("international_curriculum", lang):
             filtered_df = filtered_df[filtered_df.get('curriculum', '') == '國際課程']
     
+    if selected_funding and selected_funding != get_text("all_funding", lang):
+        if selected_funding == get_text("subsidized", lang):
+            filtered_df = filtered_df[filtered_df.get('funding_type', '') == '資助']
+        elif selected_funding == get_text("private", lang):
+            filtered_df = filtered_df[filtered_df.get('funding_type', '') == '私立']
+    
+    if selected_through_train and selected_through_train != get_text("all_through_train", lang):
+        if selected_through_train == get_text("through_train", lang):
+            filtered_df = filtered_df[filtered_df.get('through_train', False) == True]
+        elif selected_through_train == get_text("not_through_train", lang):
+            filtered_df = filtered_df[filtered_df.get('through_train', False) == False]
+    
     # Results info
     st.markdown(f"**{get_text('showing_results', lang).format(count=len(filtered_df), total=len(df))}**")
     
@@ -1817,9 +1937,12 @@ def kindergartens_page():
                 <p><strong>School Type:</strong> {school.get('school_type', 'N/A')} / {school.get('school_type_en', 'N/A')}</p>
                 <p><strong>Curriculum:</strong> {school.get('curriculum', 'N/A')} / {school.get('curriculum_en', 'N/A')}</p>
                 <p><strong>Language:</strong> {school.get('language_of_instruction', 'N/A')} / {school.get('language_of_instruction_en', 'N/A')}</p>
+                <p><strong>Funding Type:</strong> {school.get('funding_type', 'N/A')} / {school.get('funding_type_en', 'N/A')}</p>
+                <p><strong>Through-train:</strong> {'✅ Yes' if school.get('through_train') else '❌ No'} / {school.get('through_train_en', 'N/A')}</p>
                 <p><strong>Student Capacity:</strong> {school.get('student_capacity', 'N/A')}</p>
                 <p><strong>Age Range:</strong> {school.get('age_range', 'N/A')}</p>
                 <p><strong>Address:</strong> {school.get('address_tc', 'N/A')}</p>
+                <p><strong>Address (English):</strong> {school.get('address_en', 'N/A')}</p>
                 <p><strong>Phone:</strong> {school.get('tel', 'N/A')}</p>
                 <p><strong>Email:</strong> {school.get('email', 'N/A')}</p>
                 <p><strong>Website:</strong> {'Available' if school.get('has_website') else 'Not available'}</p>
@@ -1854,6 +1977,12 @@ def kindergartens_page():
             if st.button(get_text("back_to_list", lang)):
                 st.session_state.selected_school = None
                 st.rerun()
+            
+            # Map link button
+            if school.get('address_en'):
+                address_for_map = school.get('address_en', '').replace(' ', '+')
+                map_url = f"https://www.google.com/maps/search/?api=1&query={address_for_map}"
+                st.link_button(get_text("view_on_map", lang), map_url)
             
             if school.get('has_website') and school.get('website'):
                 st.link_button(get_text("visit_website", lang), school.get('website'))
@@ -1917,6 +2046,7 @@ def kindergartens_page():
                         <p><strong>District:</strong> {school.get('district_en', 'N/A')}</p>
                         <p><strong>School No:</strong> {school.get('school_no', 'N/A')}</p>
                         <p><strong>Type:</strong> {school.get('school_type', 'N/A')} | <strong>Curriculum:</strong> {school.get('curriculum', 'N/A')}</p>
+                        <p><strong>Funding:</strong> {school.get('funding_type', 'N/A')} | <strong>Through-train:</strong> {'✅' if school.get('through_train') else '❌'}</p>
                         <p><strong>Language:</strong> {school.get('language_of_instruction', 'N/A')} | <strong>Capacity:</strong> {school.get('student_capacity', 'N/A')}</p>
                         <p><strong>Address:</strong> {school.get('address_tc', 'N/A')}</p>
                         <p><strong>Phone:</strong> {school.get('tel', 'N/A')}</p>
@@ -1926,6 +2056,12 @@ def kindergartens_page():
                 with col2:
                     if school.get('has_website', False) and school.get('website'):
                         st.link_button("🌐 Website", school.get('website', ''))
+                    
+                    # Map link button
+                    if school.get('address_en'):
+                        address_for_map = school.get('address_en', '').replace(' ', '+')
+                        map_url = f"https://www.google.com/maps/search/?api=1&query={address_for_map}"
+                        st.link_button("🗺️ Map", map_url)
                     
                     if st.button(f"📋 Details", key=f"details_{school['school_no']}"):
                         st.session_state.selected_school = school.to_dict()
