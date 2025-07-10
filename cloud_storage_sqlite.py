@@ -243,10 +243,8 @@ class SimpleCloudSQLite:
         self.db_name = db_name
         self.temp_db_path = None
     
-    def get_database_connection(self) -> Optional[sqlite3.Connection]:
-        """Get database connection with file upload/download"""
-        
-        # Check if database file is uploaded
+    def handle_file_upload(self):
+        """Handle file upload UI - call this before get_database_connection"""
         if 'database_file' not in st.session_state:
             st.markdown("""
             ## 📁 Database Setup
@@ -270,6 +268,14 @@ class SimpleCloudSQLite:
             if 'database_file' not in st.session_state:
                 with tempfile.NamedTemporaryFile(delete=False, suffix='.db') as tmp_file:
                     st.session_state.database_file = tmp_file.name
+    
+    def get_database_connection(self) -> Optional[sqlite3.Connection]:
+        """Get database connection - assumes handle_file_upload was called first"""
+        
+        # Check if database file is available
+        if 'database_file' not in st.session_state:
+            st.error("Database file not initialized. Call handle_file_upload() first.")
+            return None
         
         # Create connection
         try:

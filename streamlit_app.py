@@ -32,9 +32,8 @@ def get_db_manager():
         return db
 
 # Initialize database
-@st.cache_resource
 def init_database():
-    """Initialize database with caching"""
+    """Initialize database without caching to avoid widget issues"""
     return get_db_manager()
 
 # Get database instance
@@ -2264,7 +2263,7 @@ def add_to_application_tracker(school_no, school_name):
         return
     
     user_id = st.session_state.current_user['id']
-    success, message = db.add_to_tracker(user_id, school_no, school_name)
+    success, message = db_manager.add_to_tracker(user_id, school_no, school_name)
     if success:
         st.success(f"Added {school_name} to application tracker!")
     else:
@@ -2277,7 +2276,7 @@ def remove_from_application_tracker(school_no):
         return
     
     user_id = st.session_state.current_user['id']
-    success, message = db.remove_from_tracker(user_id, school_no)
+    success, message = db_manager.remove_from_tracker(user_id, school_no)
     if success:
         st.success(f"Removed school from application tracker!")
     else:
@@ -2289,18 +2288,18 @@ def add_notification(title, message, priority='medium'):
         return  # Can't add notification if not logged in
     
     user_id = st.session_state.current_user['id']
-    db.add_notification(user_id, title, message, priority)
+    db_manager.add_notification(user_id, title, message, priority)
 
 # Authentication functions
 def register_user(name, email, phone, password):
     """Register a new user using database, with verification and logging"""
     print(f"[DEBUG] Attempting to register user: {email}")
-    success, message = db.register_user(name, email, phone, password)
+    success, message = db_manager.register_user(name, email, phone, password)
     if not success:
         print(f"[ERROR] Registration failed for {email}: {message}")
         return False, message
     # Registration claimed success, verify user exists
-    user_check = db.login_user(email, password)
+    user_check = db_manager.login_user(email, password)
     if user_check[0] and user_check[2]:
         print(f"[DEBUG] Registration verified for {email}")
         return True, f"{message} (Verified: {user_check[2]['name']}, {user_check[2]['email']})"
@@ -2310,7 +2309,7 @@ def register_user(name, email, phone, password):
 
 def login_user(email, password):
     """Login a user using database"""
-    success, message, user = db.login_user(email, password)
+    success, message, user = db_manager.login_user(email, password)
     if success and user:
         st.session_state.user_logged_in = True
         st.session_state.current_user = user
@@ -2328,7 +2327,7 @@ def add_child_profile(child_name, date_of_birth, gender):
         return False, "Please login first"
     
     user_id = st.session_state.current_user['id']
-    success, message = db.add_child_profile(user_id, child_name, date_of_birth, gender)
+    success, message = db_manager.add_child_profile(user_id, child_name, date_of_birth, gender)
     return success, message
 
 def calculate_age(date_of_birth):
@@ -2351,7 +2350,7 @@ def submit_application(school_no, school_name, child_id, parent_name, parent_ema
     # Convert child_id to integer if it's a string
     if isinstance(child_id, str) and child_id.startswith('child_'):
         # This is a legacy child_id from session state, we need to find the actual child
-        child_profiles = db.get_child_profiles(user_id)
+        child_profiles = db_manager.get_child_profiles(user_id)
         if not child_profiles:
             return False, "No child profiles found. Please add a child profile first."
         child_id = child_profiles[0]['id']  # Use the first child profile
@@ -2362,7 +2361,7 @@ def submit_application(school_no, school_name, child_id, parent_name, parent_ema
     enhanced_notes = additional_notes or ""
     
     if selected_portfolio_items:
-        portfolio_items = db.get_portfolio_items(user_id, child_id)
+        portfolio_items = db_manager.get_portfolio_items(user_id, child_id)
         selected_items = [item for item in portfolio_items if item['id'] in selected_portfolio_items]
         if selected_items:
             enhanced_notes += "\n\n📋 Portfolio Items Included:\n"
@@ -2372,7 +2371,7 @@ def submit_application(school_no, school_name, child_id, parent_name, parent_ema
                     enhanced_notes += f"  Description: {item['description']}\n"
     
     if selected_personal_statement:
-        personal_statements = db.get_personal_statements(user_id, child_id)
+        personal_statements = db_manager.get_personal_statements(user_id, child_id)
         selected_statement = next((stmt for stmt in personal_statements if stmt['id'] == selected_personal_statement), None)
         if selected_statement:
             enhanced_notes += f"\n\n📝 Personal Statement Included:\n"
@@ -2381,7 +2380,7 @@ def submit_application(school_no, school_name, child_id, parent_name, parent_ema
                 enhanced_notes += f"  Target School: {selected_statement['target_school']}\n"
             enhanced_notes += f"  Content: {selected_statement['content'][:200]}...\n"
     
-    success, message = db.submit_application(
+    success, message = db_manager.submit_application(
         user_id, child_id, school_no, school_name, parent_name, 
         parent_email, parent_phone, preferred_start_date, enhanced_notes
     )
@@ -2424,7 +2423,7 @@ def initialize_test_data():
     # Check if test users already exist
     try:
         # Try to login with test user to see if they exist
-        success, _, user = db.login_user('john@example.com', 'password123')
+        success, _, user = db_manager.login_user('john@example.com', 'password123')
         if not success:
             # Create test users
             test_users = [
@@ -2434,28 +2433,28 @@ def initialize_test_data():
             ]
             
             for name, email, phone, password in test_users:
-                db.register_user(name, email, phone, password)
+                db_manager.register_user(name, email, phone, password)
             
             # Add child profiles for test users
-            success, _, john = db.login_user('john@example.com', 'password123')
+            success, _, john = db_manager.login_user('john@example.com', 'password123')
             if success:
-                db.add_child_profile(john['id'], 'Emma Smith', '2020-03-15', 'Female')
-                db.add_child_profile(john['id'], 'Michael Smith', '2019-08-22', 'Male')
+                db_manager.add_child_profile(john['id'], 'Emma Smith', '2020-03-15', 'Female')
+                db_manager.add_child_profile(john['id'], 'Michael Smith', '2019-08-22', 'Male')
             
-            success, _, mary = db.login_user('mary@example.com', 'password123')
+            success, _, mary = db_manager.login_user('mary@example.com', 'password123')
             if success:
-                db.add_child_profile(mary['id'], 'Sophie Wong', '2020-01-10', 'Female')
+                db_manager.add_child_profile(mary['id'], 'Sophie Wong', '2020-01-10', 'Female')
             
-            success, _, david = db.login_user('david@example.com', 'password123')
+            success, _, david = db_manager.login_user('david@example.com', 'password123')
             if success:
-                db.add_child_profile(david['id'], 'Alex Lee', '2019-12-05', 'Male')
+                db_manager.add_child_profile(david['id'], 'Alex Lee', '2019-12-05', 'Male')
             
             # Add some sample applications
-            success, _, john = db.login_user('john@example.com', 'password123')
+            success, _, john = db_manager.login_user('john@example.com', 'password123')
             if success:
-                child_profiles = db.get_child_profiles(john['id'])
+                child_profiles = db_manager.get_child_profiles(john['id'])
                 if child_profiles:
-                    db.submit_application(
+                    db_manager.submit_application(
                         john['id'], child_profiles[0]['id'], '0001', 
                         'CANNAN KINDERGARTEN (CENTRAL CAINE ROAD)', 'John Smith', 
                         'john@example.com', '+852 1234 5678', '2024-09-01', 
@@ -2463,12 +2462,12 @@ def initialize_test_data():
                     )
             
             # Add sample portfolio items
-            success, _, john = db.login_user('john@example.com', 'password123')
+            success, _, john = db_manager.login_user('john@example.com', 'password123')
             if success:
-                child_profiles = db.get_child_profiles(john['id'])
+                child_profiles = db_manager.get_child_profiles(john['id'])
                 if child_profiles:
                     # Add portfolio items for Emma
-                    db.add_portfolio_item(
+                    db_manager.add_portfolio_item(
                         john['id'], child_profiles[0]['id'], 
                         'My First Painting', 
                         'A colorful painting of a rainbow and sun', 
@@ -2476,7 +2475,7 @@ def initialize_test_data():
                         '/uploads/emma_painting.jpg', 
                         'Emma loves painting and this shows her creativity'
                     )
-                    db.add_portfolio_item(
+                    db_manager.add_portfolio_item(
                         john['id'], child_profiles[0]['id'], 
                         'Counting Numbers', 
                         'Video of Emma counting from 1 to 20', 
@@ -2484,7 +2483,7 @@ def initialize_test_data():
                         '/uploads/emma_counting.mp4', 
                         'Shows Emma\'s early math skills'
                     )
-                    db.add_portfolio_item(
+                    db_manager.add_portfolio_item(
                         john['id'], child_profiles[0]['id'], 
                         'Reading Certificate', 
                         'Certificate for completing 50 books', 
@@ -2494,11 +2493,11 @@ def initialize_test_data():
                     )
             
             # Add sample personal statements
-            success, _, john = db.login_user('john@example.com', 'password123')
+            success, _, john = db_manager.login_user('john@example.com', 'password123')
             if success:
-                child_profiles = db.get_child_profiles(john['id'])
+                child_profiles = db_manager.get_child_profiles(john['id'])
                 if child_profiles:
-                    db.add_personal_statement(
+                    db_manager.add_personal_statement(
                         john['id'], child_profiles[0]['id'],
                         'Emma\'s Introduction',
                         'Emma is a bright and curious 4-year-old who loves learning new things. She enjoys painting, reading, and playing with friends. Emma is very social and adapts well to new environments. She shows great enthusiasm for learning and is always eager to participate in activities.',
@@ -2506,7 +2505,7 @@ def initialize_test_data():
                         '1.0',
                         'General introduction for Emma'
                     )
-                    db.add_personal_statement(
+                    db_manager.add_personal_statement(
                         john['id'], child_profiles[0]['id'],
                         'Family Values Statement',
                         'Our family values education and believes in nurturing our child\'s natural curiosity and creativity. We support Emma\'s interests in arts and reading, and we believe that a well-rounded education will help her develop into a confident and capable individual.',
@@ -2516,17 +2515,17 @@ def initialize_test_data():
                     )
             
             # Add some tracked schools
-            success, _, john = db.login_user('john@example.com', 'password123')
+            success, _, john = db_manager.login_user('john@example.com', 'password123')
             if success:
-                db.add_to_tracker(john['id'], '0001', 'CANNAN KINDERGARTEN (CENTRAL CAINE ROAD)')
-                db.add_to_tracker(john['id'], '0004', 'HONG KONG INTERNATIONAL SCHOOL')
+                db_manager.add_to_tracker(john['id'], '0001', 'CANNAN KINDERGARTEN (CENTRAL CAINE ROAD)')
+                db_manager.add_to_tracker(john['id'], '0004', 'HONG KONG INTERNATIONAL SCHOOL')
             
             # Add some notifications
-            success, _, john = db.login_user('john@example.com', 'password123')
+            success, _, john = db_manager.login_user('john@example.com', 'password123')
             if success:
-                db.add_notification(john['id'], 'Welcome to School Portal!', 
+                db_manager.add_notification(john['id'], 'Welcome to School Portal!', 
                                   'Thank you for joining our platform. Start tracking schools to get notified about application dates.', 'low')
-                db.add_notification(john['id'], 'New Feature Available', 
+                db_manager.add_notification(john['id'], 'New Feature Available', 
                                   'Application tracking is now available! Monitor your preferred schools and get alerts.', 'medium')
             
             st.success("Test data initialized successfully!")
@@ -2587,7 +2586,7 @@ def main_navigation():
         # Count unread notifications from database
         unread_count = 0
         if st.session_state.user_logged_in and st.session_state.current_user:
-            notifications = db.get_notifications(st.session_state.current_user['id'], include_read=False)
+            notifications = db_manager.get_notifications(st.session_state.current_user['id'], unread_only=True)
             unread_count = len(notifications)
         notification_text = f"🔔 Notifications ({unread_count})" if unread_count > 0 else "🔔 Notifications"
         
@@ -3210,7 +3209,7 @@ def profile_page():
                         if new_name and new_email and new_phone:
                             # Update the user's profile in database
                             user_id = current_user['id']
-                            success, message = db.update_user_profile(user_id, new_name, new_email, new_phone)
+                            success, message = db_manager.update_user_profile(user_id, new_name, new_email, new_phone)
                             if success:
                                 # Update session state
                                 current_user['name'] = new_name
@@ -3238,7 +3237,7 @@ def profile_page():
     
     if st.session_state.get('current_user'):
         user_id = st.session_state.current_user['id']
-        child_profiles = db.get_child_profiles(user_id)
+        child_profiles = db_manager.get_child_profiles(user_id)
         
         if child_profiles:
             for child in child_profiles:
@@ -3284,7 +3283,7 @@ def profile_page():
     
     if st.session_state.get('current_user'):
         user_id = st.session_state.current_user['id']
-        applications = db.get_applications(user_id)
+        applications = db_manager.get_applications(user_id)
         
         if applications:
             for app in applications:
@@ -3349,7 +3348,7 @@ def application_tracker_page():
     
     if st.session_state.get('current_user'):
         user_id = st.session_state.current_user['id']
-        tracked_schools = db.get_tracked_schools(user_id)
+        tracked_schools = db_manager.get_tracked_schools(user_id)
         
         if tracked_schools:
             for school in tracked_schools:
@@ -3442,7 +3441,7 @@ def application_form_page():
         return
     
     user_id = st.session_state.current_user['id']
-    child_profiles = db.get_child_profiles(user_id)
+    child_profiles = db_manager.get_child_profiles(user_id)
     
     if not child_profiles:
         st.warning("No child profiles found. Please add a child profile first.")
@@ -3512,8 +3511,8 @@ def application_form_page():
         st.markdown("### 🎨 Portfolio & Personal Statement")
         
         # Get portfolio items and personal statements for the selected child
-        portfolio_items = db.get_portfolio_items(user_id, selected_child_id)
-        personal_statements = db.get_personal_statements(user_id, selected_child_id)
+        portfolio_items = db_manager.get_portfolio_items(user_id, selected_child_id)
+        personal_statements = db_manager.get_personal_statements(user_id, selected_child_id)
         
         col1, col2 = st.columns(2)
         
@@ -3621,11 +3620,11 @@ def notifications_page():
         show_read = st.checkbox("Show read notifications")
     with col2:
         if st.button("Mark All as Read"):
-            db.mark_all_notifications_read(user_id)
+            db_manager.mark_all_notifications_read(user_id)
             st.rerun()
     
     # Display notifications
-    notifications = db.get_notifications(user_id, include_read=show_read)
+    notifications = db_manager.get_notifications(user_id, unread_only=not show_read)
     
     if not notifications:
         st.info("No notifications to display.")
@@ -3653,7 +3652,7 @@ def notifications_page():
                 with col2:
                     if not notification['read']:
                         if st.button("✓ Read", key=f"read_{notification['id']}"):
-                            db.mark_notification_read(notification['id'])
+                            db_manager.mark_notification_read(notification['id'])
                             st.rerun()
                 
                 st.markdown("---")
@@ -3706,7 +3705,7 @@ def applications_page():
         return
     
     user_id = st.session_state.current_user['id']
-    applications = db.get_applications(user_id)
+    applications = db_manager.get_applications(user_id)
     
     if applications:
         for app in applications:
@@ -3746,7 +3745,7 @@ def portfolio_page():
         return
     
     user_id = st.session_state.current_user['id']
-    child_profiles = db.get_child_profiles(user_id)
+    child_profiles = db_manager.get_child_profiles(user_id)
     
     if not child_profiles:
         st.warning("Please add a child profile first before managing portfolio items.")
@@ -3764,7 +3763,7 @@ def portfolio_page():
     
     with tab1:
         # Display portfolio items
-        portfolio_items = db.get_portfolio_items(user_id, selected_child_id)
+        portfolio_items = db_manager.get_portfolio_items(user_id, selected_child_id)
         
         if not portfolio_items:
             st.info(get_text("no_portfolio_items", lang))
@@ -3797,7 +3796,7 @@ def portfolio_page():
                             st.rerun()
                         
                         if st.button(f"🗑️ {get_text('delete_portfolio_item', lang)}", key=f"delete_{item['id']}"):
-                            success, message = db.delete_portfolio_item(item['id'])
+                            success, message = db_manager.delete_portfolio_item(item['id'])
                             if success:
                                 st.success(message)
                                 st.rerun()
@@ -3831,7 +3830,7 @@ def portfolio_page():
             
             if submitted:
                 if title and description and item_date:
-                    success, message = db.add_portfolio_item(
+                    success, message = db_manager.add_portfolio_item(
                         user_id, selected_child_id, title, description, 
                         category, item_date.strftime('%Y-%m-%d'), 
                         attachment_path if attachment_path else None, 
@@ -3847,7 +3846,7 @@ def portfolio_page():
     
     with tab3:
         # Portfolio statistics
-        portfolio_items = db.get_portfolio_items(user_id, selected_child_id)
+        portfolio_items = db_manager.get_portfolio_items(user_id, selected_child_id)
         
         if portfolio_items:
             st.markdown("### 📊 Portfolio Statistics")
@@ -3885,7 +3884,7 @@ def personal_statements_page():
         return
     
     user_id = st.session_state.current_user['id']
-    child_profiles = db.get_child_profiles(user_id)
+    child_profiles = db_manager.get_child_profiles(user_id)
     
     if not child_profiles:
         st.warning("Please add a child profile first before managing personal statements.")
@@ -3903,7 +3902,7 @@ def personal_statements_page():
     
     with tab1:
         # Display personal statements
-        statements = db.get_personal_statements(user_id, selected_child_id)
+        statements = db_manager.get_personal_statements(user_id, selected_child_id)
         
         if not statements:
             st.info(get_text("no_personal_statements", lang))
@@ -3929,7 +3928,7 @@ def personal_statements_page():
                             st.rerun()
                         
                         if st.button(f"🗑️ {get_text('delete_personal_statement', lang)}", key=f"delete_{statement['id']}"):
-                            success, message = db.delete_personal_statement(statement['id'])
+                            success, message = db_manager.delete_personal_statement(statement['id'])
                             if success:
                                 st.success(message)
                                 st.rerun()
@@ -3955,7 +3954,7 @@ def personal_statements_page():
             
             if submitted:
                 if title and content:
-                    success, message = db.add_personal_statement(
+                    success, message = db_manager.add_personal_statement(
                         user_id, selected_child_id, title, content,
                         target_school if target_school else None,
                         version,
@@ -3971,7 +3970,7 @@ def personal_statements_page():
     
     with tab3:
         # Personal statement statistics
-        statements = db.get_personal_statements(user_id, selected_child_id)
+        statements = db_manager.get_personal_statements(user_id, selected_child_id)
         
         if statements:
             st.markdown("### 📊 Personal Statement Statistics")
@@ -4005,14 +4004,14 @@ def admin_utilities():
     col1, col2 = st.columns(2)
     with col1:
         if st.button('Delete User and All Data', key='admin_delete'):
-            if db.reset_user_by_email(email):
+            if db_manager.reset_user_by_email(email):
                 st.success(f'User {email} and all related data deleted.')
             else:
                 st.error('User not found or error occurred.')
     with col2:
         new_pw = st.text_input('Set New Password', type='password', key='admin_newpw')
         if st.button('Set Password', key='admin_setpw'):
-            if db.set_user_password(email, new_pw):
+            if db_manager.set_user_password(email, new_pw):
                 st.success(f'Password for {email} updated.')
             else:
                 st.error('User not found or error occurred.')
@@ -4024,9 +4023,9 @@ def main():
     if st.session_state.get('show_debug_info', False):
         st.sidebar.markdown("---")
         st.sidebar.markdown("### 🐛 Debug Info")
-        st.sidebar.write(f"Database path: {db.db_path}")
-        st.sidebar.write(f"Streamlit Cloud: {db.is_streamlit_cloud}")
-        st.sidebar.write(f"Total users: {len(db.get_all_users())}")
+        st.sidebar.write(f"Database path: {db_manager.db_path}")
+        st.sidebar.write(f"Streamlit Cloud: {db_manager.is_streamlit_cloud}")
+        st.sidebar.write(f"Total users: {len(db_manager.get_all_users())}")
         
         if st.sidebar.button("Toggle Debug"):
             st.session_state.show_debug_info = not st.session_state.get('show_debug_info', False)
@@ -4034,10 +4033,10 @@ def main():
     
     # Show database status in main area if in debug mode
     if st.session_state.get('show_debug_info', False):
-        st.info(f"🔧 Debug Mode: Database = {db.db_path}, Cloud = {db.is_streamlit_cloud}")
+        st.info(f"🔧 Debug Mode: Database = {db_manager.db_path}, Cloud = {db_manager.is_streamlit_cloud}")
         
         # Show all users for debugging
-        users = db.get_all_users()
+        users = db_manager.get_all_users()
         if users:
             st.write("**Current users in database:**")
             for user in users:
