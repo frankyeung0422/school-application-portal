@@ -9,8 +9,8 @@ import os
 
 def setup_guide():
     st.title("🔧 Google Drive Setup Guide")
-    
-    st.markdown("""
+
+st.markdown("""
     ## 📋 Complete Setup Instructions
     
     Follow these steps to set up Google Drive storage for your application.
