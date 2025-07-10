@@ -35,10 +35,14 @@ def get_db_manager():
         except Exception as e:
             st.write(f"🔧 Debug: Error checking Google Drive secrets: {e}")
         
-        if os.getenv('STREAMLIT_CLOUD') and CLOUD_DB_AVAILABLE:
+        # Check if Google Drive secrets are available
+        google_drive_secrets = st.secrets.get('GOOGLE_DRIVE', {})
+        has_google_drive_secrets = bool(google_drive_secrets) and 'CREDENTIALS' in google_drive_secrets and 'FOLDER_ID' in google_drive_secrets
+        
+        if has_google_drive_secrets and CLOUD_DB_AVAILABLE:
             st.write("🔧 Debug: Attempting to use Google Drive storage")
             try:
-                # Use Google Drive in Streamlit Cloud
+                # Use Google Drive (available both locally and on Streamlit Cloud)
                 db_manager = CloudDatabaseManager(storage_type="google_drive")
                 st.write(f"🔧 Debug: Google Drive initialization result: {db_manager.storage_type}")
                 return db_manager
@@ -47,7 +51,7 @@ def get_db_manager():
                 st.write("🔧 Debug: Falling back to simple cloud storage")
                 return CloudDatabaseManager(storage_type="simple_cloud")
         elif CLOUD_DB_AVAILABLE:
-            st.write("🔧 Debug: Using simple cloud storage (not on Streamlit Cloud or Google Drive failed)")
+            st.write("🔧 Debug: Using simple cloud storage (Google Drive secrets not available)")
             # Use simple cloud storage for development
             return CloudDatabaseManager(storage_type="simple_cloud")
         else:
