@@ -3106,12 +3106,12 @@ def kindergartens_page():
                         st.write("DEBUG: Login button clicked!")
                         st.session_state.show_login_modal = True
                         st.write(f"DEBUG: Set show_login_modal to {st.session_state.show_login_modal}")
-                        st.rerun()
+                        # Remove st.rerun() to see if session state persists
                 
                 with col2:
                     if st.button("📝 Register", use_container_width=True):
                         st.session_state.show_register_modal = True
-                        st.rerun()
+                        # Remove st.rerun() to see if session state persists
         
         st.markdown("---")
     
@@ -3165,7 +3165,7 @@ def kindergartens_page():
                             st.write("DEBUG: Login to Track button clicked!")
                             st.session_state.show_login_modal = True
                             st.write(f"DEBUG: Set show_login_modal to {st.session_state.show_login_modal}")
-                            st.rerun()
+                            # Remove st.rerun() to see if session state persists
                 
                 st.markdown("---")
     else:
