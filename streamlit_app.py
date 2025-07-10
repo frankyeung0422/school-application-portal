@@ -2452,10 +2452,7 @@ if 'selected_language' not in st.session_state:
     st.session_state.selected_language = 'en'
 if 'current_page' not in st.session_state:
     st.session_state.current_page = 'home'
-if 'show_login_modal' not in st.session_state:
-    st.session_state.show_login_modal = False
-if 'show_register_modal' not in st.session_state:
-    st.session_state.show_register_modal = False
+
 if 'show_login_form' not in st.session_state:
     st.session_state.show_login_form = False
 if 'show_register_form' not in st.session_state:
@@ -2673,11 +2670,11 @@ def main_navigation():
             col_a, col_b = st.columns(2)
             with col_a:
                 if st.button("Login", use_container_width=True):
-                    st.session_state.show_login = True
+                    st.session_state.show_login_form = True
                     st.rerun()
             with col_b:
                 if st.button("Register", use_container_width=True):
-                    st.session_state.show_register = True
+                    st.session_state.show_register_form = True
                     st.rerun()
 
 # Authentication modals
@@ -4091,6 +4088,10 @@ def admin_utilities():
 # Main app logic
 def main():
     """Main application logic"""
+    
+    # Debug: Show current form states
+    st.write(f"DEBUG: show_login_form = {st.session_state.get('show_login_form', False)}")
+    st.write(f"DEBUG: show_register_form = {st.session_state.get('show_register_form', False)}")
     
     # Show authentication forms first if needed
     if st.session_state.get('show_login_form', False):
