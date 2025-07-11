@@ -4235,6 +4235,153 @@ def personal_statements_page():
         else:
             st.info("No personal statements to display statistics for.")
 
+def primary_schools_page():
+    """Primary schools page with search, filter, and application features"""
+    lang = st.session_state.selected_language
+    
+    st.markdown(f'<h1 class="main-header">🎓 {get_text("primary_schools", lang)}</h1>', unsafe_allow_html=True)
+    
+    # Load primary school data
+    primary_schools = load_primary_school_data()
+    
+    if not primary_schools:
+        st.warning("No primary school data available.")
+        return
+    
+    # Search and filter section
+    st.markdown("### 🔍 Search & Filter")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        search_term = st.text_input("Search schools...", placeholder="School name or district")
+    
+    with col2:
+        district_filter = st.selectbox(
+            "District",
+            ["All Districts"] + list(set(ps.get('district_en', '') for ps in primary_schools if ps.get('district_en')))
+        )
+    
+    with col3:
+        curriculum_filter = st.selectbox(
+            "Curriculum",
+            ["All Curriculums"] + list(set(ps.get('curriculum', '') for ps in primary_schools if ps.get('curriculum')))
+        )
+    
+    # Filter schools based on search and filters
+    filtered_schools = primary_schools
+    
+    if search_term:
+        search_lower = search_term.lower()
+        filtered_schools = [
+            ps for ps in filtered_schools
+            if (search_lower in ps.get('name_en', '').lower() or
+                search_lower in ps.get('name_tc', '').lower() or
+                search_lower in ps.get('district_en', '').lower())
+        ]
+    
+    if district_filter != "All Districts":
+        filtered_schools = [ps for ps in filtered_schools if ps.get('district_en') == district_filter]
+    
+    if curriculum_filter != "All Curriculums":
+        filtered_schools = [ps for ps in filtered_schools if ps.get('curriculum') == curriculum_filter]
+    
+    # Display results
+    st.markdown(f"### 📚 Primary Schools ({len(filtered_schools)} found)")
+    
+    if not filtered_schools:
+        st.info("No schools match your search criteria.")
+        return
+    
+    # Display schools in cards
+    for i, school in enumerate(filtered_schools):
+        with st.container():
+            st.markdown("---")
+            
+            col1, col2, col3 = st.columns([3, 1, 1])
+            
+            with col1:
+                st.markdown(f"**{school.get('name_en', 'N/A')}**")
+                if school.get('name_tc'):
+                    st.markdown(f"*{school.get('name_tc')}*")
+                
+                st.markdown(f"📍 **District:** {school.get('district_en', 'N/A')}")
+                
+                if school.get('address_en'):
+                    st.markdown(f"🏠 **Address:** {school.get('address_en')}")
+                
+                if school.get('tel'):
+                    st.markdown(f"📞 **Phone:** {school.get('tel')}")
+                
+                if school.get('curriculum'):
+                    st.markdown(f"📖 **Curriculum:** {school.get('curriculum')}")
+                
+                if school.get('funding_type'):
+                    st.markdown(f"💰 **Funding:** {school.get('funding_type')}")
+                
+                if school.get('language_of_instruction'):
+                    st.markdown(f"🗣️ **Language:** {school.get('language_of_instruction')}")
+                
+                if school.get('student_capacity'):
+                    st.markdown(f"👥 **Capacity:** {school.get('student_capacity')} students")
+                
+                if school.get('through_train'):
+                    st.markdown("✅ **Through-train School**")
+            
+            with col2:
+                if school.get('website'):
+                    st.markdown(f"🌐 **Website:**")
+                    st.markdown(f"[Visit Website]({school.get('website')})")
+                
+                if school.get('application_page'):
+                    st.markdown(f"📝 **Application:**")
+                    st.markdown(f"[Apply Online]({school.get('application_page')})")
+            
+            with col3:
+                # Track button
+                if st.session_state.user_logged_in:
+                    if st.button("📊 Track", key=f"track_ps_{i}"):
+                        add_to_application_tracker(school.get('school_no', ''), school.get('name_en', ''))
+                        st.success(f"Added {school.get('name_en', '')} to your tracker!")
+                        st.rerun()
+                    
+                    # Apply button
+                    if st.button("📝 Apply", key=f"apply_ps_{i}"):
+                        st.session_state.selected_school = {
+                            'school_no': school.get('school_no', ''),
+                            'name': school.get('name_en', ''),
+                            'type': 'primary'
+                        }
+                        st.session_state.show_application_form = True
+                        st.rerun()
+                else:
+                    st.info("Login to track or apply")
+                    if st.button("📊 Track", key=f"track_ps_{i}"):
+                        st.warning("Please log in to track schools")
+                    if st.button("📝 Apply", key=f"apply_ps_{i}"):
+                        st.warning("Please log in to apply")
+    
+    # Statistics section
+    st.markdown("---")
+    st.markdown("### 📊 Primary School Statistics")
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.metric("Total Schools", len(primary_schools))
+    
+    with col2:
+        districts = set(ps.get('district_en', '') for ps in primary_schools if ps.get('district_en'))
+        st.metric("Districts", len(districts))
+    
+    with col3:
+        international_schools = len([ps for ps in primary_schools if 'international' in ps.get('curriculum', '').lower()])
+        st.metric("International Schools", international_schools)
+    
+    with col4:
+        through_train_schools = len([ps for ps in primary_schools if ps.get('through_train')])
+        st.metric("Through-train Schools", through_train_schools)
+
 def admin_utilities():
     st.markdown('---')
     st.markdown('## 🛠️ Admin Utilities')
@@ -4297,6 +4444,8 @@ def main():
             personal_statements_page()
         elif st.session_state.current_page == 'profile':
             profile_page()
+        elif st.session_state.current_page == 'primary_schools':
+            primary_schools_page()
         elif st.session_state.current_page == 'about':
             about_page()
     # At the end, show admin utilities if enabled
