@@ -589,9 +589,13 @@ class SupabaseDatabaseManager:
                 'date_updated': last_checked or datetime.now().isoformat()
             }
             
-            # Add application info if provided
+            # Add application info if provided and column exists
             if application_info:
-                data['application_info'] = json.dumps(application_info)
+                try:
+                    data['application_info'] = json.dumps(application_info)
+                except Exception:
+                    # If application_info column doesn't exist, skip it
+                    pass
             
             result = self.supabase.table('application_tracking').update(data).eq('user_id', user_id).eq('school_no', school_no).execute()
             if result.data:
@@ -721,4 +725,30 @@ class SupabaseDatabaseManager:
     @property
     def is_streamlit_cloud(self) -> bool:
         """Check if running on Streamlit Cloud"""
-        return os.environ.get('STREAMLIT_SERVER_RUN_ON_IP') is not None 
+        return os.environ.get('STREAMLIT_SERVER_RUN_ON_IP') is not None
+    
+    def get_all_kindergartens(self) -> List[Dict]:
+        """Get all kindergarten data from database"""
+        try:
+            if not self.supabase:
+                return []
+            
+            result = self.supabase.table('kindergartens').select('*').order('name_en').execute()
+            return result.data
+            
+        except Exception as e:
+            print(f"Error getting kindergartens: {e}")
+            return []
+    
+    def get_all_primary_schools(self) -> List[Dict]:
+        """Get all primary school data from database"""
+        try:
+            if not self.supabase:
+                return []
+            
+            result = self.supabase.table('primary_schools').select('*').order('name_en').execute()
+            return result.data
+            
+        except Exception as e:
+            print(f"Error getting primary schools: {e}")
+            return [] 

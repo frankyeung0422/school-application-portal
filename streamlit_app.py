@@ -154,23 +154,38 @@ st.markdown("""
 # Load kindergarten data
 @st.cache_data
 def load_kindergarten_data():
-    """Load kindergarten data from JSON file"""
+    """Load kindergarten data from database"""
     try:
-        # Try to load from the backend directory
-        data_path = os.path.join("backend", "scraped_data.json")
-        if os.path.exists(data_path):
-            with open(data_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                if isinstance(data, list) and len(data) > 0:
-                    # Enhance the data with additional information
-                    enhanced_data = enhance_kindergarten_data(data)
-                    return enhanced_data
-                else:
-                    st.warning("Data file is empty or invalid format")
-        else:
-            pass
+        db = get_db()
+        if db:
+            # Try to get data from database first
+            kindergartens = db.get_all_kindergartens()
+            if kindergartens:
+                # Convert to the expected format
+                data = []
+                for kg in kindergartens:
+                    data.append({
+                        "school_no": kg.get('school_no', ''),
+                        "name_tc": kg.get('name_tc', ''),
+                        "name_en": kg.get('name_en', ''),
+                        "district_tc": kg.get('district_tc', ''),
+                        "district_en": kg.get('district_en', ''),
+                        "website": kg.get('website', ''),
+                        "application_page": kg.get('application_page', ''),
+                        "has_website": kg.get('has_website', False),
+                        "website_verified": kg.get('website_verified', False),
+                        "tel": kg.get('tel', ''),
+                        "curriculum": kg.get('curriculum', ''),
+                        "funding_type": kg.get('funding_type', ''),
+                        "through_train": kg.get('through_train', False),
+                        "language_of_instruction": kg.get('language_of_instruction', ''),
+                        "student_capacity": kg.get('student_capacity', ''),
+                        "last_updated": kg.get('last_updated', ''),
+                        "source": kg.get('source', '')
+                    })
+                return data
         
-        # Fallback to sample data with enhanced information
+        # Fallback to sample data if database is empty
         data = [
             {
                 "school_no": "0001",
@@ -294,30 +309,44 @@ def load_kindergarten_data():
 
 @st.cache_data
 def load_primary_school_data():
-    """Load primary school data"""
+    """Load primary school data from database"""
     try:
-        # Try to load from the backend directory
-        data_path = os.path.join("backend", "primary_school_data.json")
-        if os.path.exists(data_path):
-            with open(data_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                if isinstance(data, list) and len(data) > 0:
-                    # Enhance the data with additional information
-                    enhanced_data = enhance_primary_school_data(data)
-                    st.success(f"Successfully loaded {len(enhanced_data)} primary school records")
-                    return enhanced_data
-                else:
-                    st.warning("Primary school data file is empty or invalid format")
-        else:
-            pass
+        db = get_db()
+        if db:
+            # Try to get data from database first
+            primary_schools = db.get_all_primary_schools()
+            if primary_schools:
+                # Convert to the expected format
+                data = []
+                for ps in primary_schools:
+                    data.append({
+                        "school_no": ps.get('school_no', ''),
+                        "name_tc": ps.get('name_tc', ''),
+                        "name_en": ps.get('name_en', ''),
+                        "district_tc": ps.get('district_tc', ''),
+                        "district_en": ps.get('district_en', ''),
+                        "website": ps.get('website', ''),
+                        "application_page": ps.get('application_page', ''),
+                        "has_website": ps.get('has_website', False),
+                        "website_verified": ps.get('website_verified', False),
+                        "tel": ps.get('tel', ''),
+                        "curriculum": ps.get('curriculum', ''),
+                        "funding_type": ps.get('funding_type', ''),
+                        "through_train": ps.get('through_train', False),
+                        "language_of_instruction": ps.get('language_of_instruction', ''),
+                        "student_capacity": ps.get('student_capacity', ''),
+                        "last_updated": ps.get('last_updated', ''),
+                        "source": ps.get('source', ''),
+                        "school_level": "primary",
+                        "grade_levels": "P1-P6",
+                        "school_system": ps.get('curriculum', '').lower()
+                    })
+                return data
         
-        # Fallback to sample data with enhanced information
+        # Fallback to sample data if database is empty
         data = create_sample_primary_school_data()
         enhanced_data = enhance_primary_school_data(data)
         return enhanced_data
-    except json.JSONDecodeError as e:
-        st.error(f"Error parsing JSON data: {e}")
-        return []
     except Exception as e:
         st.error(f"Error loading primary school data: {e}")
         return []
@@ -3156,9 +3185,20 @@ def kindergartens_page():
                                     st.rerun()
                                 else:
                                     st.error(message)
+                        
+                        # Apply button
+                        if st.button("📝 Apply", key=f"apply_{school['school_no']}", use_container_width=True):
+                            st.session_state.show_application_form = True
+                            st.session_state.selected_school = school.to_dict()
+                            st.rerun()
                     else:
                         # Show login prompt for non-logged in users
                         if st.button("🔐 Login to Track", key=f"login_track_{school['school_no']}"):
+                            st.session_state.show_login_form = True
+                            st.rerun()
+                        
+                        # Apply button for non-logged in users
+                        if st.button("📝 Apply", key=f"apply_{school['school_no']}", use_container_width=True):
                             st.session_state.show_login_form = True
                             st.rerun()
                 
@@ -3525,12 +3565,12 @@ def application_tracker_page():
                                 analysis = analyze_application_content(selected_status['content'])
                                 
                                 # Update the tracker status in database
+                                # Only update status and date_updated, skip application_info for now
                                 success, message = get_db().update_tracker_status(
                                     user_id, 
                                     school['school_no'], 
                                     analysis['status'],
-                                    datetime.now().isoformat(),
-                                    analysis
+                                    datetime.now().isoformat()
                                 )
                                 
                                 if success:

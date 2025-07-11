@@ -1177,4 +1177,42 @@ class CloudDatabaseManager:
                 return True, "Tracker status updated successfully"
             return False, "Failed to update tracker status"
         except Exception as e:
-            return False, f"Error updating tracker status: {str(e)}" 
+            return False, f"Error updating tracker status: {str(e)}"
+    
+    def get_all_kindergartens(self) -> List[Dict]:
+        """Get all kindergarten data from database"""
+        try:
+            if self.storage_manager and hasattr(self.storage_manager, 'supabase') and self.storage_manager.supabase:
+                return self.storage_manager.get_all_kindergartens()
+            elif self.conn:
+                cursor = self.conn.cursor()
+                cursor.execute('''
+                    SELECT * FROM kindergartens ORDER BY name_en
+                ''')
+                columns = [description[0] for description in cursor.description]
+                rows = cursor.fetchall()
+                return [dict(zip(columns, row)) for row in rows]
+            else:
+                return []
+        except Exception as e:
+            print(f"Error getting kindergartens: {e}")
+            return []
+    
+    def get_all_primary_schools(self) -> List[Dict]:
+        """Get all primary school data from database"""
+        try:
+            if self.storage_manager and hasattr(self.storage_manager, 'supabase') and self.storage_manager.supabase:
+                return self.storage_manager.get_all_primary_schools()
+            elif self.conn:
+                cursor = self.conn.cursor()
+                cursor.execute('''
+                    SELECT * FROM primary_schools ORDER BY name_en
+                ''')
+                columns = [description[0] for description in cursor.description]
+                rows = cursor.fetchall()
+                return [dict(zip(columns, row)) for row in rows]
+            else:
+                return []
+        except Exception as e:
+            print(f"Error getting primary schools: {e}")
+            return [] 

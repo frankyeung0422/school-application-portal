@@ -1,0 +1,62 @@
+2025-07-11 08:22:25,817 - INFO - Starting full Hong Kong school data scraping process...
+2025-07-11 08:22:25,818 - INFO - Starting EDB kindergarten data scraping...
+2025-07-11 08:22:25,972 - ERROR - Error accessing EDB kindergarten page: 404 Client Error: Not Found for url: https://www.edb.gov.hk/en/edu-system/preprimary-kindergarten/quality-assurance-framework/kindergarten-profile/
+2025-07-11 08:22:25,973 - INFO - Completed EDB kindergarten scraping. Found 5 schools.
+2025-07-11 08:22:25,973 - INFO - Starting school website scraping...
+2025-07-11 08:22:25,973 - INFO - Scraping website for: Victoria Educational Organisation - Causeway Bay
+2025-07-11 08:22:29,764 - INFO - Scraping website for: St. Catherine's International Kindergarten
+2025-07-11 08:22:32,427 - INFO - Scraping website for: Woodland Pre-Schools
+2025-07-11 08:22:32,598 - ERROR - Error scraping website for Woodland Pre-Schools: HTTPSConnectionPool(host='www.woodland.com.hk', port=443): Max retries exceeded with url: / (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x0000022239518910>: Failed to establish a new connection: [Errno 11002] getaddrinfo failed'))
+2025-07-11 08:22:32,598 - INFO - Scraping website for: ESF International Kindergarten
+2025-07-11 08:22:35,475 - INFO - Scraping website for: Hong Kong Preschool Learning Academy
+2025-07-11 08:22:35,493 - ERROR - Error scraping website for Hong Kong Preschool Learning Academy: HTTPSConnectionPool(host='www.hkpla.edu.hk', port=443): Max retries exceeded with url: / (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x0000022239519A90>: Failed to establish a new connection: [Errno 11001] getaddrinfo failed'))
+2025-07-11 08:22:35,493 - INFO - Completed school website scraping.
+2025-07-11 08:22:35,495 - INFO - Saved 5 schools to scraped_data\kindergartens_20250711_082235.json
+2025-07-11 08:22:35,574 - INFO - Updated database table kindergartens with 5 schools
+2025-07-11 08:22:35,574 - INFO - Starting EDB primary school data scraping...
+2025-07-11 08:22:35,591 - ERROR - Error accessing EDB primary school page: 404 Client Error: Not Found for url: https://www.edb.gov.hk/en/edu-system/primary-secondary/applicable-to-primary/primary-1-admission/
+2025-07-11 08:22:35,591 - INFO - Completed EDB primary school scraping. Found 5 schools.
+2025-07-11 08:22:35,591 - INFO - Starting school website scraping...
+2025-07-11 08:22:35,592 - INFO - Scraping website for: Diocesan Preparatory School
+2025-07-11 08:22:35,637 - ERROR - Error scraping website for Diocesan Preparatory School: HTTPSConnectionPool(host='www.dps.edu.hk', port=443): Max retries exceeded with url: / (Caused by SSLError(SSLEOFError(8, '[SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1028)')))
+2025-07-11 08:22:35,637 - INFO - Scraping website for: St. Paul's Co-educational College Primary School
+2025-07-11 08:22:35,709 - ERROR - Error scraping website for St. Paul's Co-educational College Primary School: HTTPSConnectionPool(host='www.spccps.edu.hk', port=443): Max retries exceeded with url: / (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2025-07-11 08:22:35,709 - INFO - Scraping website for: Marymount Primary School
+2025-07-11 08:22:37,606 - INFO - Scraping website for: La Salle Primary School
+2025-07-11 08:22:40,525 - INFO - Scraping website for: St. Stephen's Girls' Primary School
+2025-07-11 08:22:43,452 - INFO - Completed school website scraping.
+2025-07-11 08:22:43,454 - INFO - Saved 5 schools to scraped_data\primary_schools_20250711_082243.json
+2025-07-11 08:22:43,496 - INFO - Updated database table primary_schools with 5 schools
+2025-07-11 08:22:43,496 - INFO - Full scraping completed in 0:00:17.678515
+2025-07-11 08:22:43,497 - INFO - Total schools scraped: 10
+2025-07-11 08:25:02,891 - INFO - Starting full Hong Kong school data scraping process...
+2025-07-11 08:25:02,892 - INFO - Starting EDB kindergarten data scraping...
+2025-07-11 08:25:02,972 - ERROR - Error accessing EDB kindergarten page: 404 Client Error: Not Found for url: https://www.edb.gov.hk/en/edu-system/preprimary-kindergarten/quality-assurance-framework/kindergarten-profile/
+2025-07-11 08:25:02,973 - INFO - Completed EDB kindergarten scraping. Found 5 schools.
+2025-07-11 08:25:02,974 - INFO - Starting school website scraping...
+2025-07-11 08:25:02,975 - INFO - Scraping website for: Victoria Educational Organisation - Causeway Bay
+2025-07-11 08:25:06,869 - INFO - Scraping website for: St. Catherine's International Kindergarten
+2025-07-11 08:25:10,636 - INFO - Scraping website for: Woodland Pre-Schools
+2025-07-11 08:25:10,653 - ERROR - Error scraping website for Woodland Pre-Schools: HTTPSConnectionPool(host='www.woodland.com.hk', port=443): Max retries exceeded with url: / (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x00000249672C8910>: Failed to establish a new connection: [Errno 11002] getaddrinfo failed'))
+2025-07-11 08:25:10,654 - INFO - Scraping website for: ESF International Kindergarten
+2025-07-11 08:25:12,160 - INFO - Scraping website for: Hong Kong Preschool Learning Academy
+2025-07-11 08:25:12,171 - ERROR - Error scraping website for Hong Kong Preschool Learning Academy: HTTPSConnectionPool(host='www.hkpla.edu.hk', port=443): Max retries exceeded with url: / (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x00000249672C9A90>: Failed to establish a new connection: [Errno 11001] getaddrinfo failed'))
+2025-07-11 08:25:12,172 - INFO - Completed school website scraping.
+2025-07-11 08:25:12,176 - INFO - Saved 5 schools to scraped_data\kindergartens_20250711_082512.json
+2025-07-11 08:25:12,196 - INFO - Updated database table kindergartens with 5 schools
+2025-07-11 08:25:12,196 - INFO - Starting EDB primary school data scraping...
+2025-07-11 08:25:12,214 - ERROR - Error accessing EDB primary school page: 404 Client Error: Not Found for url: https://www.edb.gov.hk/en/edu-system/primary-secondary/applicable-to-primary/primary-1-admission/
+2025-07-11 08:25:12,214 - INFO - Completed EDB primary school scraping. Found 5 schools.
+2025-07-11 08:25:12,215 - INFO - Starting school website scraping...
+2025-07-11 08:25:12,215 - INFO - Scraping website for: Diocesan Preparatory School
+2025-07-11 08:25:12,249 - ERROR - Error scraping website for Diocesan Preparatory School: HTTPSConnectionPool(host='www.dps.edu.hk', port=443): Max retries exceeded with url: / (Caused by SSLError(SSLEOFError(8, '[SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1028)')))
+2025-07-11 08:25:12,250 - INFO - Scraping website for: St. Paul's Co-educational College Primary School
+2025-07-11 08:25:12,283 - ERROR - Error scraping website for St. Paul's Co-educational College Primary School: HTTPSConnectionPool(host='www.spccps.edu.hk', port=443): Max retries exceeded with url: / (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2025-07-11 08:25:12,284 - INFO - Scraping website for: Marymount Primary School
+2025-07-11 08:25:15,528 - INFO - Scraping website for: La Salle Primary School
+2025-07-11 08:25:18,663 - INFO - Scraping website for: St. Stephen's Girls' Primary School
+2025-07-11 08:25:20,338 - INFO - Completed school website scraping.
+2025-07-11 08:25:20,340 - INFO - Saved 5 schools to scraped_data\primary_schools_20250711_082520.json
+2025-07-11 08:25:20,358 - INFO - Updated database table primary_schools with 5 schools
+2025-07-11 08:25:20,358 - INFO - Full scraping completed in 0:00:17.466320
+2025-07-11 08:25:20,359 - INFO - Total schools scraped: 10
