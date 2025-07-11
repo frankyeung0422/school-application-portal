@@ -32,8 +32,6 @@ def get_db_manager():
 
         if has_supabase_secrets:
             try:
-                st.info("🔗 Using Supabase cloud database.")
-                print("🔗 Using Supabase cloud database.")
                 db_manager = CloudDatabaseManager(storage_type="supabase")
                 return db_manager
             except Exception as e:

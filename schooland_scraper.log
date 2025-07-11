@@ -1,0 +1,317 @@
+2025-07-11 09:50:00,975 - INFO - Starting Schooland.hk primary school scraping...
+2025-07-11 09:50:00,976 - INFO - Starting comprehensive primary school scraping from Schooland.hk...
+2025-07-11 09:50:01,430 - INFO - Analyzing page structure...
+2025-07-11 09:50:01,432 - INFO - Extracted 11 schools from tables
+2025-07-11 09:50:36,993 - INFO - Extracted 16 schools from links
+2025-07-11 09:50:36,996 - INFO - Extracted 0 schools from listings
+2025-07-11 09:50:36,996 - INFO - Found 25 unique primary schools
+2025-07-11 09:50:37,001 - INFO - Saved 25 schools to scraped_data\schooland_primary_schools_20250711_095036.json
+2025-07-11 09:50:37,001 - INFO - Scraping completed in 0:00:36.025480
+2025-07-11 09:50:37,002 - INFO - Total schools scraped: 25
+2025-07-11 09:50:37,002 - INFO - Data saved to: scraped_data\schooland_primary_schools_20250711_095036.json
+2025-07-11 10:17:32,894 - INFO - Starting Schooland.hk primary school scraping...
+2025-07-11 10:17:32,895 - INFO - Starting comprehensive primary school scraping from Schooland.hk...
+2025-07-11 10:17:33,044 - INFO - Analyzing page structure...
+2025-07-11 10:17:33,047 - INFO - Extracted 11 schools from tables
+2025-07-11 10:18:03,991 - INFO - Extracted 16 schools from links
+2025-07-11 10:18:03,994 - INFO - Extracted 0 schools from listings
+2025-07-11 10:18:03,995 - INFO - Found 25 unique primary schools
+2025-07-11 10:18:03,997 - INFO - Saved 25 schools to scraped_data\schooland_primary_schools_20250711_101803.json
+2025-07-11 10:18:03,998 - INFO - Scraping completed in 0:00:31.103004
+2025-07-11 10:18:03,998 - INFO - Total schools scraped: 25
+2025-07-11 10:18:03,998 - INFO - Data saved to: scraped_data\schooland_primary_schools_20250711_101803.json
+2025-07-11 10:22:28,819 - INFO - Starting Schooland.hk primary school scraping...
+2025-07-11 10:22:28,820 - INFO - Starting comprehensive primary school scraping from Schooland.hk...
+2025-07-11 10:22:28,943 - INFO - Analyzing page structure...
+2025-07-11 10:22:28,945 - INFO - Extracted 11 schools from tables
+2025-07-11 10:22:59,794 - INFO - Extracted 16 schools from links
+2025-07-11 10:22:59,796 - INFO - Extracted 0 schools from listings
+2025-07-11 10:22:59,796 - INFO - Found 25 unique primary schools
+2025-07-11 10:22:59,798 - INFO - Saved 25 schools to scraped_data\schooland_primary_schools_20250711_102259.json
+2025-07-11 10:22:59,799 - INFO - Scraping completed in 0:00:30.979190
+2025-07-11 10:22:59,799 - INFO - Total schools scraped: 25
+2025-07-11 10:22:59,799 - INFO - Data saved to: scraped_data\schooland_primary_schools_20250711_102259.json
+2025-07-11 10:32:24,962 - INFO - Starting Schooland.hk primary school scraping...
+2025-07-11 10:32:24,963 - INFO - Starting comprehensive primary school scraping from Schooland.hk (by district)...
+2025-07-11 10:32:51,653 - INFO - Found 1 unique primary schools across all districts.
+2025-07-11 10:32:51,654 - INFO - Saved 1 schools to scraped_data\schooland_primary_schools_20250711_103251.json
+2025-07-11 10:32:51,655 - INFO - Scraping completed in 0:00:26.691833
+2025-07-11 10:32:51,655 - INFO - Total schools scraped: 1
+2025-07-11 10:32:51,656 - INFO - Data saved to: scraped_data\schooland_primary_schools_20250711_103251.json
+2025-07-11 10:37:02,107 - INFO - Starting Schooland.hk primary school scraping...
+2025-07-11 10:37:02,107 - INFO - Starting comprehensive primary school scraping from Schooland.hk (by district)...
+2025-07-11 10:37:02,466 - INFO - Found 3 tables in Central and Western
+2025-07-11 10:37:02,467 - INFO - Table 0: Found 3 rows
+2025-07-11 10:37:02,468 - INFO - Table 1: Found 11 rows
+2025-07-11 10:37:02,469 - INFO - Table 2: Found 11 rows
+2025-07-11 10:37:02,472 - INFO - Found school: 2014
+2025-07-11 10:37:02,473 - INFO - Found school: 2015
+2025-07-11 10:37:02,473 - INFO - Found school: 2016
+2025-07-11 10:37:02,473 - INFO - Found school: 2017
+2025-07-11 10:37:02,474 - INFO - Found school: 2018
+2025-07-11 10:37:02,474 - INFO - Found school: 2019
+2025-07-11 10:37:02,474 - INFO - Found school: 2020
+2025-07-11 10:37:02,475 - INFO - Found school: 2021
+2025-07-11 10:37:02,475 - INFO - Found school: 2022
+2025-07-11 10:37:02,475 - INFO - Found school: 2023
+2025-07-11 10:37:03,210 - INFO - Found 20 schools in Central and Western
+2025-07-11 10:37:04,531 - INFO - Found 3 tables in Eastern
+2025-07-11 10:37:04,532 - INFO - Table 0: Found 3 rows
+2025-07-11 10:37:04,533 - INFO - Table 1: Found 11 rows
+2025-07-11 10:37:04,534 - INFO - Table 2: Found 11 rows
+2025-07-11 10:37:04,537 - INFO - Found school: 2014
+2025-07-11 10:37:04,538 - INFO - Found school: 2015
+2025-07-11 10:37:04,538 - INFO - Found school: 2016
+2025-07-11 10:37:04,538 - INFO - Found school: 2017
+2025-07-11 10:37:04,538 - INFO - Found school: 2018
+2025-07-11 10:37:04,538 - INFO - Found school: 2019
+2025-07-11 10:37:04,539 - INFO - Found school: 2020
+2025-07-11 10:37:04,539 - INFO - Found school: 2021
+2025-07-11 10:37:04,539 - INFO - Found school: 2022
+2025-07-11 10:37:04,539 - INFO - Found school: 2023
+2025-07-11 10:37:05,226 - INFO - Found 20 schools in Eastern
+2025-07-11 10:37:06,492 - INFO - Found 3 tables in Southern
+2025-07-11 10:37:06,492 - INFO - Table 0: Found 3 rows
+2025-07-11 10:37:06,493 - INFO - Table 1: Found 11 rows
+2025-07-11 10:37:06,494 - INFO - Table 2: Found 11 rows
+2025-07-11 10:37:06,496 - INFO - Found school: 2014
+2025-07-11 10:37:06,496 - INFO - Found school: 2015
+2025-07-11 10:37:06,497 - INFO - Found school: 2016
+2025-07-11 10:37:06,497 - INFO - Found school: 2017
+2025-07-11 10:37:06,497 - INFO - Found school: 2018
+2025-07-11 10:37:06,497 - INFO - Found school: 2019
+2025-07-11 10:37:06,498 - INFO - Found school: 2020
+2025-07-11 10:37:06,498 - INFO - Found school: 2021
+2025-07-11 10:37:06,498 - INFO - Found school: 2022
+2025-07-11 10:37:06,499 - INFO - Found school: 2023
+2025-07-11 10:37:07,431 - INFO - Found 20 schools in Southern
+2025-07-11 10:37:09,267 - INFO - Found 3 tables in Wan Chai
+2025-07-11 10:37:09,267 - INFO - Table 0: Found 3 rows
+2025-07-11 10:37:09,268 - INFO - Table 1: Found 11 rows
+2025-07-11 10:37:09,269 - INFO - Table 2: Found 11 rows
+2025-07-11 10:37:09,273 - INFO - Found school: 2014
+2025-07-11 10:37:09,273 - INFO - Found school: 2015
+2025-07-11 10:37:09,274 - INFO - Found school: 2016
+2025-07-11 10:37:09,274 - INFO - Found school: 2017
+2025-07-11 10:37:09,274 - INFO - Found school: 2018
+2025-07-11 10:37:09,274 - INFO - Found school: 2019
+2025-07-11 10:37:09,275 - INFO - Found school: 2020
+2025-07-11 10:37:09,275 - INFO - Found school: 2021
+2025-07-11 10:37:09,275 - INFO - Found school: 2022
+2025-07-11 10:37:09,276 - INFO - Found school: 2023
+2025-07-11 10:37:10,271 - INFO - Found 20 schools in Wan Chai
+2025-07-11 10:37:11,757 - INFO - Found 3 tables in Sham Shui Po
+2025-07-11 10:37:11,758 - INFO - Table 0: Found 3 rows
+2025-07-11 10:37:11,758 - INFO - Table 1: Found 11 rows
+2025-07-11 10:37:11,759 - INFO - Table 2: Found 11 rows
+2025-07-11 10:37:11,762 - INFO - Found school: 2014
+2025-07-11 10:37:11,762 - INFO - Found school: 2015
+2025-07-11 10:37:11,763 - INFO - Found school: 2016
+2025-07-11 10:37:11,763 - INFO - Found school: 2017
+2025-07-11 10:37:11,764 - INFO - Found school: 2018
+2025-07-11 10:37:11,764 - INFO - Found school: 2019
+2025-07-11 10:37:11,765 - INFO - Found school: 2020
+2025-07-11 10:37:11,765 - INFO - Found school: 2021
+2025-07-11 10:37:11,766 - INFO - Found school: 2022
+2025-07-11 10:37:11,766 - INFO - Found school: 2023
+2025-07-11 10:37:12,415 - INFO - Found 20 schools in Sham Shui Po
+2025-07-11 10:37:13,838 - INFO - Found 3 tables in Kowloon City
+2025-07-11 10:37:13,839 - INFO - Table 0: Found 3 rows
+2025-07-11 10:37:13,840 - INFO - Table 1: Found 11 rows
+2025-07-11 10:37:13,841 - INFO - Table 2: Found 11 rows
+2025-07-11 10:37:13,843 - INFO - Found school: 2014
+2025-07-11 10:37:13,844 - INFO - Found school: 2015
+2025-07-11 10:37:13,844 - INFO - Found school: 2016
+2025-07-11 10:37:13,844 - INFO - Found school: 2017
+2025-07-11 10:37:13,844 - INFO - Found school: 2018
+2025-07-11 10:37:13,845 - INFO - Found school: 2019
+2025-07-11 10:37:13,845 - INFO - Found school: 2020
+2025-07-11 10:37:13,846 - INFO - Found school: 2021
+2025-07-11 10:37:13,846 - INFO - Found school: 2022
+2025-07-11 10:37:13,847 - INFO - Found school: 2023
+2025-07-11 10:37:14,489 - INFO - Found 20 schools in Kowloon City
+2025-07-11 10:37:16,083 - INFO - Found 3 tables in Kwun Tong
+2025-07-11 10:37:16,083 - INFO - Table 0: Found 3 rows
+2025-07-11 10:37:16,085 - INFO - Table 1: Found 11 rows
+2025-07-11 10:37:16,085 - INFO - Table 2: Found 11 rows
+2025-07-11 10:37:16,088 - INFO - Found school: 2014
+2025-07-11 10:37:16,089 - INFO - Found school: 2015
+2025-07-11 10:37:16,089 - INFO - Found school: 2016
+2025-07-11 10:37:16,089 - INFO - Found school: 2017
+2025-07-11 10:37:16,090 - INFO - Found school: 2018
+2025-07-11 10:37:16,090 - INFO - Found school: 2019
+2025-07-11 10:37:16,090 - INFO - Found school: 2020
+2025-07-11 10:37:16,090 - INFO - Found school: 2021
+2025-07-11 10:37:16,091 - INFO - Found school: 2022
+2025-07-11 10:37:16,091 - INFO - Found school: 2023
+2025-07-11 10:37:16,848 - INFO - Found 20 schools in Kwun Tong
+2025-07-11 10:37:18,229 - INFO - Found 3 tables in Wong Tai Sin
+2025-07-11 10:37:18,229 - INFO - Table 0: Found 3 rows
+2025-07-11 10:37:18,230 - INFO - Table 1: Found 11 rows
+2025-07-11 10:37:18,230 - INFO - Table 2: Found 11 rows
+2025-07-11 10:37:18,233 - INFO - Found school: 2014
+2025-07-11 10:37:18,234 - INFO - Found school: 2015
+2025-07-11 10:37:18,234 - INFO - Found school: 2016
+2025-07-11 10:37:18,235 - INFO - Found school: 2017
+2025-07-11 10:37:18,235 - INFO - Found school: 2018
+2025-07-11 10:37:18,235 - INFO - Found school: 2019
+2025-07-11 10:37:18,235 - INFO - Found school: 2020
+2025-07-11 10:37:18,236 - INFO - Found school: 2021
+2025-07-11 10:37:18,236 - INFO - Found school: 2022
+2025-07-11 10:37:18,236 - INFO - Found school: 2023
+2025-07-11 10:37:18,839 - INFO - Found 20 schools in Wong Tai Sin
+2025-07-11 10:37:20,026 - INFO - Found 3 tables in Yau Tsim Mong
+2025-07-11 10:37:20,026 - INFO - Table 0: Found 3 rows
+2025-07-11 10:37:20,028 - INFO - Table 1: Found 11 rows
+2025-07-11 10:37:20,029 - INFO - Table 2: Found 11 rows
+2025-07-11 10:37:20,032 - INFO - Found school: 2014
+2025-07-11 10:37:20,032 - INFO - Found school: 2015
+2025-07-11 10:37:20,033 - INFO - Found school: 2016
+2025-07-11 10:37:20,033 - INFO - Found school: 2017
+2025-07-11 10:37:20,033 - INFO - Found school: 2018
+2025-07-11 10:37:20,034 - INFO - Found school: 2019
+2025-07-11 10:37:20,034 - INFO - Found school: 2020
+2025-07-11 10:37:20,034 - INFO - Found school: 2021
+2025-07-11 10:37:20,034 - INFO - Found school: 2022
+2025-07-11 10:37:20,034 - INFO - Found school: 2023
+2025-07-11 10:37:20,796 - INFO - Found 20 schools in Yau Tsim Mong
+2025-07-11 10:37:22,036 - INFO - Found 3 tables in Islands
+2025-07-11 10:37:22,036 - INFO - Table 0: Found 3 rows
+2025-07-11 10:37:22,037 - INFO - Table 1: Found 11 rows
+2025-07-11 10:37:22,038 - INFO - Table 2: Found 11 rows
+2025-07-11 10:37:22,041 - INFO - Found school: 2014
+2025-07-11 10:37:22,041 - INFO - Found school: 2015
+2025-07-11 10:37:22,042 - INFO - Found school: 2016
+2025-07-11 10:37:22,042 - INFO - Found school: 2017
+2025-07-11 10:37:22,043 - INFO - Found school: 2018
+2025-07-11 10:37:22,043 - INFO - Found school: 2019
+2025-07-11 10:37:22,044 - INFO - Found school: 2020
+2025-07-11 10:37:22,044 - INFO - Found school: 2021
+2025-07-11 10:37:22,044 - INFO - Found school: 2022
+2025-07-11 10:37:22,044 - INFO - Found school: 2023
+2025-07-11 10:37:23,083 - INFO - Found 20 schools in Islands
+2025-07-11 10:37:24,473 - INFO - Found 3 tables in Kwai Tsing
+2025-07-11 10:37:24,474 - INFO - Table 0: Found 3 rows
+2025-07-11 10:37:24,475 - INFO - Table 1: Found 11 rows
+2025-07-11 10:37:24,476 - INFO - Table 2: Found 11 rows
+2025-07-11 10:37:24,479 - INFO - Found school: 2014
+2025-07-11 10:37:24,479 - INFO - Found school: 2015
+2025-07-11 10:37:24,479 - INFO - Found school: 2016
+2025-07-11 10:37:24,480 - INFO - Found school: 2017
+2025-07-11 10:37:24,480 - INFO - Found school: 2018
+2025-07-11 10:37:24,480 - INFO - Found school: 2019
+2025-07-11 10:37:24,480 - INFO - Found school: 2020
+2025-07-11 10:37:24,481 - INFO - Found school: 2021
+2025-07-11 10:37:24,481 - INFO - Found school: 2022
+2025-07-11 10:37:24,481 - INFO - Found school: 2023
+2025-07-11 10:37:25,116 - INFO - Found 20 schools in Kwai Tsing
+2025-07-11 10:37:26,875 - INFO - Found 3 tables in North
+2025-07-11 10:37:26,875 - INFO - Table 0: Found 3 rows
+2025-07-11 10:37:26,876 - INFO - Table 1: Found 11 rows
+2025-07-11 10:37:26,876 - INFO - Table 2: Found 11 rows
+2025-07-11 10:37:26,879 - INFO - Found school: 2014
+2025-07-11 10:37:26,879 - INFO - Found school: 2015
+2025-07-11 10:37:26,880 - INFO - Found school: 2016
+2025-07-11 10:37:26,880 - INFO - Found school: 2017
+2025-07-11 10:37:26,880 - INFO - Found school: 2018
+2025-07-11 10:37:26,880 - INFO - Found school: 2019
+2025-07-11 10:37:26,881 - INFO - Found school: 2020
+2025-07-11 10:37:26,881 - INFO - Found school: 2021
+2025-07-11 10:37:26,881 - INFO - Found school: 2022
+2025-07-11 10:37:26,882 - INFO - Found school: 2023
+2025-07-11 10:37:27,551 - INFO - Found 20 schools in North
+2025-07-11 10:37:29,210 - INFO - Found 3 tables in Sai Kung
+2025-07-11 10:37:29,210 - INFO - Table 0: Found 3 rows
+2025-07-11 10:37:29,211 - INFO - Table 1: Found 11 rows
+2025-07-11 10:37:29,212 - INFO - Table 2: Found 11 rows
+2025-07-11 10:37:29,215 - INFO - Found school: 2014
+2025-07-11 10:37:29,216 - INFO - Found school: 2015
+2025-07-11 10:37:29,216 - INFO - Found school: 2016
+2025-07-11 10:37:29,217 - INFO - Found school: 2017
+2025-07-11 10:37:29,217 - INFO - Found school: 2018
+2025-07-11 10:37:29,217 - INFO - Found school: 2019
+2025-07-11 10:37:29,218 - INFO - Found school: 2020
+2025-07-11 10:37:29,218 - INFO - Found school: 2021
+2025-07-11 10:37:29,218 - INFO - Found school: 2022
+2025-07-11 10:37:29,219 - INFO - Found school: 2023
+2025-07-11 10:37:30,244 - INFO - Found 20 schools in Sai Kung
+2025-07-11 10:37:31,828 - INFO - Found 3 tables in Sha Tin
+2025-07-11 10:37:31,828 - INFO - Table 0: Found 3 rows
+2025-07-11 10:37:31,829 - INFO - Table 1: Found 11 rows
+2025-07-11 10:37:31,829 - INFO - Table 2: Found 11 rows
+2025-07-11 10:37:31,832 - INFO - Found school: 2014
+2025-07-11 10:37:31,832 - INFO - Found school: 2015
+2025-07-11 10:37:31,832 - INFO - Found school: 2016
+2025-07-11 10:37:31,833 - INFO - Found school: 2017
+2025-07-11 10:37:31,833 - INFO - Found school: 2018
+2025-07-11 10:37:31,833 - INFO - Found school: 2019
+2025-07-11 10:37:31,833 - INFO - Found school: 2020
+2025-07-11 10:37:31,833 - INFO - Found school: 2021
+2025-07-11 10:37:31,834 - INFO - Found school: 2022
+2025-07-11 10:37:31,834 - INFO - Found school: 2023
+2025-07-11 10:37:32,631 - INFO - Found 20 schools in Sha Tin
+2025-07-11 10:37:33,867 - INFO - Found 3 tables in Tai Po
+2025-07-11 10:37:33,868 - INFO - Table 0: Found 3 rows
+2025-07-11 10:37:33,869 - INFO - Table 1: Found 11 rows
+2025-07-11 10:37:33,870 - INFO - Table 2: Found 11 rows
+2025-07-11 10:37:33,873 - INFO - Found school: 2014
+2025-07-11 10:37:33,873 - INFO - Found school: 2015
+2025-07-11 10:37:33,874 - INFO - Found school: 2016
+2025-07-11 10:37:33,874 - INFO - Found school: 2017
+2025-07-11 10:37:33,874 - INFO - Found school: 2018
+2025-07-11 10:37:33,874 - INFO - Found school: 2019
+2025-07-11 10:37:33,875 - INFO - Found school: 2020
+2025-07-11 10:37:33,875 - INFO - Found school: 2021
+2025-07-11 10:37:33,875 - INFO - Found school: 2022
+2025-07-11 10:37:33,875 - INFO - Found school: 2023
+2025-07-11 10:37:34,479 - INFO - Found 20 schools in Tai Po
+2025-07-11 10:37:35,826 - INFO - Found 3 tables in Tsuen Wan
+2025-07-11 10:37:35,826 - INFO - Table 0: Found 3 rows
+2025-07-11 10:37:35,827 - INFO - Table 1: Found 11 rows
+2025-07-11 10:37:35,828 - INFO - Table 2: Found 11 rows
+2025-07-11 10:37:35,830 - INFO - Found school: 2014
+2025-07-11 10:37:35,831 - INFO - Found school: 2015
+2025-07-11 10:37:35,831 - INFO - Found school: 2016
+2025-07-11 10:37:35,831 - INFO - Found school: 2017
+2025-07-11 10:37:35,831 - INFO - Found school: 2018
+2025-07-11 10:37:35,832 - INFO - Found school: 2019
+2025-07-11 10:37:35,832 - INFO - Found school: 2020
+2025-07-11 10:37:35,832 - INFO - Found school: 2021
+2025-07-11 10:37:35,832 - INFO - Found school: 2022
+2025-07-11 10:37:35,832 - INFO - Found school: 2023
+2025-07-11 10:37:36,614 - INFO - Found 20 schools in Tsuen Wan
+2025-07-11 10:37:38,425 - INFO - Found 3 tables in Tuen Mun
+2025-07-11 10:37:38,426 - INFO - Table 0: Found 3 rows
+2025-07-11 10:37:38,427 - INFO - Table 1: Found 11 rows
+2025-07-11 10:37:38,427 - INFO - Table 2: Found 11 rows
+2025-07-11 10:37:38,430 - INFO - Found school: 2014
+2025-07-11 10:37:38,430 - INFO - Found school: 2015
+2025-07-11 10:37:38,430 - INFO - Found school: 2016
+2025-07-11 10:37:38,430 - INFO - Found school: 2017
+2025-07-11 10:37:38,430 - INFO - Found school: 2018
+2025-07-11 10:37:38,431 - INFO - Found school: 2019
+2025-07-11 10:37:38,431 - INFO - Found school: 2020
+2025-07-11 10:37:38,431 - INFO - Found school: 2021
+2025-07-11 10:37:38,431 - INFO - Found school: 2022
+2025-07-11 10:37:38,431 - INFO - Found school: 2023
+2025-07-11 10:37:39,128 - INFO - Found 20 schools in Tuen Mun
+2025-07-11 10:37:40,565 - INFO - Found 3 tables in Yuen Long
+2025-07-11 10:37:40,565 - INFO - Table 0: Found 3 rows
+2025-07-11 10:37:40,566 - INFO - Table 1: Found 11 rows
+2025-07-11 10:37:40,567 - INFO - Table 2: Found 11 rows
+2025-07-11 10:37:40,570 - INFO - Found school: 2014
+2025-07-11 10:37:40,570 - INFO - Found school: 2015
+2025-07-11 10:37:40,571 - INFO - Found school: 2016
+2025-07-11 10:37:40,571 - INFO - Found school: 2017
+2025-07-11 10:37:40,571 - INFO - Found school: 2018
+2025-07-11 10:37:40,571 - INFO - Found school: 2019
+2025-07-11 10:37:40,572 - INFO - Found school: 2020
+2025-07-11 10:37:40,572 - INFO - Found school: 2021
+2025-07-11 10:37:40,572 - INFO - Found school: 2022
+2025-07-11 10:37:40,572 - INFO - Found school: 2023
+2025-07-11 10:37:41,385 - INFO - Found 20 schools in Yuen Long
+2025-07-11 10:37:42,635 - INFO - Found 1 unique primary schools across all districts.
+2025-07-11 10:37:42,637 - INFO - Saved 1 schools to scraped_data\schooland_primary_schools_20250711_103742.json
+2025-07-11 10:37:42,637 - INFO - Scraping completed in 0:00:40.529648
+2025-07-11 10:37:42,637 - INFO - Total schools scraped: 1
+2025-07-11 10:37:42,637 - INFO - Data saved to: scraped_data\schooland_primary_schools_20250711_103742.json

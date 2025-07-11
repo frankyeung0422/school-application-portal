@@ -1,0 +1,2 @@
+2025-07-11 17:09:00,515 - INFO - Created .env template file. Please add your Supabase credentials.
+2025-07-11 17:09:00,529 - INFO - Loaded environment variables from .env file

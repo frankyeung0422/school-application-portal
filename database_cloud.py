@@ -842,7 +842,7 @@ class CloudDatabaseManager:
                 return self.storage_manager.add_portfolio_item(user_id, child_id, title, description, category, item_date, attachment_path, notes)
             
             # Use SQLite
-            item_id = self.create_portfolio_item(user_id, child_id, title, description, category, item_date, attachment_path, notes)
+            item_id = self.create_portfolio_item(user_id, child_id, title, description, category, attachment_path, item_date, notes)
             if item_id:
                 return True, f"Portfolio item created with ID: {item_id}"
             else:

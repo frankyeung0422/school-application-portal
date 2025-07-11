@@ -1,0 +1,11 @@
+2025-07-11 17:08:09,976 - INFO - Creating sample CSV with comprehensive Hong Kong primary school data...
+2025-07-11 17:08:10,006 - INFO - Created comprehensive CSV with 64 schools: comprehensive_hk_primary_schools.csv
+2025-07-11 17:08:10,007 - WARNING - Supabase credentials not found. Data will only be processed locally.
+2025-07-11 17:08:10,008 - INFO - Starting CSV processing and import for: comprehensive_hk_primary_schools.csv
+2025-07-11 17:08:10,008 - INFO - Processing CSV file: comprehensive_hk_primary_schools.csv
+2025-07-11 17:08:10,040 - INFO - Successfully read CSV with utf-8 encoding
+2025-07-11 17:08:10,047 - INFO - Processed 64 schools from CSV
+2025-07-11 17:08:10,051 - INFO - Processed data saved to: csv_data\processed_primary_schools_20250711_170810.json
+2025-07-11 17:08:10,051 - INFO - Supabase not available - data saved locally only
+2025-07-11 17:08:10,052 - INFO - Processed 64 schools
+2025-07-11 17:08:10,052 - INFO - Data saved to: csv_data\processed_primary_schools_20250711_170810.json
