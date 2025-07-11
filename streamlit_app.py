@@ -3458,9 +3458,8 @@ def application_tracker_page():
                         st.markdown(f"""
                         <div class="school-card">
                             <h3>{school['school_name']}</h3>
-                            <p><strong>Added:</strong> {school['added_date']}</p>
-                            <p><strong>Status:</strong> {school['status'].title()}</p>
-                            {f"<p><strong>Last Checked:</strong> {school['last_checked'] if school['last_checked'] else 'Never'}</p>" if school['last_checked'] else ""}
+                            <p><strong>Added:</strong> {school.get('date_updated', 'Unknown')}</p>
+                            <p><strong>Status:</strong> {school.get('status', 'tracking').title()}</p>
                         </div>
                         """, unsafe_allow_html=True)
                     
@@ -3471,47 +3470,27 @@ def application_tracker_page():
                             # In a real implementation, this would fetch the school's website
                             # For now, we'll simulate with sample data
                             sample_content = "Applications are now open for the 2024/25 school year. Deadline: 31/12/2024"
-                        analysis = analyze_application_content(sample_content)
-                        
-                        st.session_state.application_tracker[school_no]['last_checked'] = datetime.now()
-                        st.session_state.application_tracker[school_no]['application_info'] = analysis
-                        
-                        # Add notification if application is open
-                        if analysis['status'] == 'open':
-                            add_notification(
-                                f"Application Open: {tracker_info['school_name']}",
-                                f"Applications are now open for {tracker_info['school_name']}. Deadline: {analysis['deadline'].strftime('%Y-%m-%d') if analysis['deadline'] else 'Not specified'}",
-                                'high'
-                            )
-                        
-                        st.rerun()
+                            analysis = analyze_application_content(sample_content)
+                            
+                            # Add notification if application is open
+                            if analysis['status'] == 'open':
+                                add_notification(
+                                    f"Application Open: {school['school_name']}",
+                                    f"Applications are now open for {school['school_name']}. Deadline: {analysis['deadline'].strftime('%Y-%m-%d') if analysis['deadline'] else 'Not specified'}",
+                                    'high'
+                                )
+                            
+                            st.success("Status checked successfully!")
+                            st.rerun()
                 
                 with col3:
-                    if st.button("❌ Remove", key=f"remove_{school_no}"):
-                        remove_from_application_tracker(school_no)
-                        st.rerun()
-                
-                # Show application info if available
-                if tracker_info.get('application_info'):
-                    info = tracker_info['application_info']
-                    st.markdown("### 📋 Application Information")
-                    
-                    col_a, col_b, col_c = st.columns(3)
-                    with col_a:
-                        status_color = "🟢" if info['status'] == 'open' else "🔴" if info['status'] == 'closed' else "🟡"
-                        st.metric("Status", f"{status_color} {info['status'].title()}")
-                    
-                    with col_b:
-                        if info['start_date']:
-                            st.metric("Start Date", info['start_date'].strftime('%Y-%m-%d'))
+                    if st.button("❌ Remove", key=f"remove_{school['school_no']}"):
+                        success, message = get_db().remove_from_tracker(user_id, school['school_no'])
+                        if success:
+                            st.success(message)
+                            st.rerun()
                         else:
-                            st.metric("Start Date", "Not specified")
-                    
-                    with col_c:
-                        if info['deadline']:
-                            st.metric("Deadline", info['deadline'].strftime('%Y-%m-%d'))
-                        else:
-                            st.metric("Deadline", "Not specified")
+                            st.error(message)
                 
                 st.markdown("---")
 
@@ -3887,7 +3866,23 @@ def portfolio_page():
                         if item['notes']:
                             st.write(f"**{get_text('portfolio_notes', lang)}:** {item['notes']}")
                         if item['attachment_path']:
-                            st.write(f"**{get_text('portfolio_attachment', lang)}:** {item['attachment_path']}")
+                            st.write(f"**{get_text('portfolio_attachment', lang)}:** {os.path.basename(item['attachment_path'])}")
+                            # Show file preview if it's an image
+                            if item['attachment_path'].lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp')):
+                                try:
+                                    st.image(item['attachment_path'], caption="Portfolio Item", use_column_width=True)
+                                except Exception as e:
+                                    st.error(f"Could not display image: {e}")
+                            elif item['attachment_path'].lower().endswith('.pdf'):
+                                st.info("📄 PDF file uploaded")
+                                if st.button("Download PDF", key=f"download_{item['id']}"):
+                                    with open(item['attachment_path'], "rb") as f:
+                                        st.download_button(
+                                            label="Download PDF",
+                                            data=f.read(),
+                                            file_name=os.path.basename(item['attachment_path']),
+                                            mime="application/pdf"
+                                        )
                     
                     with col2:
                         if st.button(f"✏️ {get_text('edit_portfolio_item', lang)}", key=f"edit_{item['id']}"):
@@ -3921,18 +3916,40 @@ def portfolio_page():
             with col2:
                 item_date = st.date_input(get_text("portfolio_date", lang))
             
-            attachment_path = st.text_input(get_text("portfolio_attachment", lang), 
-                                          placeholder="File path or URL")
+            uploaded_file = st.file_uploader(
+                get_text("portfolio_attachment", lang), 
+                type=['pdf', 'png', 'jpg', 'jpeg', 'gif', 'bmp'],
+                help="Upload a photo or PDF file (max 10MB)"
+            )
             notes = st.text_area(get_text("portfolio_notes", lang))
             
             submitted = st.form_submit_button("Save Portfolio Item")
             
             if submitted:
                 if title and description and item_date:
+                    # Handle file upload
+                    attachment_path = None
+                    if uploaded_file is not None:
+                        # Create uploads directory if it doesn't exist
+                        uploads_dir = "uploads"
+                        if not os.path.exists(uploads_dir):
+                            os.makedirs(uploads_dir)
+                        
+                        # Save uploaded file
+                        file_extension = uploaded_file.name.split('.')[-1].lower()
+                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                        filename = f"portfolio_{user_id}_{selected_child_id}_{timestamp}.{file_extension}"
+                        file_path = os.path.join(uploads_dir, filename)
+                        
+                        with open(file_path, "wb") as f:
+                            f.write(uploaded_file.getbuffer())
+                        
+                        attachment_path = file_path
+                    
                     success, message = get_db().add_portfolio_item(
                         user_id, selected_child_id, title, description, 
                         category, item_date.strftime('%Y-%m-%d'), 
-                        attachment_path if attachment_path else None, 
+                        attachment_path, 
                         notes if notes else None
                     )
                     if success:
@@ -4118,10 +4135,6 @@ def admin_utilities():
 # Main app logic
 def main():
     """Main application logic"""
-    
-    # Debug: Show current form states
-    st.write(f"DEBUG: show_login_form = {st.session_state.get('show_login_form', False)}")
-    st.write(f"DEBUG: show_register_form = {st.session_state.get('show_register_form', False)}")
     
     # Show authentication forms first if needed
     if st.session_state.get('show_login_form', False):
