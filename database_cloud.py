@@ -839,7 +839,7 @@ class CloudDatabaseManager:
         try:
             # Check if using Supabase
             if self.storage_manager and hasattr(self.storage_manager, 'add_portfolio_item'):
-                return self.storage_manager.add_portfolio_item(user_id, child_id, title, description, category, item_date, attachment_path, notes)
+                return self.storage_manager.add_portfolio_item(user_id, child_id, title, description, category, attachment_path, item_date, notes)
             
             # Use SQLite
             item_id = self.create_portfolio_item(user_id, child_id, title, description, category, attachment_path, item_date, notes)
