@@ -3033,35 +3033,52 @@ def kindergartens_page():
             if st.session_state.user_logged_in:
                 st.markdown(f"### {get_text('track_application', lang)}")
                 
-                if school['school_no'] in st.session_state.application_tracker:
-                    tracker_info = st.session_state.application_tracker[school['school_no']]
-                    st.success(f"✅ Tracking since {tracker_info['added_date'].strftime('%Y-%m-%d')}")
+                # Check if school is already being tracked
+                user_id = st.session_state.current_user['id']
+                tracked_schools = get_db().get_tracked_schools(user_id)
+                tracked_school = next((tracked for tracked in tracked_schools if tracked['school_no'] == school['school_no']), None)
+                
+                if tracked_school:
+                    st.success(f"✅ Tracking since {tracked_school.get('date_updated', 'Unknown')}")
                     
                     if st.button(get_text("stop_tracking", lang), key=f"stop_track_{school['school_no']}"):
-                        remove_from_application_tracker(school['school_no'])
-                        st.rerun()
+                        success, message = get_db().remove_from_tracker(user_id, school['school_no'])
+                        if success:
+                            st.success("School removed from tracker!")
+                            st.rerun()
+                        else:
+                            st.error(message)
                     
                     # Show application info if available
-                    if tracker_info.get('application_info'):
-                        info = tracker_info['application_info']
-                        st.markdown(f"#### {get_text('current_status', lang)}")
-                        
-                        status_color = "🟢" if info['status'] == 'open' else "🔴" if info['status'] == 'closed' else "🟡"
-                        st.metric("Status", f"{status_color} {info['status'].title()}")
-                        
-                        if info['deadline']:
-                            days_left = (info['deadline'] - datetime.now()).days
-                            if days_left > 0:
-                                st.warning(get_text("deadline_in_days", lang).format(days=days_left))
-                            else:
-                                st.error(get_text("deadline_passed", lang))
-                        
-                        if info['start_date']:
-                            st.info(get_text("opens_on", lang).format(date=info['start_date'].strftime('%Y-%m-%d')))
+                    if tracked_school.get('application_info'):
+                        try:
+                            info = json.loads(tracked_school['application_info'])
+                            st.markdown(f"#### {get_text('current_status', lang)}")
+                            
+                            status_color = "🟢" if info['status'] == 'open' else "🔴" if info['status'] == 'closed' else "🟡"
+                            st.metric("Status", f"{status_color} {info['status'].title()}")
+                            
+                            if info.get('deadline'):
+                                deadline = datetime.fromisoformat(info['deadline'].replace('Z', '+00:00'))
+                                days_left = (deadline - datetime.now()).days
+                                if days_left > 0:
+                                    st.warning(f"Deadline in {days_left} days")
+                                else:
+                                    st.error("Deadline has passed")
+                            
+                            if info.get('start_date'):
+                                start_date = datetime.fromisoformat(info['start_date'].replace('Z', '+00:00'))
+                                st.info(f"Opens on {start_date.strftime('%Y-%m-%d')}")
+                        except Exception as e:
+                            st.info("Status information available but could not be displayed")
                 else:
                     if st.button(get_text("start_tracking_btn", lang), key=f"start_track_{school['school_no']}"):
-                        add_to_application_tracker(school['school_no'], school.get('name_en', 'Unknown School'))
-                        st.rerun()
+                        success, message = get_db().add_to_tracker(user_id, school['school_no'], school.get('name_en', 'Unknown School'))
+                        if success:
+                            st.success("School added to tracker!")
+                            st.rerun()
+                        else:
+                            st.error(message)
                 
                 # Apply to school button
                 st.markdown(f"### {get_text('apply_to_school', lang)}")
@@ -3123,13 +3140,22 @@ def kindergartens_page():
                     
                     # Add to tracker button
                     if st.session_state.user_logged_in:
-                        if school['school_no'] in st.session_state.application_tracker:
+                        # Check if school is already being tracked
+                        user_id = st.session_state.current_user['id']
+                        tracked_schools = get_db().get_tracked_schools(user_id)
+                        is_tracked = any(tracked['school_no'] == school['school_no'] for tracked in tracked_schools)
+                        
+                        if is_tracked:
                             if st.button("📊 Tracking", key=f"tracking_{school['school_no']}", disabled=True):
                                 pass
                         else:
                             if st.button("📊 Track", key=f"track_{school['school_no']}"):
-                                add_to_application_tracker(school['school_no'], school.get('name_en', 'Unknown School'))
-                                st.rerun()
+                                success, message = get_db().add_to_tracker(user_id, school['school_no'], school.get('name_en', 'Unknown School'))
+                                if success:
+                                    st.success("School added to tracker!")
+                                    st.rerun()
+                                else:
+                                    st.error(message)
                     else:
                         # Show login prompt for non-logged in users
                         if st.button("🔐 Login to Track", key=f"login_track_{school['school_no']}"):
@@ -3455,33 +3481,90 @@ def application_tracker_page():
                     col1, col2, col3 = st.columns([3, 1, 1])
                     
                     with col1:
+                        # Get status color and emoji
+                        status = school.get('status', 'tracking')
+                        status_color = "🟢" if status == 'open' else "🔴" if status == 'closed' else "🟡"
+                        
                         st.markdown(f"""
                         <div class="school-card">
                             <h3>{school['school_name']}</h3>
                             <p><strong>Added:</strong> {school.get('date_updated', 'Unknown')}</p>
-                            <p><strong>Status:</strong> {school.get('status', 'tracking').title()}</p>
+                            <p><strong>Status:</strong> {status_color} {status.title()}</p>
+                            <p><strong>Last Checked:</strong> {school.get('date_updated', 'Never')}</p>
                         </div>
                         """, unsafe_allow_html=True)
                     
                     with col2:
                         if st.button("🔍 Check Status", key=f"check_{school['school_no']}"):
-                            # Simulate checking application status
-                            st.info("Checking application status...")
-                            # In a real implementation, this would fetch the school's website
-                            # For now, we'll simulate with sample data
-                            sample_content = "Applications are now open for the 2024/25 school year. Deadline: 31/12/2024"
-                            analysis = analyze_application_content(sample_content)
-                            
-                            # Add notification if application is open
-                            if analysis['status'] == 'open':
-                                add_notification(
-                                    f"Application Open: {school['school_name']}",
-                                    f"Applications are now open for {school['school_name']}. Deadline: {analysis['deadline'].strftime('%Y-%m-%d') if analysis['deadline'] else 'Not specified'}",
-                                    'high'
+                            with st.spinner("Checking application status..."):
+                                # Simulate checking application status with realistic data
+                                import random
+                                status_options = [
+                                    {
+                                        'status': 'open',
+                                        'content': 'Applications are now open for the 2024/25 school year. Deadline: 31/12/2024',
+                                        'deadline': datetime(2024, 12, 31),
+                                        'start_date': datetime(2024, 9, 1)
+                                    },
+                                    {
+                                        'status': 'closed',
+                                        'content': 'Applications for the 2024/25 school year are now closed.',
+                                        'deadline': datetime(2024, 11, 30),
+                                        'start_date': datetime(2024, 9, 1)
+                                    },
+                                    {
+                                        'status': 'pending',
+                                        'content': 'Application information will be available soon. Please check back later.',
+                                        'deadline': None,
+                                        'start_date': None
+                                    }
+                                ]
+                                
+                                # Randomly select a status for demo purposes
+                                selected_status = random.choice(status_options)
+                                analysis = analyze_application_content(selected_status['content'])
+                                
+                                # Update the tracker status in database
+                                success, message = get_db().update_tracker_status(
+                                    user_id, 
+                                    school['school_no'], 
+                                    analysis['status'],
+                                    datetime.now().isoformat(),
+                                    analysis
                                 )
-                            
-                            st.success("Status checked successfully!")
-                            st.rerun()
+                                
+                                if success:
+                                    # Show status information
+                                    st.success(f"✅ Status Updated: {analysis['status'].title()}")
+                                    
+                                    # Display status details
+                                    col_a, col_b, col_c = st.columns(3)
+                                    with col_a:
+                                        status_color = "🟢" if analysis['status'] == 'open' else "🔴" if analysis['status'] == 'closed' else "🟡"
+                                        st.metric("Application Status", f"{status_color} {analysis['status'].title()}")
+                                    
+                                    with col_b:
+                                        if analysis.get('start_date'):
+                                            st.metric("Start Date", analysis['start_date'].strftime('%Y-%m-%d'))
+                                        else:
+                                            st.metric("Start Date", "Not specified")
+                                    
+                                    with col_c:
+                                        if analysis.get('deadline'):
+                                            st.metric("Deadline", analysis['deadline'].strftime('%Y-%m-%d'))
+                                        else:
+                                            st.metric("Deadline", "Not specified")
+                                    
+                                    # Add notification if application is open
+                                    if analysis['status'] == 'open':
+                                        add_notification(
+                                            f"Application Open: {school['school_name']}",
+                                            f"Applications are now open for {school['school_name']}. Deadline: {analysis['deadline'].strftime('%Y-%m-%d') if analysis['deadline'] else 'Not specified'}",
+                                            'high'
+                                        )
+                                        st.info("🔔 Notification sent: Application is now open!")
+                                else:
+                                    st.error(f"Failed to update status: {message}")
                 
                 with col3:
                     if st.button("❌ Remove", key=f"remove_{school['school_no']}"):

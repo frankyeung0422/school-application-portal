@@ -5,6 +5,7 @@ from typing import Optional, Dict, List, Tuple
 from supabase import create_client, Client
 import os
 from datetime import datetime
+import json
 
 class SupabaseDatabaseManager:
     def __init__(self):
@@ -576,6 +577,28 @@ class SupabaseDatabaseManager:
         except Exception as e:
             st.error(f"Error getting tracked schools: {str(e)}")
             return []
+    
+    def update_tracker_status(self, user_id: int, school_no: str, status: str, last_checked: str = None, application_info: dict = None) -> Tuple[bool, str]:
+        """Update application tracker status"""
+        try:
+            if not self.supabase:
+                return False, "Database not initialized"
+            
+            data = {
+                'status': status,
+                'date_updated': last_checked or datetime.now().isoformat()
+            }
+            
+            # Add application info if provided
+            if application_info:
+                data['application_info'] = json.dumps(application_info)
+            
+            result = self.supabase.table('application_tracking').update(data).eq('user_id', user_id).eq('school_no', school_no).execute()
+            if result.data:
+                return True, "Tracker status updated successfully"
+            return False, "Failed to update tracker status"
+        except Exception as e:
+            return False, f"Error updating tracker status: {str(e)}"
     
     def delete_portfolio_item(self, item_id: int) -> Tuple[bool, str]:
         """Delete a portfolio item"""

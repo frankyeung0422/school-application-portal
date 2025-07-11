@@ -1156,3 +1156,25 @@ class CloudDatabaseManager:
     def is_streamlit_cloud(self) -> bool:
         """Check if running on Streamlit Cloud"""
         return os.environ.get('STREAMLIT_SERVER_HEADLESS') == 'true' 
+
+    def update_tracker_status(self, user_id: int, school_no: str, status: str, last_checked: str = None, application_info: dict = None) -> tuple:
+        """Update application tracker status"""
+        # Delegate to Supabase if available
+        if self.storage_manager and hasattr(self.storage_manager, 'update_tracker_status'):
+            return self.storage_manager.update_tracker_status(user_id, school_no, status, last_checked, application_info)
+        # Otherwise, use SQLite
+        try:
+            if not self.conn:
+                return False, "Database not initialized"
+            cursor = self.conn.cursor()
+            cursor.execute('''
+                UPDATE application_tracking SET status=?, date_updated=? WHERE user_id=? AND school_no=?
+            ''', (status, last_checked or datetime.now().isoformat(), user_id, school_no))
+            self.conn.commit()
+            if cursor.rowcount > 0:
+                if self.storage_type == "google_drive":
+                    self.sync_to_cloud()
+                return True, "Tracker status updated successfully"
+            return False, "Failed to update tracker status"
+        except Exception as e:
+            return False, f"Error updating tracker status: {str(e)}" 
