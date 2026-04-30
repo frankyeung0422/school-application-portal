@@ -389,6 +389,36 @@ table.titan-table {
   color: #fff;
   vertical-align: middle;
 }
+/* Compact pill for the dashboard's tight BookCell. Same idea as
+   .line-fav-tag but smaller so it fits inside a 90-char-wide column
+   without pushing the odds value to the next line. */
+.line-fav-tag-sm {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 0 3px;
+  margin-right: 3px;
+  border-radius: 2px;
+  background: #2563eb;
+  color: #fff;
+  line-height: 1.4;
+}
+/* Inline favorite-odds emphasis for the BookCell odds string "0.85/1.04".
+   Matches the favored-side highlight on the match page (.titan-table .fav)
+   so a viewer reading the dashboard already sees which side is favored
+   before drilling into details. */
+.indexall-cell .odds .fav {
+  font-weight: 700;
+  color: #1e40af;
+}
+/* Timeline cell shading when the favorite holds for that tick. Lighter
+   tint than the main table fav cell — timeline rows are dense, so we use
+   shading + bold rather than a left bar to avoid visual clutter. */
+.odds-table.timeline td.tl-fav {
+  background: #eef6ff;
+  font-weight: 700;
+}
+.odds-table.timeline tr.tl-row-away td.tl-fav { background: #e7f0fb; }
 .titan-table td.time-cell {
   font-size: 11px;
   color: var(--muted);

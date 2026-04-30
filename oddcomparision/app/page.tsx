@@ -275,6 +275,31 @@ function IndexallTable({ rows, dimmed }: { rows: LatestOdds[]; dimmed?: boolean 
   );
 }
 
+/**
+ * Determine which side is the favorite for an AH row. Mirrors the same logic
+ * as the match page so a row that shows "主" here will also show "主" on the
+ * detail page — apples-to-apples.
+ *
+ * Convention: line < 0 → home gives the handicap → home is favorite.
+ *             line > 0 → away gives the handicap → away is favorite.
+ *             line = 0 → fall back to odds spread (whichever side priced
+ *                        cheaper is favored), unless within 0.05 (level).
+ */
+function ahFavorite(
+  line: string,
+  homeOdds: number | null,
+  awayOdds: number | null
+): "home" | "away" | null {
+  const n = lineToNumber(line);
+  if (n != null && n < 0) return "home";
+  if (n != null && n > 0) return "away";
+  if (homeOdds != null && awayOdds != null) {
+    if (Math.abs(homeOdds - awayOdds) < 0.05) return null;
+    return homeOdds < awayOdds ? "home" : "away";
+  }
+  return null;
+}
+
 function BookCell({
   ah,
   ou,
@@ -283,13 +308,20 @@ function BookCell({
   ou: { line: string; homeOdds: number | null; awayOdds: number | null } | undefined;
 }) {
   if (!ah && !ou) return <span className="muted">—</span>;
+  const ahFav = ah ? ahFavorite(ah.line, ah.homeOdds, ah.awayOdds) : null;
+  const tag = ahFav === "home" ? "主" : ahFav === "away" ? "客" : null;
   return (
     <div className="indexall-cell">
       {ah && (
         <div className="row">
-          <span className="line">{ah.line || "—"}</span>
+          <span className="line">
+            {tag && <span className="line-fav-tag-sm">{tag}</span>}
+            {ah.line || "—"}
+          </span>
           <span className="odds">
-            {fmtOdds(ah.homeOdds)}/{fmtOdds(ah.awayOdds)}
+            <span className={ahFav === "home" ? "fav" : ""}>{fmtOdds(ah.homeOdds)}</span>
+            /
+            <span className={ahFav === "away" ? "fav" : ""}>{fmtOdds(ah.awayOdds)}</span>
           </span>
         </div>
       )}

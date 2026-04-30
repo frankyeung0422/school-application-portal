@@ -518,6 +518,7 @@ function TimelineGrid({
                       prev={prev}
                       side="home"
                       isPreKickoff={t.runId === preKickoffRunId}
+                      market={market}
                     />
                   );
                 })}
@@ -535,6 +536,7 @@ function TimelineGrid({
                       prev={prev}
                       side="away"
                       isPreKickoff={t.runId === preKickoffRunId}
+                      market={market}
                     />
                   );
                 })}
@@ -552,11 +554,13 @@ function TimelineCellView({
   prev,
   side,
   isPreKickoff,
+  market,
 }: {
   cell: { line: string; homeOdds: number | null; awayOdds: number | null } | undefined;
   prev: { line: string; homeOdds: number | null; awayOdds: number | null } | undefined | null;
   side: "home" | "away";
   isPreKickoff?: boolean;
+  market: "AH" | "OU";
 }) {
   if (!cell) return <td className={`muted${isPreKickoff ? " tl-pre-kickoff" : ""}`}>—</td>;
   const val = side === "home" ? cell.homeOdds : cell.awayOdds;
@@ -564,13 +568,22 @@ function TimelineCellView({
   const delta = val != null && prevVal != null ? val - prevVal : 0;
   const cls = (d: number) => (d > 0.001 ? "up" : d < -0.001 ? "down" : "flat");
   const lineChanged = prev && prev.line !== cell.line;
+  // Highlight the favorite's odds value across every historical tick. Lets
+  // the user see at a glance not just the line drift but which side held
+  // (or seized) favored status over the 12-hour window.
+  const fav = favoriteSide(market, cell.line, cell.homeOdds, cell.awayOdds);
+  const isFav = fav === side;
+  const favTag = side === "home" && fav === "home" ? "主" : side === "home" && fav === "away" ? "客" : null;
   return (
     <td
-      className={`small${isPreKickoff ? " tl-pre-kickoff" : ""}`}
+      className={`small${isPreKickoff ? " tl-pre-kickoff" : ""}${isFav ? " tl-fav" : ""}`}
       style={{ whiteSpace: "nowrap" }}
     >
       {side === "home" && (
-        <div className={lineChanged ? "line-changed" : ""}>{displayLine(cell.line)}</div>
+        <div className={lineChanged ? "line-changed" : ""}>
+          {favTag && <span className="line-fav-tag-sm">{favTag}</span>}
+          {displayLine(cell.line)}
+        </div>
       )}
       <div>
         <span className={`odds-val ${cls(delta)}`}>{val?.toFixed(2) ?? "—"}</span>
