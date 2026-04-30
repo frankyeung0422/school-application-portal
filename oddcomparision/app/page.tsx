@@ -276,14 +276,17 @@ function IndexallTable({ rows, dimmed }: { rows: LatestOdds[]; dimmed?: boolean 
 }
 
 /**
- * Determine which side is the favorite for an AH row. Mirrors the same logic
- * as the match page so a row that shows "主" here will also show "主" on the
- * detail page — apples-to-apples.
+ * Determine which side is the favorite for an AH row. Mirrors the match page's
+ * favoriteSide() so a row that shows "主" here will also show "主" on the
+ * detail page.
  *
- * Convention: line < 0 → home gives the handicap → home is favorite.
- *             line > 0 → away gives the handicap → away is favorite.
- *             line = 0 → fall back to odds spread (whichever side priced
- *                        cheaper is favored), unless within 0.05 (level).
+ * Both titan007 and winbao store AH lines from the AWAY team's perspective:
+ *   line > 0  → away receives the handicap → home is favorite
+ *   line < 0  → away gives the handicap     → away is favorite
+ *   line = 0  → straight bet, lower decimal odds = favorite (HK convention)
+ *
+ * See app/match/[id]/page.tsx for the verification against actual titan007
+ * data (Bayern vs Heidenheim and Atletico vs Arsenal).
  */
 function ahFavorite(
   line: string,
@@ -291,8 +294,8 @@ function ahFavorite(
   awayOdds: number | null
 ): "home" | "away" | null {
   const n = lineToNumber(line);
-  if (n != null && n < 0) return "home";
-  if (n != null && n > 0) return "away";
+  if (n != null && n > 0) return "home";
+  if (n != null && n < 0) return "away";
   if (homeOdds != null && awayOdds != null) {
     if (Math.abs(homeOdds - awayOdds) < 0.05) return null;
     return homeOdds < awayOdds ? "home" : "away";

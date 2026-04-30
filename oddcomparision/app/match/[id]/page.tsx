@@ -269,14 +269,21 @@ function TitanOddsTable({
 }
 
 /**
- * Tag a line with which team is the favorite. For AH:
- *   line < 0 → home gives the handicap → home is favorite
- *   line > 0 → away gives the handicap → away is favorite
- *   line = 0 → level, no favorite
- * For OU there's no "favorite" concept (it's a total), so this returns null.
+ * Tag a line with which team is the favorite. For AH the convention used by
+ * BOTH titan007 and winbao stores the line from the AWAY team's perspective:
  *
- * Falls back to the home/away odds spread when the line is zero — if odds
- * differ by more than 0.05 we can still mark the favorite even at level.
+ *   line > 0  →  away receives +line  →  home is the favorite (gives the handicap)
+ *   line < 0  →  away gives  |line|   →  away is the favorite (gives the handicap)
+ *   line = 0  →  level, fall back to odds spread
+ *
+ * Verified 2026-04-30 against titan007 AsianOdds_n.aspx for two unambiguous
+ * markets:
+ *   - Bayern (home) vs Heidenheim (away), line=+2 across every book, home
+ *     odds 0.96 > away odds 0.86 → home is the favorite giving -2.
+ *   - Atletico (home) vs Arsenal (away), line=-0.25, home odds 0.85 < away
+ *     odds 1.04 → away (Arsenal) is the favorite giving 0/-0.5.
+ *
+ * For OU there's no "favorite" concept (it's a total), so this returns null.
  */
 function favoriteSide(
   market: "AH" | "OU",
@@ -286,9 +293,9 @@ function favoriteSide(
 ): "home" | "away" | null {
   if (market !== "AH") return null;
   const n = lineToNumber(line);
-  if (n != null && n < 0) return "home";
-  if (n != null && n > 0) return "away";
-  // Line is zero — fall back to odds spread.
+  if (n != null && n > 0) return "home";
+  if (n != null && n < 0) return "away";
+  // Line is zero — straight bet, lower decimal odds = favorite.
   if (homeOdds != null && awayOdds != null) {
     if (Math.abs(homeOdds - awayOdds) < 0.05) return null;
     return homeOdds < awayOdds ? "home" : "away";
