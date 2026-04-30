@@ -29,6 +29,14 @@ export async function scrapeCrown(): Promise<ScrapeResult> {
       profileDir: "crown",
       proxy: process.env.CROWN_PROXY || undefined,
       forceHeaded: process.env.CROWN_HEADLESS !== "true",
+      // Crown redirects post-login (after the PIN modal is dismissed) to an
+      // IP-based URL whose TLS cert CN doesn't match — Chrome blocks the
+      // navigation with NET::ERR_CERT_COMMON_NAME_INVALID and we end up on
+      // chrome-error://chromewebdata/. Without these flags goToShowtype
+      // can't find #today_page/#early_page/#live_page because we're not on
+      // the actual app. Same flags hg-platform docs as needed for crown's
+      // iovation iframe.
+      allowInsecure: true,
     });
     return { site: "crown", ok: true, odds };
   } catch (e: any) {
