@@ -15,6 +15,8 @@ export const TOP_LEAGUES_CANONICAL = [
   "欧冠", // UEFA Champions League (欧洲冠军联赛)
   "欧联", // UEFA Europa League — the "normal" European cup. Distinct from 欧冠;
           // titan007 labels it 欧霸 and winbao 欧霸杯/欧罗巴, all aliased below.
+  "欧会", // UEFA Conference League — third-tier UEFA club competition. titan007
+          // labels it 欧会杯, mainland 欧协联, HK 欧霸协.
 ];
 
 /**
@@ -48,6 +50,15 @@ const ALIAS_TO_CANONICAL: Record<string, string> = {
   "欧霸": "欧联",
   "欧霸杯": "欧联",
   "欧洲联赛": "欧联",
+  // Conference League aliases. titan007 Next_<DATE>.htm row label is 欧会杯
+  // (verified 2026-04-30 against live page); mainland 欧协联 / 欧协会联赛;
+  // HK 欧协 / 欧洲协会联赛 / 欧会联.
+  "欧会杯": "欧会",
+  "欧协联": "欧会",
+  "欧协": "欧会",
+  "欧会联": "欧会",
+  "欧协会联赛": "欧会",
+  "欧洲协会联赛": "欧会",
 };
 
 export function isTopLeague(name: string | null | undefined): boolean {
