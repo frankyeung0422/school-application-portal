@@ -1,0 +1,624 @@
+/* titan007.com light palette — colours pulled from vip.titan007.com/css/style.css:
+   Bline #E8F2FF (alternate row), Wline #FFF (row), .score #FF0000, .chgoal #339900,
+   .dim #888888, default link #0000ff, link:hover #ff0000, table font Tahoma 12px. */
+
+* { box-sizing: border-box; }
+
+:root {
+  --bg: #f4f6f8;
+  --panel: #ffffff;
+  --panel-2: #e8f2ff;        /* Bline — alternating row + header bg */
+  --row-alt: #e8f2ff;
+  --border: #cccccc;
+  --text: #333333;
+  --muted: #888888;          /* .dim */
+  --link: #0000ff;
+  --link-hover: #ff0000;
+  --accent: #cc0000;         /* titan007 hover red */
+  --good: #339900;           /* .chgoal */
+  --bad: #cc0000;
+  --arb: #ff6600;
+  /* Odds-movement convention (Chinese betting): red = rising, blue = falling, yellow = line changed */
+  --up:   #cc0000;
+  --down: #0066cc;
+  --line-hl: #fff200;
+  --open-bg: #fafafa;        /* 初盘 column tint — very light grey */
+  --live-bg: #fff8e1;        /* 即时 column tint — soft cream like titan007 */
+  --band-bg: #2c5aa0;        /* navy band per league header */
+  --band-fg: #ffffff;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: Tahoma, "Microsoft YaHei", "PingFang TC", Arial, sans-serif;
+  font-size: 12px;
+  line-height: 1.5;
+}
+html { scroll-behavior: smooth; }
+
+a { color: var(--link); text-decoration: none; }
+a:hover { color: var(--link-hover); text-decoration: underline; }
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 16px;
+  background: var(--panel);
+  border-bottom: 2px solid var(--band-bg);
+}
+.topbar .brand {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--band-bg);
+}
+.topbar nav, .topbar-nav { display: flex; gap: 16px; align-items: center; }
+.topbar nav a { color: var(--text); font-size: 13px; }
+.topbar nav a:hover { color: var(--link-hover); }
+.logout-btn { padding: 4px 10px; font-size: 12px; }
+
+main { padding: 12px 16px; }
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 0;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
+.status-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.status-pill {
+  padding: 3px 10px;
+  border-radius: 2px;
+  font-size: 11px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+.status-pill.ok { border-color: var(--good); color: var(--good); }
+.status-pill.bad { border-color: var(--bad); color: var(--bad); }
+.status-pill.warn { border-color: var(--arb); color: var(--arb); }
+
+table.odds-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  background: var(--panel);
+}
+.odds-table th, .odds-table td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: middle;
+}
+.odds-table th {
+  background: var(--panel-2);
+  font-weight: 700;
+  color: var(--text);
+  font-size: 12px;
+}
+.odds-table tbody tr:nth-child(even) { background: var(--row-alt); }
+.odds-table tbody tr:hover { background: #fff8c2; }
+.odds-table .league-header td {
+  background: var(--band-bg);
+  color: var(--band-fg);
+  font-weight: 700;
+  padding: 4px 10px;
+  font-size: 12px;
+}
+.team { font-weight: 500; }
+
+.arb-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  background: var(--arb);
+  color: white;
+  border-radius: 2px;
+  font-size: 11px;
+  font-weight: 700;
+  margin-left: 6px;
+}
+
+.empty-state {
+  padding: 30px;
+  text-align: center;
+  color: var(--muted);
+}
+
+.btn {
+  padding: 6px 12px;
+  background: var(--band-bg);
+  color: white;
+  border: 1px solid var(--band-bg);
+  border-radius: 2px;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 12px;
+}
+.btn:hover { background: #1f4480; }
+.btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.btn.secondary { background: var(--panel); color: var(--text); border: 1px solid var(--border); }
+.btn.secondary:hover { background: var(--panel-2); }
+
+.filter-bar {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.filter-bar input, .filter-bar select {
+  padding: 4px 8px;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  font-size: 12px;
+}
+.muted { color: var(--muted); }
+.small { font-size: 11px; }
+
+.odds-val { font-weight: 700; font-variant-numeric: tabular-nums; }
+.odds-val.up    { color: var(--up); }
+.odds-val.down  { color: var(--down); }
+.odds-val.flat  { color: var(--text); }
+.odds-val .arrow { margin-left: 2px; font-size: 10px; }
+
+.line-changed {
+  background: var(--line-hl);
+  color: #000;
+  font-weight: 700;
+}
+.line-changed-inline {
+  display: inline-block;
+  background: var(--line-hl);
+  color: #000;
+  padding: 0 4px;
+  border-radius: 2px;
+  font-weight: 700;
+}
+.line-flat { color: var(--text); }
+.up   { color: var(--up); }
+.down { color: var(--down); }
+
+.auth-wrap {
+  min-height: calc(100vh - 90px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.auth-card {
+  width: 100%;
+  max-width: 380px;
+}
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.auth-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.auth-form input {
+  padding: 6px 8px;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  font-size: 12px;
+}
+.auth-error {
+  color: var(--bad);
+  margin: 4px 0 0;
+}
+
+/* ------------------------------------------------------------------
+   Match page — titan007 AsianOdds layout (light theme)
+   ------------------------------------------------------------------ */
+
+.match-head {
+  background: linear-gradient(180deg, var(--panel-2), var(--panel));
+  border: 1px solid var(--border);
+  border-bottom: 2px solid var(--band-bg);
+  padding: 12px 16px;
+  margin-bottom: 12px;
+  text-align: center;
+}
+.match-head-league {
+  letter-spacing: 2px;
+  margin-bottom: 4px;
+  color: var(--muted);
+}
+.match-head-teams {
+  font-size: 18px;
+  font-weight: 700;
+  display: flex;
+  gap: 14px;
+  justify-content: center;
+  align-items: baseline;
+  margin-bottom: 4px;
+  color: var(--text);
+}
+.match-head-teams .vs { font-size: 12px; font-weight: 400; color: var(--muted); }
+.match-head-teams .team-home { color: var(--up); }
+.match-head-teams .team-away { color: var(--down); }
+
+.tab-bar {
+  display: flex;
+  gap: 0;
+  margin-bottom: 10px;
+  border-bottom: 2px solid var(--band-bg);
+}
+.tab {
+  padding: 6px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid var(--border);
+  border-bottom: none;
+  background: var(--panel);
+  color: var(--text);
+  margin-right: 2px;
+  border-radius: 2px 2px 0 0;
+  cursor: pointer;
+  text-decoration: none;
+}
+.tab:hover {
+  background: var(--panel-2);
+  color: var(--link-hover);
+  text-decoration: none;
+}
+.tab.active {
+  background: var(--band-bg);
+  color: white;
+  border-color: var(--band-bg);
+}
+
+.section-title {
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
+}
+.section-title .dot {
+  display: inline-block;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+}
+.section-title .dot.ah { background: var(--up); }
+.section-title .dot.ou { background: var(--down); }
+.section-title .legend { font-weight: 400; margin-left: auto; }
+
+table.titan-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  border: 1px solid var(--border);
+  background: var(--panel);
+}
+.titan-table th, .titan-table td {
+  padding: 5px 6px;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  text-align: center;
+  white-space: nowrap;
+}
+.titan-table thead th {
+  background: var(--panel-2);
+  font-weight: 700;
+  color: var(--text);
+  font-size: 12px;
+}
+.titan-table thead tr.group-row th.group-open {
+  background: var(--open-bg);
+  color: var(--muted);
+  letter-spacing: 2px;
+}
+.titan-table thead tr.group-row th.group-pre {
+  background: #fff200;
+  color: #000;
+  letter-spacing: 2px;
+}
+.titan-table thead tr.group-row th.group-live {
+  background: var(--live-bg);
+  color: var(--text);
+  letter-spacing: 2px;
+}
+.titan-table thead tr.sub-row th {
+  background: var(--panel-2);
+  font-weight: 600;
+  font-size: 11px;
+  color: var(--muted);
+}
+.titan-table .col-open { background: var(--open-bg); }
+.titan-table .col-pre { background: #fffce0; } /* light yellow tint matching the 開賽前 group header */
+.titan-table .col-live { background: var(--live-bg); }
+
+.titan-table tbody tr:nth-child(even) td.col-open { background: #f0f0f0; }
+.titan-table tbody tr:nth-child(even) td.col-live { background: #fff0c2; }
+.titan-table tbody tr:hover td { background: #fff8c2; }
+.titan-table tbody tr:hover td.line-changed { background: var(--line-hl); }
+
+.titan-table td.company-cell {
+  text-align: left;
+  background: var(--panel-2);
+  border-right: 2px solid var(--border);
+  font-weight: 600;
+}
+.titan-table td.num { font-variant-numeric: tabular-nums; }
+.titan-table td.line-cell {
+  font-weight: 700;
+  color: var(--accent);
+}
+.titan-table td.line-cell.line-changed { color: #000; }
+/* Favored-side highlight. AH market only — the lower decimal odds (in HK
+   notation) marks the favorite, which is the side the handicap line is
+   conventionally written from. Bold + tinted background makes it obvious
+   at a glance which team is "giving" the handicap, removing the
+   ambiguity of a centered "0/-0.5" between home and away cells. */
+.titan-table td.num.fav {
+  background: #e3f5ff !important;
+  font-weight: 700;
+  box-shadow: inset 3px 0 0 #2563eb;
+}
+.titan-table tbody tr:nth-child(even) td.num.fav { background: #d6ecf9 !important; }
+.line-fav-tag {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 4px;
+  margin-right: 4px;
+  border-radius: 3px;
+  background: #2563eb;
+  color: #fff;
+  vertical-align: middle;
+}
+.titan-table td.time-cell {
+  font-size: 11px;
+  color: var(--muted);
+  background: var(--panel);
+}
+
+.titan-table tr.line-group-header td {
+  background: var(--band-bg);
+  color: var(--band-fg);
+  text-align: left;
+  padding: 4px 10px;
+  font-size: 12px;
+  letter-spacing: 1px;
+  font-weight: 700;
+}
+.titan-table tr.line-group-header td strong { color: var(--band-fg); }
+.titan-table tr.line-group-header td .muted { color: rgba(255,255,255,.75); }
+
+/* ------------------------------------------------------------------
+   Index page — titan007 indexall.aspx layout (light theme)
+   ------------------------------------------------------------------ */
+
+.status-tabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: 8px;
+  border-bottom: 2px solid var(--band-bg);
+}
+.status-tabs a {
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-bottom: none;
+  border-radius: 2px 2px 0 0;
+  margin-right: 2px;
+  text-decoration: none;
+}
+.status-tabs a:hover {
+  background: var(--panel-2);
+  color: var(--link-hover);
+  text-decoration: none;
+}
+.status-tabs a.active {
+  background: var(--band-bg);
+  color: white;
+  border-color: var(--band-bg);
+}
+
+.league-strip {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+  padding: 6px 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+}
+.league-strip a {
+  padding: 3px 10px;
+  font-size: 12px;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  text-decoration: none;
+}
+.league-strip a:hover {
+  background: #fff8c2;
+  color: var(--link-hover);
+  text-decoration: none;
+}
+.league-strip a.active {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+  font-weight: 700;
+}
+
+.indexall-wrap { overflow-x: auto; margin-bottom: 12px; }
+
+table.indexall-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  border: 1px solid var(--border);
+  background: var(--panel);
+}
+.indexall-table th,
+.indexall-table td {
+  padding: 4px 6px;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  text-align: center;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.indexall-table thead th {
+  background: var(--panel-2);
+  color: var(--text);
+  font-weight: 700;
+  font-size: 12px;
+}
+.indexall-table th.col-time { width: 90px; }
+.indexall-table th.col-league { width: 70px; }
+.indexall-table th.col-home,
+.indexall-table th.col-away { width: 130px; text-align: left; }
+.indexall-table th.col-detail { width: 60px; }
+.indexall-table td.col-home,
+.indexall-table td.col-away { text-align: left; }
+.indexall-table td.col-book { background: var(--panel); }
+.indexall-table tbody tr:nth-child(even) td { background: var(--row-alt); }
+.indexall-table tbody tr:hover td { background: #fff8c2; }
+
+.indexall-table tr.indexall-league-header td {
+  background: var(--band-bg);
+  color: var(--band-fg);
+  text-align: left;
+  padding: 4px 10px;
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 1px;
+}
+.indexall-table tr.indexall-league-header td .muted { color: rgba(255,255,255,.8); }
+
+.indexall-table tr.finished td { color: var(--muted); background: #f0f0f0 !important; }
+.indexall-table tr.finished td.col-home,
+.indexall-table tr.finished td.col-away { color: var(--muted); }
+
+.indexall-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  line-height: 1.3;
+  font-size: 11px;
+}
+.indexall-cell .row {
+  display: inline-flex;
+  gap: 5px;
+  justify-content: center;
+}
+.indexall-cell .row.ou { color: var(--muted); }
+.indexall-cell .line {
+  min-width: 30px;
+  color: var(--accent);
+  font-weight: 700;
+}
+.indexall-cell .row.ou .line { color: var(--down); }
+.indexall-cell .odds {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 15-minute change timeline (per-match page) */
+.odds-table.timeline {
+  width: auto;
+  font-size: 11px;
+  border: 1px solid var(--border);
+}
+.odds-table.timeline th,
+.odds-table.timeline td {
+  padding: 4px 6px;
+  text-align: center;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.odds-table.timeline th.tl-company-head {
+  width: 96px;
+  position: sticky;
+  left: 0;
+  background: var(--panel-2);
+  z-index: 2;
+}
+.odds-table.timeline th.tl-side-head {
+  width: 36px;
+  background: var(--panel-2);
+  border-right: 2px solid var(--border);
+}
+.odds-table.timeline thead th {
+  background: var(--panel-2);
+  font-weight: 600;
+  color: var(--text);
+}
+.odds-table.timeline td.tl-company {
+  position: sticky;
+  left: 0;
+  background: var(--panel);
+  text-align: left;
+  font-weight: 600;
+  border-right: 2px solid var(--border);
+}
+.odds-table.timeline td.tl-side-label {
+  width: 36px;
+  color: var(--muted);
+  border-right: 2px solid var(--border);
+}
+.odds-table.timeline tr.tl-row-home > td {
+  background: #fff5f5;
+}
+.odds-table.timeline tr.tl-row-away > td {
+  background: #f0f6ff;
+}
+.odds-table.timeline tr.tl-row-home > td.tl-side-label { color: var(--up); }
+.odds-table.timeline tr.tl-row-away > td.tl-side-label { color: var(--down); }
+.odds-table.timeline tr.tl-row-home > td.tl-company { background: #fff5f5; }
+
+/* Pre-kickoff column highlight — yellow tint to flag the closing pre-match snapshot */
+.odds-table.timeline th.tl-pre-kickoff,
+.odds-table.timeline td.tl-pre-kickoff {
+  background: #fff200 !important;
+  color: #000;
+  font-weight: 700;
+}
+.odds-table.timeline th.tl-pre-kickoff { color: #000; }
+
+.finished-region {
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 2px solid var(--border);
+}
+.finished-title {
+  margin: 0 0 6px;
+  font-size: 13px;
+  color: var(--text);
+  letter-spacing: 2px;
+  background: var(--panel-2);
+  padding: 4px 10px;
+  border-left: 4px solid var(--muted);
+  font-weight: 700;
+}

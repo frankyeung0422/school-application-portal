@@ -43,6 +43,22 @@ const STALE_RUN_MS = 20 * 60 * 1000;
 const NO_RUN_MS = 25 * 60 * 1000;
 const NO_SNAP_MS = 30 * 60 * 1000;
 const SITE_DROP_THRESHOLD = 0.5;
+/** Per-match staleness: any upcoming match whose newest snapshot from a top
+ *  book is older than this is flagged. Two cron ticks (15+15) covers a
+ *  legitimate single-tick failure without crying wolf. */
+const MATCH_STALE_MS = 30 * 60 * 1000;
+/** Window we audit for upcoming matches. Far-future fixtures (3+ days out)
+ *  legitimately have no recent snapshot from every book. */
+const UPCOMING_WINDOW_MS = 36 * 60 * 60 * 1000;
+/** Top books we expect to cover every upcoming top-league match. Mirrors the
+ *  BOOK_COLUMNS render order in app/page.tsx. */
+const TOP_BOOKS_FOR_AUDIT = [
+  "winbao",
+  "titan:3",
+  "titan:31",
+  "titan:17",
+  "titan:35",
+];
 
 type Severity = "warn" | "error";
 interface Finding {
@@ -279,6 +295,87 @@ export async function runQcAgent(currentRunId?: number): Promise<QcReport> {
         detail: `${orphansLeft} matches`,
       });
     }
+  }
+
+  // 6) Per-match staleness audit. For every upcoming match in the next 36h,
+  //    confirm at least one top book has a snapshot fresher than 30 min. A
+  //    match that goes silent across every book usually means the fixture
+  //    was removed from the source feed (delayed kickoff, postponement, or
+  //    UI collapse) — operator should investigate. We log up to 5 examples
+  //    on the [qc] line so the failure surfaces immediately.
+  const koWindowEnd = new Date(now + UPCOMING_WINDOW_MS);
+  const upcoming = await prisma.match.findMany({
+    where: { kickoff: { gt: new Date(now), lt: koWindowEnd } },
+    select: { id: true, home: true, away: true, league: true, kickoff: true },
+  });
+  // Per-book per-match staleness: a book that priced this match historically
+  // is expected to keep pricing it through kickoff. If it stops updating for
+  // 30+ min while OTHER books continue, that's a source-side regression
+  // worth surfacing. Catches the case where winbao silently drops a fixture
+  // from its 早盘 tab even though titan still covers it (= 21+ hour gap on
+  // the dashboard for that one book column).
+  const staleBookEntries: { match: string; site: string; ageMin: number }[] = [];
+  const missingBookMatches: { match: string; missing: string[] }[] = [];
+  for (const m of upcoming) {
+    const latestPerSite = await prisma.oddsSnapshot.groupBy({
+      by: ["site"],
+      where: { matchId: m.id, market: "AH" },
+      _max: { capturedAt: true },
+    });
+    const seenSites = new Set(latestPerSite.map((r) => r.site));
+    for (const r of latestPerSite) {
+      if (!TOP_BOOKS_FOR_AUDIT.includes(r.site)) continue;
+      if (r._max.capturedAt == null) continue;
+      const age = now - r._max.capturedAt.getTime();
+      if (age > MATCH_STALE_MS) {
+        staleBookEntries.push({
+          match: `${m.home} vs ${m.away}`,
+          site: r.site,
+          ageMin: Math.floor(age / 60000),
+        });
+      }
+    }
+    // Missing-book = some top book has NEVER snapshotted this fixture. Less
+    // severe than stale (could just be a book that doesn't price the league),
+    // but worth surfacing for matches in the next 24h.
+    if (m.kickoff && m.kickoff.getTime() < now + 24 * 60 * 60 * 1000) {
+      const missing = TOP_BOOKS_FOR_AUDIT.filter((b) => !seenSites.has(b));
+      if (missing.length > 0 && missing.length < TOP_BOOKS_FOR_AUDIT.length) {
+        // Skip matches where ALL top books are missing — those are usually
+        // matches discovered very recently and not yet covered by any book;
+        // the next 1-2 ticks will populate them.
+        missingBookMatches.push({
+          match: `${m.home} vs ${m.away}`,
+          missing,
+        });
+      }
+    }
+  }
+  if (staleBookEntries.length > 0) {
+    // Group by match so the summary tells the operator "match X is stale on
+    // book Y" not "10 stale rows scattered everywhere". The first 3 examples
+    // land on the [qc] line; the rest are noted by count.
+    const byMatch = new Map<string, string[]>();
+    for (const e of staleBookEntries) {
+      const arr = byMatch.get(e.match) ?? [];
+      arr.push(`${e.site}@${e.ageMin}m`);
+      byMatch.set(e.match, arr);
+    }
+    const examples = [...byMatch.entries()]
+      .slice(0, 3)
+      .map(([m, sites]) => `${m} [${sites.join(",")}]`);
+    findings.push({
+      code: "stale_book_per_match",
+      severity: "warn",
+      detail: `${staleBookEntries.length} rows across ${byMatch.size} matches (${examples.join("; ")}${byMatch.size > 3 ? ` …+${byMatch.size - 3}` : ""})`,
+    });
+  }
+  if (missingBookMatches.length > 0) {
+    findings.push({
+      code: "match_missing_book",
+      severity: "warn",
+      detail: `${missingBookMatches.length} matches (e.g. ${missingBookMatches[0].match} missing ${missingBookMatches[0].missing.join(",")})`,
+    });
   }
 
   return { findings, fixes };
