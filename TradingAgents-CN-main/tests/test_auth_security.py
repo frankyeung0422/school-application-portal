@@ -96,8 +96,10 @@ def api_mod(monkeypatch, tmp_path):
                                   '/favicon.ico', '/robots.txt', '/ads.txt'),
         '_AUDIT_SKIP_SUFFIXES': ('.css', '.js', '.png', '.jpg', '.svg', '.ico', '.map'),
         '_API_KEYS_TABLE_READY': False,
+        '_ROLE_TABLE_READY': False,
         # Used by create_api_key — needs to be in the ns
         'List': list,
+        'ADMIN_EMAILS': ['admin@test.local'],
     }
     # Compile only the relevant function defs by scanning for them.
     snippets = []
@@ -110,6 +112,7 @@ def api_mod(monkeypatch, tmp_path):
         'cleanup_audit_log',
         '_ensure_api_keys_table', 'create_api_key', 'revoke_api_key',
         'list_api_keys', 'verify_api_key',
+        '_ensure_users_role_column', 'get_user_role', 'user_owns_account',
     }
     lines = src.splitlines(keepends=True)
     i = 0
@@ -349,6 +352,59 @@ def test_list_api_keys_returns_metadata_without_secrets(api_mod):
         assert 'key_hash' not in r, 'list_api_keys leaked the bcrypt hash'
         assert r['prefix'].startswith('tcn_')
         assert 'name' in r and 'scopes' in r
+
+
+# ---------------------- RBAC (T8.2) ----------------------
+
+def test_get_user_role_returns_admin_for_admin_email(api_mod):
+    ns, _ = api_mod
+    # alice (id=1, email='a@e.com') is NOT in ADMIN_EMAILS
+    assert ns['get_user_role'](1, 'a@e.com') == 'user'
+    # admin@test.local IS in ADMIN_EMAILS (planted in fixture)
+    assert ns['get_user_role'](999, 'admin@test.local') == 'admin'
+
+
+def test_get_user_role_reads_db_column(api_mod):
+    """A user with role='admin' in the DB should be admin even without
+    being in ADMIN_EMAILS."""
+    ns, db_path = api_mod
+    with sqlite3.connect(str(db_path)) as c:
+        c.execute("ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'user'")
+        c.execute("INSERT INTO users (id, username, email, role) "
+                  "VALUES (3, 'op', 'op@e.com', 'admin')")
+        c.commit()
+    # Force the cached migration flag back to true so the helper
+    # doesn't re-add the column
+    ns['_ROLE_TABLE_READY'] = True
+    assert ns['get_user_role'](3, 'op@e.com') == 'admin'
+
+
+def test_user_owns_account_blocks_cross_user(api_mod):
+    ns, db_path = api_mod
+    # Plant a second user + their account
+    with sqlite3.connect(str(db_path)) as c:
+        c.execute("INSERT INTO users (id, username, email) VALUES (10, 'bob', 'b@e.com')")
+        c.execute('''CREATE TABLE IF NOT EXISTS paper_accounts (
+            id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL)''')
+        c.execute('INSERT INTO paper_accounts (id, user_id) VALUES (100, 10)')
+        c.commit()
+    # User 10 owns account 100; user 1 does not
+    assert ns['user_owns_account'](10, 100) is True
+    assert ns['user_owns_account'](1, 100) is False
+
+
+def test_admin_owns_all_accounts(api_mod):
+    """Anyone with role=admin (via email allowlist or DB) bypasses
+    ownership checks."""
+    ns, db_path = api_mod
+    with sqlite3.connect(str(db_path)) as c:
+        c.execute("INSERT INTO users (id, username, email) VALUES (11, 'admin', 'admin@test.local')")
+        c.execute('''CREATE TABLE IF NOT EXISTS paper_accounts (
+            id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL)''')
+        c.execute('INSERT INTO paper_accounts (id, user_id) VALUES (200, 999)')
+        c.commit()
+    # User 11 is admin via ADMIN_EMAILS → owns(200) returns True
+    assert ns['user_owns_account'](11, 200) is True
 
 
 def test_cleanup_expired_sessions(api_mod):

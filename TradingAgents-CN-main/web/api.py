@@ -874,6 +874,73 @@ _AUDIT_SKIP_SUFFIXES = ('.css', '.js', '.png', '.jpg', '.svg', '.ico', '.map')
 _API_KEYS_TABLE_READY = False
 
 
+_ROLE_TABLE_READY = False
+
+
+def _ensure_users_role_column():
+    """T8.2: add a role column on users. Default 'user' for legacy rows.
+
+    The existing ADMIN_EMAILS allowlist is preserved as a back-compat
+    path — anyone in that list gets role=admin computed at lookup time
+    even if the DB row says 'user'. New deployments should manage roles
+    directly via the column.
+    """
+    global _ROLE_TABLE_READY
+    if _ROLE_TABLE_READY:
+        return
+    try:
+        db_path = Path(__file__).parent / 'trading_agents.db'
+        with sqlite3.connect(str(db_path)) as c:
+            cols = {row[1] for row in c.execute('PRAGMA table_info(users)').fetchall()}
+            if 'role' not in cols:
+                c.execute("ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'user'")
+                c.commit()
+        _ROLE_TABLE_READY = True
+    except Exception as e:
+        print(f"⚠️ users.role migration failed: {e}")
+
+
+def get_user_role(user_id: int, email: Optional[str] = None) -> str:
+    """Resolve a user's effective role.
+
+    Order:
+      1. ADMIN_EMAILS list (legacy allowlist) → 'admin'
+      2. users.role column
+      3. Default → 'user'
+    """
+    if email and email in ADMIN_EMAILS:
+        return 'admin'
+    _ensure_users_role_column()
+    try:
+        db_path = Path(__file__).parent / 'trading_agents.db'
+        with sqlite3.connect(str(db_path)) as c:
+            row = c.execute('SELECT role, email FROM users WHERE id=?',
+                            (user_id,)).fetchone()
+        if row:
+            r_email = row[1]
+            if r_email and r_email in ADMIN_EMAILS:
+                return 'admin'
+            return (row[0] or 'user').strip().lower()
+    except Exception:
+        pass
+    return 'user'
+
+
+def user_owns_account(user_id: int, account_id: int) -> bool:
+    """Does this user own this paper_accounts row? Admins implicitly own all."""
+    if get_user_role(user_id) == 'admin':
+        return True
+    try:
+        db_path = Path(__file__).parent / 'trading_agents.db'
+        with sqlite3.connect(str(db_path)) as c:
+            row = c.execute(
+                'SELECT 1 FROM paper_accounts WHERE id=? AND user_id=?',
+                (account_id, user_id)).fetchone()
+        return bool(row)
+    except Exception:
+        return False
+
+
 def _ensure_api_keys_table():
     """T8.1 — api_keys table. Token = `tcn_<32 hex>` shown to user ONCE
     at creation; only the bcrypt hash is stored. Lookups happen by an
@@ -1838,6 +1905,25 @@ class TradingAgentsAPIHandler(BaseHTTPRequestHandler):
         except Exception:
             pass
         return None
+
+    def _require_account_owner(self, account_id: int) -> Optional[Dict[str, Any]]:
+        """T8.2 — gate any handler that touches a specific paper_account.
+
+        Returns the user dict on success, sends a 401/403 and returns None
+        on failure. Admins (via users.role='admin' or ADMIN_EMAILS) pass
+        regardless of ownership.
+        """
+        user = self._authed_user()
+        if not user:
+            self.send_utf8_json_response({'success': False, 'error': 'auth required'}, 401)
+            return None
+        if not account_id:
+            return user
+        if not user_owns_account(user['id'], account_id):
+            self.send_utf8_json_response(
+                {'success': False, 'error': 'forbidden — not your account'}, 403)
+            return None
+        return user
 
     def _authed_user(self):
         """Resolve the request to a user dict via session cookie OR API key.
@@ -14043,28 +14129,51 @@ p{color:#8b95b8;font-size:14px;line-height:1.6;}
         return None
 
     def _require_admin_session(self):
-        """Gate an endpoint behind admin email allowlist via Bearer-token session.
-        Returns the session dict if allowed, otherwise sends 401/403 and returns None."""
+        """Gate an endpoint behind admin role. Returns the session dict
+        if allowed, otherwise sends 401/403 and returns None.
+
+        T8.2: previously checked ADMIN_EMAILS allowlist only. Now also
+        honors users.role='admin' via get_user_role(). The email
+        allowlist remains as a legacy / bootstrap path.
+        """
         session = self._get_session_from_request()
         if not session:
             self.send_utf8_json_response({'success': False, 'error': '請先登入'}, 401)
             return None
         email = (session.get('email') or '').strip().lower()
-        if email not in {e.lower() for e in ADMIN_EMAILS}:
-            self.send_utf8_json_response({'success': False, 'error': '需要管理員權限'}, 403)
-            return None
-        return session
+        user_id = session.get('user_id') or session.get('id')
+        if email in {e.lower() for e in ADMIN_EMAILS}:
+            return session
+        if user_id and get_user_role(int(user_id), email) == 'admin':
+            return session
+        self.send_utf8_json_response({'success': False, 'error': '需要管理員權限'}, 403)
+        return None
 
     def _require_pro_tier(self, min_tier: int = 2):
         """
         Gate an endpoint behind a minimum Pro tier (default 2 = Pro plan).
         Returns the session dict if allowed, otherwise sends a 401/403 and returns None.
         Tiers: 0=free, 1=starter, 2=pro, 3=elite, 4=institutional.
+
+        T8.1: also accepts API-key authentication. When an API-key bearer
+        token is presented, we synthesise a session-shaped dict so the
+        existing handlers don't need to know which path they came from.
         """
         session = self._get_session_from_request()
         if not session:
-            self.send_utf8_json_response({"success": False, "error": "請先登入", "code": "auth_required"}, 401)
-            return None
+            # T8.1: try API-key path before failing
+            user = self._authed_user()
+            if user and user.get('auth_via') == 'api_key':
+                session = {
+                    'user_id': user['id'], 'username': user.get('username'),
+                    'email': user.get('email'), 'plan_type': user.get('plan_type'),
+                    'analysis_count': user.get('analysis_count', 0),
+                    'max_analyses': user.get('max_analyses', 10),
+                    'auth_via': 'api_key',
+                }
+            else:
+                self.send_utf8_json_response({"success": False, "error": "請先登入", "code": "auth_required"}, 401)
+                return None
 
         plan_type = (session.get('plan_type') or 'free').lower()
         # Pull current tier from SUBSCRIPTION_PLANS (handles plan changes since login)
