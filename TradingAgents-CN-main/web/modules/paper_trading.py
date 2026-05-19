@@ -1617,11 +1617,14 @@ def _maybe_auto_evolve(user_id: int, account_id: int) -> None:
                 last_dt = datetime.fromisoformat(last)
                 if (datetime.now() - last_dt).total_seconds() < freq * 86400:
                     return
-            except Exception:
-                pass
+            except Exception as e:
+                _log(account_id, 'warning',
+                     f'last_evolved_at parse failed ({last!r}) — re-evolving anyway: {e}')
         evolve_account_plan(user_id, account_id, trigger='auto')
     except Exception as e:
-        print(f"⚠️ auto-evolve failed for account {account_id}: {e}")
+        import traceback
+        _log(account_id, 'error',
+             f'auto-evolve crashed: {e}\n{traceback.format_exc()}')
 
 
 def resume_account(user_id: int, account_id: int,
@@ -1885,7 +1888,8 @@ def send_weekly_leaderboards() -> Dict[str, Any]:
                             'best_strats': b.get('plan', {}).get('strategies', []),
                         })
                 except Exception as e:
-                    print(f"⚠️ leaderboard opt failed for user {uid} '{u['name']}': {e}")
+                    _log(None, 'warning',
+                         f'leaderboard opt failed for user {uid} \'{u["name"]}\': {e}')
 
             if not results:
                 skipped += 1
@@ -2200,6 +2204,11 @@ def _run_account_tick_impl(user_id: int, account_id: int,
     today_iso = date.today().isoformat()
     target_iso = until_date or today_iso
 
+    # Non-fatal warnings the tick accumulates and returns in the result.
+    # Used by the wrapper / dashboard / email digest to flag degraded runs
+    # without forcing a failure return.
+    tick_warnings: List[Dict[str, Any]] = []
+
     with _conn() as c:
         a = c.execute('SELECT * FROM paper_accounts WHERE id=? AND user_id=?',
                       (account_id, user_id)).fetchone()
@@ -2229,8 +2238,22 @@ def _run_account_tick_impl(user_id: int, account_id: int,
                                            custom_symbols=custom_syms,
                                            news_filter=news_filter,
                                            news_filter_mode=news_mode)
+                if not ai_syms:
+                    # Scan returned empty but didn't raise — still
+                    # degraded, will fall back to manual symbols.
+                    tick_warnings.append({
+                        'kind': 'ai_scan_empty',
+                        'detail': 'AI universe scan returned 0 picks; '
+                                  'falling back to plan.symbols',
+                    })
+                    _log(account_id, 'warning',
+                         'AI scan returned empty result — fallback to manual symbols')
             except Exception as e:
-                print(f"⚠️ AI scan failed for account {account_id}: {e}")
+                _log(account_id, 'error', f'AI scan failed: {e}')
+                tick_warnings.append({
+                    'kind': 'ai_scan_failed',
+                    'detail': f'{type(e).__name__}: {e}',
+                })
                 ai_syms = []
             # Add open positions so we can exit them
             held = [r['symbol'] for r in c.execute(
@@ -2274,7 +2297,8 @@ def _run_account_tick_impl(user_id: int, account_id: int,
             vix = _vix_latest()
             if vix is not None and vix > vix_gate:
                 vix_block_entries = True
-                print(f"📈 VIX gate (account {account_id}): VIX={vix:.1f} > {vix_gate} — pausing new entries this tick")
+                _log(account_id, 'info',
+                     f'VIX gate tripped: VIX={vix:.1f} > {vix_gate} — pausing new entries')
 
         cash = float(a['cash'])
         # On the very first tick (last_run_date is NULL) we include the start_date
@@ -2319,6 +2343,7 @@ def _run_account_tick_impl(user_id: int, account_id: int,
             except Exception:
                 _fetch_calendar = None  # type: ignore
         if _fetch_calendar:
+            cal_failures = 0
             for sym in symbols:
                 try:
                     cal = _fetch_calendar(sym)
@@ -2327,9 +2352,32 @@ def _run_account_tick_impl(user_id: int, account_id: int,
                         if d_to is not None and 0 <= d_to <= ENTRY_BLACKOUT_DAYS:
                             avoid_earnings.add(sym)
                 except Exception:
+                    cal_failures += 1
                     continue
+            # If more than half of the calendar lookups failed, the
+            # blackout is effectively disabled for those symbols — we
+            # want the tick + dashboard to surface that, not just log it.
+            if cal_failures and symbols and cal_failures >= max(1, len(symbols) // 2):
+                tick_warnings.append({
+                    'kind': 'earnings_calendar_degraded',
+                    'detail': f'{cal_failures}/{len(symbols)} earnings lookups failed; '
+                              'blackout gate not applied to those names',
+                })
+                _log(account_id, 'warning',
+                     f'earnings calendar degraded ({cal_failures}/{len(symbols)} lookups failed) — '
+                     'blackout gate partially disabled')
+        else:
+            # We couldn't even import pro_calendar — gate is entirely off.
+            tick_warnings.append({
+                'kind': 'earnings_calendar_unavailable',
+                'detail': 'pro_calendar module not importable; earnings blackout disabled',
+            })
+            _log(account_id, 'warning',
+                 'pro_calendar import failed — earnings blackout disabled for this tick')
         if avoid_earnings:
-            print(f"📅 Earnings blackout (account {account_id}): {sorted(avoid_earnings)} skipped for new entries (within {ENTRY_BLACKOUT_DAYS}d)")
+            _log(account_id, 'info',
+                 f"earnings blackout: {sorted(avoid_earnings)} "
+                 f"skipped (within {ENTRY_BLACKOUT_DAYS}d)")
 
         # Multi-timeframe gate: pre-compute weekly trend per symbol once per tick.
         weekly_block: set = set()
@@ -2339,7 +2387,8 @@ def _run_account_tick_impl(user_id: int, account_id: int,
                 if up is False:
                     weekly_block.add(sym)
             if weekly_block:
-                print(f"📊 MTF gate (account {account_id}): {sorted(weekly_block)} blocked — weekly trend down")
+                _log(account_id, 'info',
+                     f'MTF gate blocked entries on {sorted(weekly_block)} (weekly trend down)')
 
         # Pre-fetch per-symbol series + signal arrays (prices converted to account ccy)
         series: Dict[str, Dict[str, Any]] = {}
@@ -2485,7 +2534,9 @@ def _run_account_tick_impl(user_id: int, account_id: int,
                             dd_ratio = dd_dollars / slice_est * 100
                             if dd_ratio >= sym_dd_stop_pct:
                                 disabled_symbols.add(sym)
-                                print(f"⚠️ Account {account_id} blacklisted {sym}: DD ${dd_dollars:.2f} / ${slice_est:.2f} = {dd_ratio:.2f}% (>= {sym_dd_stop_pct}%)")
+                                _log(account_id, 'warning',
+                                     f'symbol {sym} blacklisted: DD ${dd_dollars:.2f} / '
+                                     f'${slice_est:.2f} = {dd_ratio:.2f}% (>= {sym_dd_stop_pct}%)')
 
             # 2) Check entries
             # NOTE: relaxed entry — `sig==1` is enough; the "skip if already
@@ -2533,8 +2584,10 @@ def _run_account_tick_impl(user_id: int, account_id: int,
                                         date.fromisoformat(last_close['exit_date'])).days
                             if gap_days < hold_cooldown_days:
                                 continue
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            _log(account_id, 'warning',
+                                 f'cooldown date parse failed for {sym} '
+                                 f'(today={d} exit={last_close["exit_date"]}): {e}')
                 price = float(s['closes'][i])
 
                 # Compute current account equity for the sizing/cap basis.
@@ -2691,7 +2744,7 @@ def _run_account_tick_impl(user_id: int, account_id: int,
                         (cash, d, peak_equity, paused_msg, account_id),
                     )
                     c.commit()
-                    print(f"⛔ Account {account_id} auto-paused: {paused_msg}")
+                    _log(account_id, 'error', f'auto-paused: {paused_msg}')
                     # Always-on drawdown alert (separate from per-tick toggle)
                     try:
                         from modules.notify import notify_user
@@ -2711,7 +2764,7 @@ def _run_account_tick_impl(user_id: int, account_id: int,
                             channels={'paper_tick_email': True, 'paper_tick_slack': True, 'paper_tick_telegram': True},
                         )
                     except Exception as ne:
-                        print(f"⚠️ drawdown alert send failed: {ne}")
+                        _log(account_id, 'warning', f'drawdown alert send failed: {ne}')
                     return {
                         'success': True,
                         'account_id': account_id,
@@ -2721,6 +2774,7 @@ def _run_account_tick_impl(user_id: int, account_id: int,
                         'cash': cash,
                         'paused': True,
                         'paused_reason': paused_msg,
+                        'warnings': tick_warnings,
                     }
 
         # Persist new cash + last_run_date + peak_equity + disabled_symbols.
@@ -2747,7 +2801,7 @@ def _run_account_tick_impl(user_id: int, account_id: int,
         try:
             notify_results = _notify_tick_summary(user_id, account_id, new_tx, last_run, cash)
         except Exception as e:
-            print(f"⚠️ Paper tick notification failed for account {account_id}: {e}")
+            _log(account_id, 'warning', f'tick notification fan-out failed: {e}')
 
     # After the tick: if the account opted into auto-evolution, the quant
     # agent runs a walk-forward strategy search and potentially upgrades
@@ -2762,6 +2816,7 @@ def _run_account_tick_impl(user_id: int, account_id: int,
         'last_run_date': last_run,
         'cash': cash,
         'notifications': notify_results,
+        'warnings': tick_warnings,
     }
 
 

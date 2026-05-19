@@ -13528,23 +13528,61 @@ def run_server(host='0.0.0.0', port=8501):
     # Paper-trading nightly scheduler — checks once an hour for accounts that
     # opted into auto_run and haven't been ticked today; also fires the daily
     # P&L digest once per local day around 22:00.
+    #
+    # Resilience (Track 5 / audit #3): the old loop printed exceptions and
+    # continued, but a persistent inner-loop fault (e.g. list_auto_run_accounts
+    # failing because the DB was relocated) would silently spin forever with
+    # no auto-runs and no alert. Now we count consecutive failures, back off
+    # exponentially after the first hit, and email the operator once we
+    # cross _SCHED_ALERT_THRESHOLD so the feature isn't dying in silence.
+    _SCHED_ALERT_THRESHOLD = 3
+    _SCHED_BACKOFF_BASE = 60   # seconds — doubles per consecutive failure, capped at 1h
+    _SCHED_NORMAL_INTERVAL = 3600
+
     def paper_scheduler_loop():
         # Wait a minute on startup so the server is fully initialized
         time.sleep(60)
         last_digest_date = None
+        consecutive_failures = 0
+        alerted_for_this_outage = False
+        # Lazy-import the structured logger so we get the rotating file log
+        # at web/logs/paper_trading.log — same place the tick wrapper writes.
+        try:
+            from modules.paper_trading import _log as pt_log
+        except Exception:
+            pt_log = None
+        def _sched_log(level: str, msg: str, **kw):
+            if pt_log:
+                pt_log('scheduler', level, msg, **kw)
+            else:
+                print(f"[scheduler] {level.upper()} {msg}")
+
         while True:
+            interval = _SCHED_NORMAL_INTERVAL
             try:
                 from modules.paper_trading import list_auto_run_accounts, run_account_tick
                 due = list_auto_run_accounts()
                 if due:
-                    print(f"⏰ Paper auto-run: {len(due)} account(s) due")
-                    for entry in due:
-                        try:
-                            res = run_account_tick(entry['user_id'], entry['id'])
-                            tag = '✓' if res.get('success') else '✗'
-                            print(f"   {tag} acct {entry['id']}: {res.get('days_processed', 0)} days, {res.get('new_transactions', 0)} tx")
-                        except Exception as e:
-                            print(f"   ✗ acct {entry['id']}: {e}")
+                    _sched_log('info', f'auto-run sweep: {len(due)} account(s) due')
+                ok_n = err_n = 0
+                for entry in due:
+                    try:
+                        res = run_account_tick(entry['user_id'], entry['id'])
+                        if res.get('success'):
+                            ok_n += 1
+                            _sched_log('info',
+                                       f"acct {entry['id']} ticked",
+                                       days=res.get('days_processed', 0),
+                                       tx=res.get('new_transactions', 0))
+                        else:
+                            err_n += 1
+                            _sched_log('warning',
+                                       f"acct {entry['id']} returned not-success: {res.get('error')}")
+                    except Exception as e:
+                        err_n += 1
+                        _sched_log('error', f"acct {entry['id']} tick crashed: {e}")
+                if due:
+                    _sched_log('info', f'auto-run sweep done', ok=ok_n, err=err_n)
 
                 # Daily P&L digest: once per local day, fire after 22:00 local time
                 now = datetime.now()
@@ -13554,29 +13592,71 @@ def run_server(host='0.0.0.0', port=8501):
                         from modules.paper_trading import send_daily_digests
                         digest_res = send_daily_digests()
                         last_digest_date = today_iso
-                        print(f"📊 Daily digest: sent={digest_res['sent']} skipped={digest_res['skipped']} errors={len(digest_res['errors'])}")
+                        _sched_log('info',
+                                   'daily digest sent',
+                                   sent=digest_res['sent'],
+                                   skipped=digest_res['skipped'],
+                                   errors=len(digest_res['errors']))
                     except Exception as e:
-                        print(f"⚠️ daily digest error: {e}")
+                        _sched_log('error', f'daily digest crashed: {e}')
 
-                    # Daily AI trade-ideas email — same 22:00 slot, opt-in via ai_ideas_email pref
+                    # Daily AI trade-ideas email — same 22:00 slot, opt-in
                     try:
                         from modules.pro_ai import send_daily_ai_ideas
                         ai_res = send_daily_ai_ideas()
-                        print(f"💡 Daily AI ideas: sent={ai_res['sent']} skipped={ai_res['skipped']} errors={len(ai_res['errors'])}")
+                        _sched_log('info',
+                                   'daily AI ideas sent',
+                                   sent=ai_res['sent'],
+                                   skipped=ai_res['skipped'],
+                                   errors=len(ai_res['errors']))
                     except Exception as e:
-                        print(f"⚠️ daily AI ideas error: {e}")
+                        _sched_log('error', f'daily AI ideas crashed: {e}')
 
                     # Weekly leaderboard — fire on Sundays only (weekday() == 6)
                     if now.weekday() == 6:
                         try:
                             from modules.paper_trading import send_weekly_leaderboards
                             wl_res = send_weekly_leaderboards()
-                            print(f"🏆 Weekly leaderboard: sent={wl_res['sent']} skipped={wl_res['skipped']} errors={len(wl_res['errors'])}")
+                            _sched_log('info',
+                                       'weekly leaderboard sent',
+                                       sent=wl_res['sent'],
+                                       errors=len(wl_res['errors']))
                         except Exception as e:
-                            print(f"⚠️ weekly leaderboard error: {e}")
+                            _sched_log('error', f'weekly leaderboard crashed: {e}')
+
+                # Healthy iteration — clear the back-off + outage state.
+                if consecutive_failures > 0:
+                    _sched_log('info',
+                               f'scheduler recovered after {consecutive_failures} failed iterations')
+                consecutive_failures = 0
+                alerted_for_this_outage = False
             except Exception as e:
-                print(f"⚠️ paper_scheduler_loop error: {e}")
-            time.sleep(3600)  # check hourly
+                import traceback
+                consecutive_failures += 1
+                tb = traceback.format_exc()
+                _sched_log('error',
+                           f'scheduler iteration #{consecutive_failures} crashed: {e}\n{tb}')
+                # Exponential back-off: 60s, 120s, 240s ... capped at the
+                # normal hourly cadence. Prevents a hot-loop hammering a
+                # broken dependency.
+                interval = min(_SCHED_NORMAL_INTERVAL,
+                               _SCHED_BACKOFF_BASE * (2 ** (consecutive_failures - 1)))
+                if (consecutive_failures >= _SCHED_ALERT_THRESHOLD
+                        and not alerted_for_this_outage):
+                    alerted_for_this_outage = True
+                    try:
+                        from modules.notify import notify_admins
+                        notify_admins(
+                            f"⚠️ Paper scheduler crashed {consecutive_failures}× in a row",
+                            text=(f"The paper-trading auto-run scheduler has failed "
+                                  f"{consecutive_failures} consecutive iterations.\n\n"
+                                  f"Latest error: {e}\n\n"
+                                  f"Auto-run accounts are NOT ticking. Check "
+                                  f"web/logs/paper_trading.log and the API process. "
+                                  f"Backing off to {interval}s between retries."))
+                    except Exception as ne:
+                        _sched_log('warning', f'admin alert send failed: {ne}')
+            time.sleep(interval)
 
     paper_thread = threading.Thread(target=paper_scheduler_loop, daemon=True, name='paper-scheduler')
     paper_thread.start()
