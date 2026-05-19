@@ -589,6 +589,80 @@ def test_get_bandit_state_orders_by_win_rate(pt):
     assert names[-1] == 'worst'
 
 
+# ============================================================================
+# T6.6 — evolution guardrails
+# ============================================================================
+
+def test_guardrails_pass_when_all_safe():
+    from modules.paper_learning import evolution_guardrails
+    before = {'strategies': ['ma_cross'], 'combine_mode': 'any',
+              'take_profit_pct': 10, 'stop_loss_pct': 5, 'pos_size_pct': 20}
+    after = {'strategies': ['ma_cross'], 'combine_mode': 'any',
+             'take_profit_pct': 11, 'stop_loss_pct': 5, 'pos_size_pct': 20}  # 10% TP bump
+    out = evolution_guardrails(
+        account_id=1, before_plan=before, after_plan=after,
+        backtest_max_dd_pct=5.0, live_max_dd_pct=3.0,
+        regime_recent_flip=False,
+    )
+    assert out['passed'] is True
+    assert out['blocks'] == []
+
+
+def test_guardrails_block_when_live_dd_too_high():
+    from modules.paper_learning import evolution_guardrails
+    before = {'strategies': ['ma_cross'], 'take_profit_pct': 10,
+              'stop_loss_pct': 5, 'pos_size_pct': 20, 'combine_mode': 'any'}
+    after = dict(before, take_profit_pct=11)
+    out = evolution_guardrails(
+        account_id=1, before_plan=before, after_plan=after,
+        backtest_max_dd_pct=5.0, live_max_dd_pct=12.0,  # 2.4x backtest
+        regime_recent_flip=False,
+    )
+    assert out['passed'] is False
+    assert any('live_dd' in b for b in out['blocks'])
+
+
+def test_guardrails_block_on_regime_flip():
+    from modules.paper_learning import evolution_guardrails
+    before = {'strategies': ['ma_cross'], 'take_profit_pct': 10,
+              'stop_loss_pct': 5, 'pos_size_pct': 20, 'combine_mode': 'any'}
+    after = dict(before, take_profit_pct=11)
+    out = evolution_guardrails(
+        account_id=1, before_plan=before, after_plan=after,
+        backtest_max_dd_pct=5.0, live_max_dd_pct=3.0,
+        regime_recent_flip=True,
+    )
+    assert out['passed'] is False
+    assert any('regime_flip' in b for b in out['blocks'])
+
+
+def test_guardrails_block_on_big_param_change():
+    """Changing 4 out of 5 tunable fields = 80% > 50% threshold → blocked."""
+    from modules.paper_learning import evolution_guardrails
+    before = {'strategies': ['ma_cross'], 'combine_mode': 'any',
+              'take_profit_pct': 10, 'stop_loss_pct': 5, 'pos_size_pct': 20}
+    after = {'strategies': ['breakout', 'momentum'], 'combine_mode': 'majority',
+             'take_profit_pct': 25, 'stop_loss_pct': 12, 'pos_size_pct': 20}
+    out = evolution_guardrails(
+        account_id=1, before_plan=before, after_plan=after,
+        backtest_max_dd_pct=5.0, live_max_dd_pct=3.0,
+        regime_recent_flip=False,
+    )
+    assert out['passed'] is False
+    assert any('param_change' in b for b in out['blocks'])
+    assert out['param_change_ratio'] > 0.5
+
+
+def test_guardrails_small_numeric_bump_not_counted():
+    """A 10% TP bump (10→11) shouldn't count as a 'material' change."""
+    from modules.paper_learning import _param_change_ratio
+    before = {'take_profit_pct': 10, 'stop_loss_pct': 5, 'pos_size_pct': 20,
+              'strategies': ['ma'], 'combine_mode': 'any'}
+    after = dict(before, take_profit_pct=11)  # +10% relative
+    # 10% relative change exactly should NOT count as material
+    assert _param_change_ratio(before, after) <= 0.21
+
+
 def test_promotion_supersedes_other_challengers(pt, monkeypatch):
     """When one challenger promotes, all other active challengers should
     be dropped — they were comparing against the now-defunct champion."""

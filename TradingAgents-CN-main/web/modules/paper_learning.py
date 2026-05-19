@@ -668,6 +668,102 @@ def get_bandit_state(account_id: int, conn_factory) -> List[Dict[str, Any]]:
     return [dict(r) for r in rows]
 
 
+# ---------------------------------------------------------------------------
+# T6.6 — Evolution guardrails.
+#
+# Refuses to apply an evolution result when conditions suggest the swap
+# would likely make things worse:
+#
+#   GR1 (drawdown)   — realized 30-day drawdown is > 2× the backtested
+#                      max-drawdown the candidate plan was tuned to.
+#   GR2 (regime)     — market regime flipped within the last N days.
+#                      A plan tuned to last week's chop should NOT go
+#                      live mid-spike.
+#   GR3 (param dist) — candidate changes >50% of the plan's tunable
+#                      fields at once. Big jumps are more likely to be
+#                      overfit lucky breaks than genuine improvements.
+#
+# All three checks are conservative — a True/False decision plus a
+# textual reason that goes into paper_admin_actions on block. Caller
+# (paper_trading.evolve_account_plan) writes the row and triggers
+# notify_admins so an operator can investigate.
+# ---------------------------------------------------------------------------
+_GR_DD_MULTIPLIER = 2.0
+_GR_REGIME_WINDOW_DAYS = 3
+_GR_PARAM_CHANGE_THRESHOLD = 0.5
+_GR_TUNABLE_FIELDS = ('strategies', 'combine_mode', 'take_profit_pct',
+                      'stop_loss_pct', 'pos_size_pct')
+
+
+def _param_change_ratio(before: Dict[str, Any], after: Dict[str, Any]) -> float:
+    """Fraction of tunable fields that materially changed.
+
+    For numeric fields, "materially" = >10% relative change (so 10→11 doesn't
+    count). For list/str fields it's a straight inequality.
+    """
+    changed = 0
+    counted = 0
+    for f in _GR_TUNABLE_FIELDS:
+        b = before.get(f)
+        a = after.get(f)
+        if b is None and a is None:
+            continue
+        counted += 1
+        if isinstance(b, (int, float)) and isinstance(a, (int, float)):
+            if b == 0:
+                if a != 0:
+                    changed += 1
+            elif abs(a - b) / abs(b) > 0.10:
+                changed += 1
+        else:
+            if b != a:
+                changed += 1
+    if counted == 0:
+        return 0.0
+    return changed / counted
+
+
+def evolution_guardrails(
+    account_id: int,
+    before_plan: Dict[str, Any],
+    after_plan: Dict[str, Any],
+    backtest_max_dd_pct: float,
+    live_max_dd_pct: Optional[float],
+    regime_recent_flip: bool,
+) -> Dict[str, Any]:
+    """Returns ``{passed: bool, blocks: [reason, ...]}``.
+
+    The caller decides what to do — typically: don't apply, write a
+    paper_admin_actions row with action='evolution_blocked', notify
+    admins. We split the decision from the side-effect so the function
+    stays pure-testable.
+    """
+    blocks: List[str] = []
+
+    # GR1: realized vs backtested drawdown
+    if (live_max_dd_pct is not None and backtest_max_dd_pct is not None
+            and backtest_max_dd_pct > 0
+            and live_max_dd_pct > _GR_DD_MULTIPLIER * backtest_max_dd_pct):
+        blocks.append(
+            f'live_dd_{live_max_dd_pct:.1f}%_exceeds_'
+            f'{_GR_DD_MULTIPLIER}x_backtest_{backtest_max_dd_pct:.1f}%'
+        )
+
+    # GR2: regime just flipped
+    if regime_recent_flip:
+        blocks.append(f'regime_flip_within_{_GR_REGIME_WINDOW_DAYS}d')
+
+    # GR3: too many params changed at once
+    pcr = _param_change_ratio(before_plan, after_plan)
+    if pcr > _GR_PARAM_CHANGE_THRESHOLD:
+        blocks.append(
+            f'param_change_{int(pcr*100)}%_exceeds_{int(_GR_PARAM_CHANGE_THRESHOLD*100)}%'
+        )
+
+    return {'passed': len(blocks) == 0, 'blocks': blocks,
+            'param_change_ratio': pcr}
+
+
 def mutate_plan(champion: Dict[str, Any],
                 rng: Optional[random.Random] = None) -> Dict[str, Any]:
     """Return a single mutated copy of ``champion``. Tweaks 1-2 fields

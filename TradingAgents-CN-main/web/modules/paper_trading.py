@@ -1727,36 +1727,106 @@ def evolve_account_plan(user_id: int, account_id: int,
     applied = False
     after_plan = dict(plan)
     apply_source = None
+    guardrail_result: Dict[str, Any] = {'passed': True, 'blocks': []}
 
-    # First preference: a challenger that just hit WIN_STREAK_TO_PROMOTE.
-    # This is the no-regret path — that challenger has beaten the champion
-    # for K consecutive cycles, not just won a single lucky search.
+    # Tentatively build the candidate `after_plan` (without applying it yet),
+    # then run guardrails on it. We need the proposed plan before checking
+    # GR3 (param-change ratio), so this two-phase structure is intentional.
+    proposed_plan = dict(plan)
+    proposed_source = None
     promoted = (challenger_summary or {}).get('promoted')
     if apply_if_better and promoted:
         try:
             from . import paper_learning as _pl
         except Exception:
             from web.modules import paper_learning as _pl  # type: ignore
-        promo_result = _pl.promote_challenger(promoted['id'], account_id, _conn)
-        if promo_result:
-            for k in ('strategies', 'combine_mode', 'take_profit_pct',
-                      'stop_loss_pct', 'pos_size_pct'):
-                if k in promo_result['plan']:
-                    after_plan[k] = promo_result['plan'][k]
-            applied = True
-            apply_source = f"challenger_promoted:{promoted['source']}"
-
-    # Fallback: direct optimizer apply (original Track-4 behavior) — only
-    # fires when no challenger was promoted this cycle.
-    if (not applied and apply_if_better
+        # Read the challenger's plan to score it for guardrails. Don't
+        # promote yet — we want guardrails to decide.
+        with _conn() as c:
+            c.row_factory = sqlite3.Row
+            row = c.execute(
+                'SELECT plan_json FROM paper_challengers WHERE id=?',
+                (promoted['id'],)).fetchone()
+        if row:
+            try:
+                cand = json.loads(row['plan_json'])
+                for k in ('strategies', 'combine_mode', 'take_profit_pct',
+                          'stop_loss_pct', 'pos_size_pct'):
+                    if k in cand:
+                        proposed_plan[k] = cand[k]
+                proposed_source = f"challenger_promoted:{promoted['source']}"
+            except Exception:
+                pass
+    elif (apply_if_better
             and (best_score - baseline_score) >= _EVOLVE_MIN_GAIN
             and new_plan_fields):
         for k in ('strategies', 'combine_mode', 'take_profit_pct',
                  'stop_loss_pct', 'pos_size_pct'):
             if k in new_plan_fields and new_plan_fields[k] is not None:
-                after_plan[k] = new_plan_fields[k]
+                proposed_plan[k] = new_plan_fields[k]
+        proposed_source = 'optimizer_direct'
+
+    # T6.6 — guardrails. Run only if there's actually a proposed swap.
+    if proposed_source:
+        try:
+            try:
+                from . import paper_learning as _pl
+            except Exception:
+                from web.modules import paper_learning as _pl  # type: ignore
+            backtest_max_dd = float(baseline_metrics.get('max_drawdown_pct') or 0)
+            live_max_dd = (float(live.get('max_dd_pct'))
+                           if live.get('applicable') else None)
+            regime_flip = _pl.regime_just_flipped(_conn, window_days=_pl._GR_REGIME_WINDOW_DAYS)
+            guardrail_result = _pl.evolution_guardrails(
+                account_id=account_id,
+                before_plan=plan,
+                after_plan=proposed_plan,
+                backtest_max_dd_pct=backtest_max_dd,
+                live_max_dd_pct=live_max_dd,
+                regime_recent_flip=regime_flip,
+            )
+        except Exception as e:
+            _log(account_id, 'warning', f'guardrails check failed: {e}')
+            guardrail_result = {'passed': True, 'blocks': [], 'note': f'check_failed: {e}'}
+
+    if proposed_source and guardrail_result.get('passed'):
+        after_plan = proposed_plan
         applied = True
-        apply_source = 'optimizer_direct'
+        apply_source = proposed_source
+        # If the apply path was a challenger promotion, do the actual
+        # row swap now that guardrails passed.
+        if promoted and apply_source and apply_source.startswith('challenger_promoted'):
+            try:
+                try:
+                    from . import paper_learning as _pl
+                except Exception:
+                    from web.modules import paper_learning as _pl  # type: ignore
+                _pl.promote_challenger(promoted['id'], account_id, _conn)
+            except Exception as e:
+                _log(account_id, 'warning', f'promote_challenger failed: {e}')
+    elif proposed_source:
+        # Blocked by guardrails — log + audit + alert
+        applied = False
+        apply_source = f"{proposed_source}_blocked_by_guardrails"
+        block_reasons = ', '.join(guardrail_result.get('blocks') or [])
+        _log(account_id, 'warning',
+             f'evolution blocked by guardrails: {block_reasons}')
+        _record_admin_action(account_id, user_id, 'evolution_blocked', {
+            'source': proposed_source,
+            'blocks': guardrail_result.get('blocks'),
+            'before_plan': plan,
+            'proposed_plan': proposed_plan,
+        })
+        try:
+            from .notify import notify_admins
+            notify_admins(
+                f'⛔ Evolution blocked on account {account_id}',
+                text=(f"Tried to swap to {proposed_source}. Guardrails fired: "
+                      f"{block_reasons}. The plan was NOT changed. "
+                      f"Inspect paper_admin_actions for details."),
+            )
+        except Exception:
+            pass
 
     # Persist the round
     top_compact = []
@@ -1850,6 +1920,7 @@ def evolve_account_plan(user_id: int, account_id: int,
         'challengers': challenger_summary,
         'apply_source': apply_source,
         'regime': regime,
+        'guardrails': guardrail_result,
         'target_monthly_pct': target_monthly_pct,
         'target_annual_pct': target_annual,
         'note': note,
