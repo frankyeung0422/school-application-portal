@@ -357,6 +357,183 @@ def regime_just_flipped(conn_factory, window_days: int = 3) -> bool:
     return len(rows) >= 2 and len(set(rows)) > 1
 
 
+# ---------------------------------------------------------------------------
+# T6.4 — Challenger sources. Each function returns a candidate plan dict
+# that paper_trading.evolve_account_plan will hand to add_challenger().
+# They share the same signature so the calling code stays uniform:
+#
+#     candidate = source(champion, base_plan, scorer, rng) -> dict or None
+#
+# `champion`  : the current live plan_json dict (read-only)
+# `base_plan` : the full simulate_plan input (symbols, capital, period, …)
+# `scorer`    : callable(plan_dict) -> {score, annual_return_pct} for the
+#               source to optionally evaluate proposals before returning
+#               the strongest one
+# `rng`       : seeded Random so tests are deterministic
+#
+# When a source returns None, the caller silently moves on — never raises.
+# ---------------------------------------------------------------------------
+
+def source_random_mutation(champion: Dict[str, Any],
+                            base_plan: Dict[str, Any],
+                            scorer,
+                            rng: Optional[random.Random] = None) -> Optional[Dict[str, Any]]:
+    """One mutated copy of the champion. Cheapest source — always returns
+    something unless the champion is empty."""
+    if not champion:
+        return None
+    return mutate_plan(champion, rng=rng)
+
+
+# Mapping from paper-trading strategy names ↔ GA StrategyGenome strategy_id
+# Kept here so the GA module's namespace (momentum / mean_reversion / …)
+# can be translated into our 5-strategy library without touching either side.
+_GA_STRAT_TO_PT = {
+    'momentum': 'momentum',
+    'mean_reversion': 'rsi_meanreversion',
+    'multi_factor': 'macd_cross',
+    'pairs_trading': 'breakout',
+    'volatility_arb': 'momentum',
+    'stat_arb': 'rsi_meanreversion',
+}
+
+
+def _genome_params_to_plan(genome_params: Dict[str, Any],
+                           strategy_id: str,
+                           champion: Dict[str, Any]) -> Dict[str, Any]:
+    """Translate StrategyGenome.params into a paper-trading plan dict.
+
+    Most genome fields are sub-strategy weights we don't use directly.
+    The fields that DO map: position_pct → pos_size_pct, stop_loss →
+    stop_loss_pct, take_profit → take_profit_pct. Symbols / ai_mode
+    are user-owned and stay on the champion side.
+    """
+    pt_strat = _GA_STRAT_TO_PT.get(strategy_id)
+    out = dict(champion)
+    if pt_strat:
+        out['strategies'] = [pt_strat]
+    if 'position_pct' in genome_params:
+        out['pos_size_pct'] = max(5.0, min(80.0,
+                                            float(genome_params['position_pct']) * 100))
+    if 'stop_loss' in genome_params:
+        # GA stores stop_loss as negative fraction; flip sign + clamp
+        out['stop_loss_pct'] = max(1.0, min(15.0,
+                                             abs(float(genome_params['stop_loss'])) * 100))
+    if 'take_profit' in genome_params:
+        out['take_profit_pct'] = max(2.0, min(30.0,
+                                                float(genome_params['take_profit']) * 100))
+    return out
+
+
+def source_ga_mutation(champion: Dict[str, Any],
+                        base_plan: Dict[str, Any],
+                        scorer,
+                        rng: Optional[random.Random] = None) -> Optional[Dict[str, Any]]:
+    """Genetic-algorithm-mutated proposal via tradingagents.quant.auto_optimizer.
+
+    We don't run the full ``run_optimization`` here (it needs a quant_engine
+    + backtests of its own) — just borrow the ``StrategyGenome.mutate`` /
+    ``crossover`` machinery to produce a new candidate, then translate
+    its params into a paper-trading plan via _genome_params_to_plan.
+    Returns None if the GA module is unavailable.
+    """
+    try:
+        from tradingagents.quant.auto_optimizer import StrategyGenome
+    except Exception:
+        return None
+    # Pick a GA strategy that maps to one of the champion's current strats
+    champ_strats = set(champion.get('strategies') or [])
+    candidate_ga_strats = [g for g, p in _GA_STRAT_TO_PT.items() if p in champ_strats]
+    if not candidate_ga_strats:
+        candidate_ga_strats = ['multi_factor']  # generic fallback
+    pick = (rng or random).choice(candidate_ga_strats)
+    try:
+        seed_genome = StrategyGenome(pick)
+        # Two rounds of mutation produce more variation than the default 0.15 rate
+        mutated = seed_genome.mutate(mutation_rate=0.4, mutation_strength=0.3)
+        return _genome_params_to_plan(mutated.params, pick, champion)
+    except Exception:
+        return None
+
+
+def source_llm_proposal(champion: Dict[str, Any],
+                         base_plan: Dict[str, Any],
+                         scorer,
+                         rng: Optional[random.Random] = None) -> Optional[Dict[str, Any]]:
+    """LLM-proposed strategy candidate.
+
+    Uses the existing ``pro_ai._try_llm`` infrastructure (already wired to
+    Anthropic Claude with OpenAI fallback). Returns None if no API key
+    is configured — the system gracefully degrades to the
+    mutation + GA sources.
+    """
+    try:
+        try:
+            from .pro_ai import _try_llm
+        except Exception:
+            from web.modules.pro_ai import _try_llm  # type: ignore
+    except Exception:
+        return None
+
+    strategies_available = list(_STRATEGY_LIBRARY)
+    facts = (
+        f"Current plan: strategies={champion.get('strategies')}, "
+        f"combine_mode={champion.get('combine_mode')}, "
+        f"tp={champion.get('take_profit_pct')}%, "
+        f"sl={champion.get('stop_loss_pct')}%, "
+        f"pos_size={champion.get('pos_size_pct')}%.\n"
+        f"Symbols: {base_plan.get('symbols')}\n"
+        f"Available strategies: {strategies_available}\n"
+        f"Combine modes: {list(_COMBINE_MODES)}"
+    )
+    prompt = (
+        "Propose ONE alternative paper-trading plan to challenge the "
+        "current champion. Reply ONLY with valid JSON, no commentary, "
+        "no markdown fences. Schema: "
+        '{"strategies":["...",...],"combine_mode":"any|majority|all",'
+        '"take_profit_pct":<num 2-30>,"stop_loss_pct":<num 1-15>,'
+        '"pos_size_pct":<num 5-80>}.\n\n' + facts
+    )
+    system = "You are a quantitative trading strategy generator. Output strict JSON only."
+    try:
+        reply = _try_llm(prompt, system=system)
+    except Exception as e:
+        logger.warning(f'LLM proposal failed: {e}', extra={'account': '-'})
+        return None
+    if not reply:
+        return None
+    # Strip code fences if the model added them despite the instruction
+    text = reply.strip()
+    if text.startswith('```'):
+        # remove the first fence line and the trailing one
+        lines = [ln for ln in text.split('\n') if not ln.strip().startswith('```')]
+        text = '\n'.join(lines).strip()
+    try:
+        parsed = json.loads(text)
+    except Exception:
+        logger.warning(f'LLM proposal: non-JSON reply ({reply[:80]!r})',
+                       extra={'account': '-'})
+        return None
+    # Validate + clamp the response so a hallucinated value can't smuggle
+    # past our own bounds.
+    out = dict(champion)
+    strats = parsed.get('strategies') or []
+    strats = [s for s in strats if s in _STRATEGY_LIBRARY]
+    if strats:
+        out['strategies'] = strats
+    if parsed.get('combine_mode') in _COMBINE_MODES:
+        out['combine_mode'] = parsed['combine_mode']
+    for fld, lo, hi in [('take_profit_pct', 2, 30),
+                          ('stop_loss_pct', 1, 15),
+                          ('pos_size_pct', 5, 80)]:
+        try:
+            v = float(parsed.get(fld, out.get(fld, 0)))
+            out[fld] = max(lo, min(hi, v))
+        except (TypeError, ValueError):
+            pass
+    return out
+
+
 def mutate_plan(champion: Dict[str, Any],
                 rng: Optional[random.Random] = None) -> Dict[str, Any]:
     """Return a single mutated copy of ``champion``. Tweaks 1-2 fields

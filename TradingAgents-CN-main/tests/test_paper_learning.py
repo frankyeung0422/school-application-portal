@@ -363,6 +363,150 @@ def test_regime_just_flipped_false_when_stable(pt):
     assert pl.regime_just_flipped(pt._conn, window_days=3) is False
 
 
+# ============================================================================
+# T6.4 — challenger sources (random mutation / GA / LLM)
+# ============================================================================
+
+def test_source_random_mutation_returns_proposal():
+    """source_random_mutation should always return a mutated copy (unless
+    champion is empty) — this is the cheapest, never-fails source."""
+    from modules.paper_learning import source_random_mutation
+    import random
+    champ = {'strategies': ['ma_cross'], 'combine_mode': 'any',
+             'take_profit_pct': 10, 'stop_loss_pct': 5, 'pos_size_pct': 20,
+             'symbols': ['AAPL']}
+    out = source_random_mutation(champ, base_plan=champ, scorer=None,
+                                  rng=random.Random(42))
+    assert out is not None
+    # Symbols must be preserved (user-owned)
+    assert out['symbols'] == ['AAPL']
+
+
+def test_source_random_mutation_handles_empty_champion():
+    from modules.paper_learning import source_random_mutation
+    assert source_random_mutation({}, base_plan={}, scorer=None) is None
+
+
+def test_genome_params_to_plan_translates_and_clamps():
+    """The GA→PT translation should map known fields and clamp out-of-range
+    values to the paper-trading bounds (so a wild genome can't smuggle
+    pos_size_pct=200 into a live plan)."""
+    from modules.paper_learning import _genome_params_to_plan
+    champ = {'strategies': ['ma_cross'], 'symbols': ['AAPL'],
+             'pos_size_pct': 20.0, 'stop_loss_pct': 5.0, 'take_profit_pct': 10.0}
+    genome_params = {
+        'position_pct': 2.5,    # 250% — must clamp to 80
+        'stop_loss': -0.50,     # 50% — must clamp to 15
+        'take_profit': 0.01,    # 1% — must clamp up to 2
+    }
+    out = _genome_params_to_plan(genome_params, 'multi_factor', champ)
+    assert out['pos_size_pct'] == 80.0
+    assert out['stop_loss_pct'] == 15.0
+    assert out['take_profit_pct'] == 2.0
+    # Strategy mapping: multi_factor → macd_cross
+    assert out['strategies'] == ['macd_cross']
+    # Symbols preserved
+    assert out['symbols'] == ['AAPL']
+
+
+def test_source_ga_mutation_returns_dict_or_none():
+    """The GA source should either return a valid plan dict or None
+    (when StrategyGenome is unavailable). Either is acceptable behavior."""
+    from modules.paper_learning import source_ga_mutation
+    import random
+    champ = {'strategies': ['macd_cross'], 'combine_mode': 'any',
+             'take_profit_pct': 10, 'stop_loss_pct': 5, 'pos_size_pct': 20,
+             'symbols': ['AAPL']}
+    out = source_ga_mutation(champ, base_plan=champ, scorer=None,
+                              rng=random.Random(7))
+    if out is None:
+        pytest.skip('StrategyGenome unavailable on this install')
+    assert isinstance(out, dict)
+    assert out['symbols'] == ['AAPL']
+
+
+def test_source_llm_proposal_returns_none_when_no_api_key(monkeypatch):
+    """Without an API key configured, _try_llm returns None and the
+    source must gracefully return None (NOT raise)."""
+    from modules import paper_learning as pl
+    from modules import pro_ai
+    monkeypatch.setattr(pro_ai, '_try_llm', lambda *a, **kw: None)
+    champ = {'strategies': ['ma_cross'], 'combine_mode': 'any',
+             'take_profit_pct': 10, 'stop_loss_pct': 5, 'pos_size_pct': 20,
+             'symbols': ['AAPL']}
+    assert pl.source_llm_proposal(champ, base_plan=champ, scorer=None) is None
+
+
+def test_source_llm_proposal_parses_valid_json(monkeypatch):
+    """When the LLM returns valid JSON, the source should parse + clamp it
+    and return a plan dict — preserving symbols from the champion."""
+    from modules import paper_learning as pl
+    from modules import pro_ai
+
+    def fake_llm(prompt, system=''):
+        return ('{"strategies": ["rsi_meanreversion", "macd_cross"], '
+                '"combine_mode": "majority", '
+                '"take_profit_pct": 12, "stop_loss_pct": 4, '
+                '"pos_size_pct": 25}')
+    monkeypatch.setattr(pro_ai, '_try_llm', fake_llm)
+    champ = {'strategies': ['ma_cross'], 'combine_mode': 'any',
+             'take_profit_pct': 10, 'stop_loss_pct': 5, 'pos_size_pct': 20,
+             'symbols': ['AAPL', 'MSFT']}
+    out = pl.source_llm_proposal(champ, base_plan=champ, scorer=None)
+    assert out is not None
+    assert out['strategies'] == ['rsi_meanreversion', 'macd_cross']
+    assert out['combine_mode'] == 'majority'
+    assert out['take_profit_pct'] == 12
+    assert out['stop_loss_pct'] == 4
+    assert out['pos_size_pct'] == 25
+    # Symbols are user-owned — must not be replaced by LLM output
+    assert out['symbols'] == ['AAPL', 'MSFT']
+
+
+def test_source_llm_proposal_strips_code_fences(monkeypatch):
+    """Some models wrap JSON in ```json ... ``` despite being told not to."""
+    from modules import paper_learning as pl
+    from modules import pro_ai
+    def fake_llm(prompt, system=''):
+        return ('```json\n'
+                '{"strategies":["breakout"],"combine_mode":"any",'
+                '"take_profit_pct":8,"stop_loss_pct":3,"pos_size_pct":15}\n'
+                '```')
+    monkeypatch.setattr(pro_ai, '_try_llm', fake_llm)
+    champ = {'strategies': ['ma_cross'], 'symbols': ['AAPL'],
+             'combine_mode': 'any', 'take_profit_pct': 10,
+             'stop_loss_pct': 5, 'pos_size_pct': 20}
+    out = pl.source_llm_proposal(champ, base_plan=champ, scorer=None)
+    assert out is not None
+    assert out['strategies'] == ['breakout']
+    assert out['take_profit_pct'] == 8
+
+
+def test_source_llm_proposal_clamps_out_of_range_values(monkeypatch):
+    """LLM hallucinations must NOT smuggle bad values into live plans."""
+    from modules import paper_learning as pl
+    from modules import pro_ai
+    def fake_llm(prompt, system=''):
+        return ('{"strategies":["ma_cross"],"combine_mode":"any",'
+                '"take_profit_pct":99,"stop_loss_pct":50,"pos_size_pct":150}')
+    monkeypatch.setattr(pro_ai, '_try_llm', fake_llm)
+    champ = {'strategies': ['ma_cross'], 'symbols': ['AAPL'],
+             'combine_mode': 'any', 'take_profit_pct': 10,
+             'stop_loss_pct': 5, 'pos_size_pct': 20}
+    out = pl.source_llm_proposal(champ, base_plan=champ, scorer=None)
+    assert out['take_profit_pct'] == 30   # clamped to 30
+    assert out['stop_loss_pct'] == 15     # clamped to 15
+    assert out['pos_size_pct'] == 80      # clamped to 80
+
+
+def test_source_llm_proposal_rejects_non_json(monkeypatch):
+    from modules import paper_learning as pl
+    from modules import pro_ai
+    monkeypatch.setattr(pro_ai, '_try_llm', lambda *a, **kw: 'sorry, I cannot comply')
+    champ = {'strategies': ['ma_cross'], 'symbols': ['AAPL']}
+    assert pl.source_llm_proposal(champ, base_plan=champ, scorer=None) is None
+
+
 def test_promotion_supersedes_other_challengers(pt, monkeypatch):
     """When one challenger promotes, all other active challengers should
     be dropped — they were comparing against the now-defunct champion."""

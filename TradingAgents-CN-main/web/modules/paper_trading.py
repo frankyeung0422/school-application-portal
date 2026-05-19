@@ -1662,7 +1662,38 @@ def evolve_account_plan(user_id: int, account_id: int,
                     cand[k] = new_plan_fields[k]
             _pl.add_challenger(account_id, cand, source='optimizer',
                                conn_factory=_conn,
-                               note=f'evolution {now_iso[:19] if False else datetime.now().isoformat()[:19]}')
+                               note=f'evolution {datetime.now().isoformat()[:19]}')
+
+        # T6.4 — additional challenger sources: random mutation, GA, LLM.
+        # Each runs best-effort and only adds a challenger if a slot is
+        # free (add_challenger enforces MAX_CHALLENGERS cap).
+        import random as _random
+        _rng = _random.Random(account_id * 9999 + int(time.time()) % 100000)
+        sources = [
+            ('mutation', _pl.source_random_mutation),
+            ('ga', _pl.source_ga_mutation),
+            ('llm', _pl.source_llm_proposal),
+        ]
+        def _quick_scorer(plan_dict):
+            p = dict(base_plan)
+            p.update({k: plan_dict[k] for k in (
+                'strategies', 'combine_mode', 'take_profit_pct',
+                'stop_loss_pct', 'pos_size_pct') if k in plan_dict})
+            res = simulate_plan(p, slice_range=(0.7, 1.0))
+            if not res.get('success'):
+                return {'score': -1e9, 'annual_return_pct': 0.0}
+            s, a = _score_result(res['metrics'], test_days, target_annual)
+            return {'score': s, 'annual_return_pct': a}
+        for src_name, src_fn in sources:
+            try:
+                proposal = src_fn(plan, base_plan, _quick_scorer, _rng)
+                if proposal:
+                    _pl.add_challenger(account_id, proposal, source=src_name,
+                                       conn_factory=_conn,
+                                       note=f'{src_name}@{datetime.now().isoformat()[:19]}')
+            except Exception as e:
+                _log(account_id, 'warning',
+                     f'challenger source {src_name} failed: {e}')
 
         # Build a scorer closure that re-uses simulate_plan with the same
         # walk-forward slice the baseline used.
