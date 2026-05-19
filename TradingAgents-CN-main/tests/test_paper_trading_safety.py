@@ -122,20 +122,61 @@ def test_fresh_lock_blocks_second_claim(fake_account, isolated_db):
     assert pt._claim_tick(fake_account) is False
 
 
+def _mute_notify(monkeypatch):
+    """CRITICAL: silence both notify_user import paths so test runs of
+    run_account_tick never reach the real notify.py — which reads the
+    REAL trading_agents.db (not our test temp) and could spam the live
+    user behind user_id=1 with crash emails."""
+    import sys
+    # Find the real modules.notify if loaded and stub notify_user
+    for mod_name in list(sys.modules):
+        if mod_name.endswith('modules.notify') or mod_name == 'modules.notify':
+            monkeypatch.setattr(sys.modules[mod_name], 'notify_user',
+                                lambda *a, **kw: {}, raising=False)
+    # Also pre-stub so the lazy import inside run_account_tick lands on a stub
+    try:
+        from modules import notify as _notify_mod
+        monkeypatch.setattr(_notify_mod, 'notify_user',
+                            lambda *a, **kw: {}, raising=False)
+    except Exception:
+        pass
+
+
 def test_crash_in_impl_releases_lock_and_records_error(fake_account, isolated_db, monkeypatch):
     """If _run_account_tick_impl raises, the wrapper must:
        1) return success=False with the error text,
        2) clear tick_running,
-       3) stamp last_tick_error so the dashboard can show it."""
+       3) stamp last_tick_error so the dashboard can show it.
+       4) NOT call notify_user (because the test monkeypatched _DB away
+          from prod, and notify_user reads the real prod DB — emailing
+          the real user_id=1 about a fake test crash).
+    """
     _, pt = isolated_db
+    _mute_notify(monkeypatch)
 
     def boom(*a, **kw):
-        raise RuntimeError("yfinance hung on bar 42")
+        raise RuntimeError("synthetic_test_crash_DO_NOT_EMAIL_ME")
     monkeypatch.setattr(pt, '_run_account_tick_impl', boom)
+
+    # Watchdog: count any attempt to import or call notify_user.
+    notify_attempts = []
+    import sys
+    if 'modules.notify' in sys.modules:
+        monkeypatch.setattr(sys.modules['modules.notify'], 'notify_user',
+                            lambda *a, **kw: notify_attempts.append(('called',) + a))
+
+    # And we MUST be in the non-prod safe state for the gate to engage
+    assert pt._notifications_safe() is False, (
+        '_notifications_safe should return False when _DB is monkeypatched '
+        'away from the prod path — the gate is the only thing standing '
+        'between a fake test crash and a real prod email')
 
     result = pt.run_account_tick(1, fake_account)
     assert result['success'] is False
-    assert 'yfinance hung' in result['error']
+    assert 'synthetic_test_crash' in result['error']
+    # Regression guard: the wrapper must not have called notify_user
+    assert notify_attempts == [], (
+        f'tick wrapper called notify_user during a test! attempts={notify_attempts}')
 
     db = isolated_db[0]
     with sqlite3.connect(str(db)) as c:
@@ -143,13 +184,28 @@ def test_crash_in_impl_releases_lock_and_records_error(fake_account, isolated_db
             'SELECT tick_running, last_tick_error FROM paper_accounts WHERE id=?',
             (fake_account,)).fetchone()
     assert row[0] is None, 'lock should be released after crash'
-    assert row[1] is not None and 'yfinance hung' in row[1]
+    assert row[1] is not None and 'synthetic_test_crash' in row[1]
+
+
+def test_notifications_safe_returns_false_for_non_prod_db(isolated_db):
+    """The HOTFIX gate that prevents test→prod email spam."""
+    _, pt = isolated_db
+    # Test fixture monkeypatched _DB to a temp path
+    assert pt._notifications_safe() is False
+
+
+def test_notifications_safe_env_var_overrides(monkeypatch):
+    """Operators can force-mute notifications even in prod with the env var."""
+    import modules.paper_trading as pt
+    monkeypatch.setenv('PAPER_TRADING_MUTE_NOTIFY', '1')
+    assert pt._notifications_safe() is False
 
 
 def test_concurrent_tick_rejected(fake_account, isolated_db, monkeypatch):
     """Lock the account, then attempt another tick — must be rejected
     with a specific error string (not a silent double-execution)."""
     _, pt = isolated_db
+    _mute_notify(monkeypatch)
     assert pt._claim_tick(fake_account) is True
     # Sanity: with the lock held, the public wrapper bails before impl runs.
     called = []

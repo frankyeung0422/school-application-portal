@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import logging
 import logging.handlers
+import os
 import sqlite3
 import threading
 import time
@@ -92,6 +93,18 @@ def _build_exit_signals(strategies: List[str], entry_combine_mode: str,
 
 
 _DB = Path(__file__).resolve().parents[1] / 'trading_agents.db'
+_PROD_DB_PATH = Path(__file__).resolve().parents[1] / 'trading_agents.db'
+# T7-bugfix: when _DB has been monkeypatched away from the prod path (e.g.
+# during tests), don't fire OUTBOUND notifications — those go through
+# notify.py which reads the REAL trading_agents.db unconditionally and
+# would email the real user. Belt-and-braces with PAPER_TRADING_MUTE_NOTIFY=1.
+def _notifications_safe() -> bool:
+    if os.environ.get('PAPER_TRADING_MUTE_NOTIFY') == '1':
+        return False
+    try:
+        return Path(_DB).resolve() == _PROD_DB_PATH.resolve()
+    except Exception:
+        return True
 
 # Legacy fallback. New code should call _fee_bps(symbol, side) instead.
 # Kept for back-compat with any external callers that imported FEE_BPS.
@@ -2639,25 +2652,32 @@ def run_account_tick(user_id: int, account_id: int,
         counter_inc('paper_ticks_total', outcome='crashed')
         counter_inc('paper_errors_total', source='tick_crash')
         # Best-effort alert so the user knows the account stopped trading.
-        try:
-            from modules.notify import notify_user  # type: ignore
-        except Exception:
+        # HOTFIX: gated by _notifications_safe() to prevent test runs from
+        # spamming the real prod user when the test fixture monkeypatched
+        # _DB but the notify module still reads the real prod DB. Set
+        # PAPER_TRADING_MUTE_NOTIFY=1 to disable globally.
+        if _notifications_safe():
             try:
-                from web.modules.notify import notify_user  # type: ignore
+                from modules.notify import notify_user  # type: ignore
             except Exception:
-                notify_user = None  # type: ignore
-        if notify_user:
-            try:
-                notify_user(
-                    user_id,
-                    f"⚠️ Paper tick failed for account {account_id}",
-                    text=(f"Auto-trade tick crashed: {err}\n"
-                          f"The account will keep retrying on the next scheduler "
-                          f"cycle. Check web/logs/paper_trading.log for the full "
-                          f"stack trace, or call /api/paper/health for diagnostics."),
-                )
-            except Exception as ne:
-                _log(account_id, 'warning', f'failed to alert user on tick crash: {ne}')
+                try:
+                    from web.modules.notify import notify_user  # type: ignore
+                except Exception:
+                    notify_user = None  # type: ignore
+            if notify_user:
+                try:
+                    notify_user(
+                        user_id,
+                        f"⚠️ Paper tick failed for account {account_id}",
+                        text=(f"Auto-trade tick crashed: {err}\n"
+                              f"The account will keep retrying on the next scheduler "
+                              f"cycle. Check web/logs/paper_trading.log for the full "
+                              f"stack trace, or call /api/paper/health for diagnostics."),
+                    )
+                except Exception as ne:
+                    _log(account_id, 'warning', f'failed to alert user on tick crash: {ne}')
+        else:
+            _log(account_id, 'info', 'tick crash notify suppressed (non-prod DB or env-muted)')
         return {'success': False, 'error': err, 'account_id': account_id}
     finally:
         _release_tick(account_id, error=err)
