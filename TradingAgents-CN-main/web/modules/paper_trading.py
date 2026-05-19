@@ -860,12 +860,16 @@ def init_paper_tables() -> None:
         # T6.2 — challenger pool table. Done here so callers don't need
         # to import paper_learning separately to get the schema right.
         try:
-            from .paper_learning import ensure_challengers_table
+            from .paper_learning import ensure_challengers_table, ensure_regime_table
             ensure_challengers_table(c)
+            ensure_regime_table(c)
         except Exception:
             try:
-                from web.modules.paper_learning import ensure_challengers_table  # type: ignore
+                from web.modules.paper_learning import (  # type: ignore
+                    ensure_challengers_table, ensure_regime_table,
+                )
                 ensure_challengers_table(c)
+                ensure_regime_table(c)
             except Exception:
                 pass
         if 'last_evolved_at' not in cols:
@@ -1320,6 +1324,64 @@ _LIVE_FITNESS_WEIGHT = 0.4
 _LIVE_FITNESS_MIN_TRADES = 3
 
 
+def _classify_current_regime() -> Dict[str, Any]:
+    """Fetch SPY + VIX from yfinance, classify, persist. Returns the
+    classification dict (regime, vix, spy_ret_20d_pct, ...) or
+    ``regime=unknown`` when fetch fails — never raises.
+
+    Cached: at most one classify per UTC date. Subsequent calls within
+    the same day reuse the persisted row.
+    """
+    try:
+        try:
+            from .paper_learning import (
+                classify_regime, upsert_regime, REGIME_UNKNOWN,
+            )
+        except Exception:
+            from web.modules.paper_learning import (  # type: ignore
+                classify_regime, upsert_regime, REGIME_UNKNOWN,
+            )
+    except Exception:
+        return {'regime': 'unknown', 'reason': 'paper_learning import failed'}
+    today_iso = date.today().isoformat()
+    # Same-day cache check
+    try:
+        with _conn() as c:
+            row = c.execute(
+                'SELECT regime, vix, spy_ret_20d_pct, reason, classified_at '
+                'FROM market_regime_daily WHERE date=?',
+                (today_iso,)).fetchone()
+        if row:
+            return {
+                'regime': row['regime'], 'vix': row['vix'],
+                'spy_ret_20d_pct': row['spy_ret_20d_pct'],
+                'reason': row['reason'], 'classified_at': row['classified_at'],
+                'cached': True,
+            }
+    except Exception:
+        pass
+    # Fresh classify
+    spy_closes: Optional[List[float]] = None
+    try:
+        data = _fetch('SPY', '3mo')
+        if data:
+            _, spy_closes, _, _ = data
+    except Exception as e:
+        _log(None, 'warning', f'regime: SPY fetch failed: {e}')
+    vix_level = None
+    try:
+        vix_level = _vix_latest()
+    except Exception as e:
+        _log(None, 'warning', f'regime: VIX fetch failed: {e}')
+    cls = classify_regime(spy_closes=spy_closes, vix_level=vix_level)
+    try:
+        upsert_regime(today_iso, cls, _conn)
+    except Exception as e:
+        _log(None, 'warning', f'regime persist failed: {e}')
+    cls['cached'] = False
+    return cls
+
+
 def _live_fitness(account_id: int, since_iso: Optional[str],
                   target_annual_pct: float) -> Dict[str, Any]:
     """Score the account's REALIZED equity curve since ``since_iso`` (or
@@ -1556,6 +1618,10 @@ def evolve_account_plan(user_id: int, account_id: int,
     baseline_score, baseline_annual, live_weight_used = _blend_baseline_with_live(
         baseline_score, baseline_annual, live,
     )
+    # T6.3 — tag this evolution with the current market regime so
+    # subsequent runs can prefer plans that win in THIS regime, and so
+    # T6.6 guardrails can refuse swaps when the regime just flipped.
+    regime = _classify_current_regime()
 
     iters = max_iterations or _EVOLVE_MIN_TRIALS
     iters = max(_EVOLVE_MIN_TRIALS, min(_EVOLVE_MAX_TRIALS, int(iters)))
@@ -1742,6 +1808,7 @@ def evolve_account_plan(user_id: int, account_id: int,
         'search_space': opt.get('search_space'),
         'challengers': challenger_summary,
         'apply_source': apply_source,
+        'regime': regime,
         'target_monthly_pct': target_monthly_pct,
         'target_annual_pct': target_annual,
         'note': note,

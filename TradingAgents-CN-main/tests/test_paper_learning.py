@@ -273,6 +273,96 @@ def test_loss_streak_drops_challenger(pt, monkeypatch):
     assert row['status'] == 'dropped'
 
 
+# ============================================================================
+# T6.3 — regime detection
+# ============================================================================
+
+def test_classify_regime_unknown_when_too_few_bars():
+    from modules.paper_learning import classify_regime, REGIME_UNKNOWN
+    out = classify_regime(spy_closes=[100, 101, 102], vix_level=15)
+    assert out['regime'] == REGIME_UNKNOWN
+    assert 'need >=21' in out['reason']
+
+
+def test_classify_regime_trend_up():
+    from modules.paper_learning import classify_regime, REGIME_TREND_UP
+    # 21 bars climbing 0.5%/day → ~10.5% over 20 days
+    closes = [100 * (1.005 ** i) for i in range(21)]
+    out = classify_regime(spy_closes=closes, vix_level=15)
+    assert out['regime'] == REGIME_TREND_UP
+    assert out['spy_ret_20d_pct'] > 5
+
+
+def test_classify_regime_trend_down():
+    from modules.paper_learning import classify_regime, REGIME_TREND_DOWN
+    # 21 bars dropping 0.5%/day → ~-10% over 20 days
+    closes = [100 * (0.995 ** i) for i in range(21)]
+    out = classify_regime(spy_closes=closes, vix_level=20)
+    assert out['regime'] == REGIME_TREND_DOWN
+    assert out['spy_ret_20d_pct'] < -5
+
+
+def test_classify_regime_high_vol_overrides_trend():
+    """VIX >= 28 = high_vol regardless of SPY direction."""
+    from modules.paper_learning import classify_regime, REGIME_HIGH_VOL
+    closes = [100 * (1.005 ** i) for i in range(21)]   # would be trend_up
+    out = classify_regime(spy_closes=closes, vix_level=35)
+    assert out['regime'] == REGIME_HIGH_VOL
+    assert 'vix 35' in out['reason']
+
+
+def test_classify_regime_low_vol_when_quiet():
+    from modules.paper_learning import classify_regime, REGIME_LOW_VOL
+    closes = [100 + 0.05 * i for i in range(21)]  # ~1% over 20d → not trend
+    out = classify_regime(spy_closes=closes, vix_level=10)
+    assert out['regime'] == REGIME_LOW_VOL
+
+
+def test_classify_regime_chop_default():
+    from modules.paper_learning import classify_regime, REGIME_CHOP
+    closes = [100 + 0.05 * i for i in range(21)]  # tiny moves, mid vix
+    out = classify_regime(spy_closes=closes, vix_level=18)
+    assert out['regime'] == REGIME_CHOP
+
+
+def test_upsert_regime_persists_and_idempotent(pt):
+    """Two calls on the same date must end up with one row, latest values."""
+    from modules import paper_learning as pl
+    pl.upsert_regime('2026-05-19', {'regime': 'chop', 'vix': 17.0,
+                                     'spy_ret_20d_pct': 0.5,
+                                     'reason': 'mid', 'classified_at': 'x'},
+                     pt._conn)
+    pl.upsert_regime('2026-05-19', {'regime': 'high_vol', 'vix': 33.0,
+                                     'spy_ret_20d_pct': -2.0,
+                                     'reason': 'spike', 'classified_at': 'y'},
+                     pt._conn)
+    with sqlite3.connect(str(pt._DB)) as c:
+        c.row_factory = sqlite3.Row
+        rows = c.execute('SELECT * FROM market_regime_daily').fetchall()
+    assert len(rows) == 1
+    assert rows[0]['regime'] == 'high_vol'
+    assert rows[0]['vix'] == 33.0
+
+
+def test_regime_just_flipped_detects_recent_change(pt):
+    from modules import paper_learning as pl
+    pl.upsert_regime('2026-05-17', {'regime': 'chop'}, pt._conn)
+    pl.upsert_regime('2026-05-18', {'regime': 'chop'}, pt._conn)
+    pl.upsert_regime('2026-05-19', {'regime': 'high_vol'}, pt._conn)
+    # Last 3 rows: chop, chop, high_vol → flipped
+    assert pl.regime_just_flipped(pt._conn, window_days=3) is True
+    # Last 2 rows: chop, high_vol → flipped
+    assert pl.regime_just_flipped(pt._conn, window_days=2) is True
+
+
+def test_regime_just_flipped_false_when_stable(pt):
+    from modules import paper_learning as pl
+    pl.upsert_regime('2026-05-17', {'regime': 'chop'}, pt._conn)
+    pl.upsert_regime('2026-05-18', {'regime': 'chop'}, pt._conn)
+    pl.upsert_regime('2026-05-19', {'regime': 'chop'}, pt._conn)
+    assert pl.regime_just_flipped(pt._conn, window_days=3) is False
+
+
 def test_promotion_supersedes_other_challengers(pt, monkeypatch):
     """When one challenger promotes, all other active challengers should
     be dropped — they were comparing against the now-defunct champion."""

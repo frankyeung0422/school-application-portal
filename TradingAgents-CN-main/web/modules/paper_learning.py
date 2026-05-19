@@ -243,6 +243,120 @@ _STRATEGY_LIBRARY = ('ma_cross', 'rsi_meanreversion', 'macd_cross',
 _COMBINE_MODES = ('any', 'majority', 'all')
 
 
+# ---------------------------------------------------------------------------
+# T6.3 — Regime detection. Classifies the current market into one of a
+# small set of regimes so the optimizer can pick the plan that wins in
+# the regime we're actually in, not globally averaged across all of
+# history. Returns {regime, vix, spy_ret_20d, classified_at}.
+# ---------------------------------------------------------------------------
+REGIME_TREND_UP = 'trend_up'
+REGIME_TREND_DOWN = 'trend_down'
+REGIME_CHOP = 'chop'
+REGIME_HIGH_VOL = 'high_vol'
+REGIME_LOW_VOL = 'low_vol'
+REGIME_UNKNOWN = 'unknown'
+
+
+def classify_regime(spy_closes: Optional[List[float]] = None,
+                    vix_level: Optional[float] = None) -> Dict[str, Any]:
+    """Classify the market regime from SPY 20/60 returns + VIX level.
+
+    Args:
+        spy_closes: most recent SPY daily closes (at least 61 bars). If
+            None or insufficient, returns regime=unknown.
+        vix_level: latest VIX value. None = treated as missing.
+
+    Heuristic (kept deliberately simple — tunable later from data):
+        high_vol     vix >= 28
+        trend_up     20d return >= +5% AND vix < 22
+        trend_down   20d return <= -5%
+        low_vol      vix < 14
+        chop         everything else (default)
+
+    The 5%-over-20d threshold matches a 60%+ annualized clip, so it
+    won't trigger on noise.
+    """
+    out: Dict[str, Any] = {
+        'regime': REGIME_UNKNOWN,
+        'vix': vix_level,
+        'spy_ret_20d_pct': None,
+        'classified_at': datetime.now().isoformat(),
+        'reason': '',
+    }
+    if not spy_closes or len(spy_closes) < 21:
+        out['reason'] = f'need >=21 SPY bars, got {len(spy_closes) if spy_closes else 0}'
+        return out
+    ret_20d = ((float(spy_closes[-1]) / float(spy_closes[-21])) - 1.0) * 100.0
+    out['spy_ret_20d_pct'] = round(ret_20d, 2)
+
+    if vix_level is not None and vix_level >= 28:
+        out['regime'] = REGIME_HIGH_VOL
+        out['reason'] = f'vix {vix_level:.1f} >= 28'
+    elif ret_20d >= 5 and (vix_level is None or vix_level < 22):
+        out['regime'] = REGIME_TREND_UP
+        out['reason'] = f'spy 20d ret {ret_20d:.2f}% >= 5'
+    elif ret_20d <= -5:
+        out['regime'] = REGIME_TREND_DOWN
+        out['reason'] = f'spy 20d ret {ret_20d:.2f}% <= -5'
+    elif vix_level is not None and vix_level < 14:
+        out['regime'] = REGIME_LOW_VOL
+        out['reason'] = f'vix {vix_level:.1f} < 14'
+    else:
+        out['regime'] = REGIME_CHOP
+        out['reason'] = (f'spy 20d ret {ret_20d:.2f}% within ±5%' +
+                         (f', vix {vix_level:.1f}' if vix_level is not None else ''))
+    return out
+
+
+def ensure_regime_table(conn: sqlite3.Connection) -> None:
+    """Daily regime classification persisted so we can compare across time."""
+    conn.executescript('''
+        CREATE TABLE IF NOT EXISTS market_regime_daily (
+            date TEXT PRIMARY KEY,
+            regime TEXT NOT NULL,
+            vix REAL,
+            spy_ret_20d_pct REAL,
+            reason TEXT,
+            classified_at TEXT
+        );
+    ''')
+    conn.commit()
+
+
+def upsert_regime(date_iso: str, classification: Dict[str, Any],
+                  conn_factory) -> None:
+    """Write the daily classification — idempotent on (date)."""
+    with conn_factory() as c:
+        c.execute(
+            'INSERT INTO market_regime_daily '
+            '(date, regime, vix, spy_ret_20d_pct, reason, classified_at) '
+            'VALUES (?, ?, ?, ?, ?, ?) '
+            'ON CONFLICT(date) DO UPDATE SET '
+            'regime=excluded.regime, vix=excluded.vix, '
+            'spy_ret_20d_pct=excluded.spy_ret_20d_pct, '
+            'reason=excluded.reason, classified_at=excluded.classified_at',
+            (date_iso, classification.get('regime', REGIME_UNKNOWN),
+             classification.get('vix'),
+             classification.get('spy_ret_20d_pct'),
+             classification.get('reason', ''),
+             classification.get('classified_at', datetime.now().isoformat())))
+        c.commit()
+
+
+def regime_just_flipped(conn_factory, window_days: int = 3) -> bool:
+    """True if the most recent N daily regime rows aren't all the same.
+
+    Used by T6.6 guardrails to refuse evolution apply when the regime
+    is in transition — promoting a plan tuned to the OLD regime
+    immediately after a flip is a classic over-fit trap.
+    """
+    with conn_factory() as c:
+        rows = [r[0] for r in c.execute(
+            'SELECT regime FROM market_regime_daily '
+            'ORDER BY date DESC LIMIT ?', (window_days,)).fetchall()]
+    return len(rows) >= 2 and len(set(rows)) > 1
+
+
 def mutate_plan(champion: Dict[str, Any],
                 rng: Optional[random.Random] = None) -> Dict[str, Any]:
     """Return a single mutated copy of ``champion``. Tweaks 1-2 fields
