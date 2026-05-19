@@ -862,6 +862,85 @@ _SESSION_TTL_SECS = 7 * 24 * 3600   # 1 week
 _SESSIONS_TABLE_READY = False
 
 
+_AUDIT_TABLE_READY = False
+_AUDIT_RETENTION_DAYS = 90
+# Paths we never audit — these are health probes / static assets that
+# would dwarf the user-action signal and add no security value.
+_AUDIT_SKIP_PREFIXES = ('/healthz', '/readyz', '/metrics',
+                        '/favicon.ico', '/robots.txt', '/ads.txt')
+_AUDIT_SKIP_SUFFIXES = ('.css', '.js', '.png', '.jpg', '.svg', '.ico', '.map')
+
+
+def _ensure_audit_table():
+    global _AUDIT_TABLE_READY
+    if _AUDIT_TABLE_READY:
+        return
+    try:
+        db_path = Path(__file__).parent / 'trading_agents.db'
+        with sqlite3.connect(str(db_path)) as c:
+            c.execute('''
+                CREATE TABLE IF NOT EXISTS audit_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ts REAL NOT NULL,
+                    user_id INTEGER,
+                    ip TEXT,
+                    method TEXT,
+                    path TEXT,
+                    status INTEGER,
+                    latency_ms INTEGER
+                )
+            ''')
+            c.execute('CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit_log(ts DESC)')
+            c.execute('CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_log(user_id, ts DESC)')
+            c.commit()
+        _AUDIT_TABLE_READY = True
+    except Exception as e:
+        print(f"⚠️ audit_log table create failed: {e}")
+
+
+def _audit_skip(path: str) -> bool:
+    p = path.split('?', 1)[0]
+    if any(p.startswith(pre) for pre in _AUDIT_SKIP_PREFIXES):
+        return True
+    if any(p.endswith(suf) for suf in _AUDIT_SKIP_SUFFIXES):
+        return True
+    return False
+
+
+def _audit_request(user_id: int = None, ip: str = '',
+                   method: str = '', path: str = '',
+                   status: int = 0, latency_ms: int = 0) -> None:
+    """Append-only row in audit_log. Best-effort — never raise."""
+    if _audit_skip(path):
+        return
+    _ensure_audit_table()
+    try:
+        db_path = Path(__file__).parent / 'trading_agents.db'
+        with sqlite3.connect(str(db_path)) as c:
+            c.execute(
+                'INSERT INTO audit_log (ts, user_id, ip, method, path, status, latency_ms) '
+                'VALUES (?, ?, ?, ?, ?, ?, ?)',
+                (time.time(), user_id, ip, method, path[:500], status, latency_ms),
+            )
+            c.commit()
+    except Exception as e:
+        print(f"⚠️ audit write failed: {e}")
+
+
+def cleanup_audit_log(keep_days: int = _AUDIT_RETENTION_DAYS) -> int:
+    _ensure_audit_table()
+    try:
+        cutoff = time.time() - keep_days * 86400
+        db_path = Path(__file__).parent / 'trading_agents.db'
+        with sqlite3.connect(str(db_path)) as c:
+            cur = c.execute('DELETE FROM audit_log WHERE ts < ?', (cutoff,))
+            c.commit()
+            return int(cur.rowcount)
+    except Exception as e:
+        print(f"⚠️ audit cleanup failed: {e}")
+        return 0
+
+
 def _ensure_sessions_table():
     """T7.3: persistent sessions survive server restart.
 
@@ -1555,19 +1634,69 @@ class TradingAgentsAPIHandler(BaseHTTPRequestHandler):
                 pass
     
     def log_message(self, format, *args):
-        """Override to suppress excessive logging from attacks + emit metrics."""
-        # Record request latency histogram (best-effort) — log_message
-        # runs after the response is fully sent, so _req_t0 is reliable.
+        """Override to suppress excessive logging from attacks + emit
+        metrics + write the persistent audit row.
+
+        log_message is the post-response hook in BaseHTTPRequestHandler, so
+        by the time we're here the status code and request path are both
+        known. We extract the response status from args (stdlib passes it
+        as the third arg in '"GET /path HTTP/1.1" 200 1234').
+        """
         t0 = getattr(self, '_req_t0', None)
+        latency_s = (time.time() - t0) if t0 is not None else 0.0
         if t0 is not None:
             try:
                 from modules.observability import histogram_observe
-                histogram_observe('request_latency_seconds', time.time() - t0)
+                histogram_observe('request_latency_seconds', latency_s)
             except Exception:
                 pass
-        # Only log if not a blocked attack
+        # T7.4 — append audit row. Extract status code from log args; the
+        # stdlib format string puts it after the request-line quote.
+        try:
+            status = 0
+            # args[0] = '"GET /foo HTTP/1.1"', args[1] = 'NNN', args[2] = size
+            if len(args) >= 2:
+                try:
+                    status = int(args[1])
+                except (TypeError, ValueError):
+                    status = 0
+            session_id = self._extract_session_id() if hasattr(self, '_extract_session_id') else None
+            user_id = None
+            if session_id:
+                try:
+                    sess = get_session(session_id)
+                    user_id = sess.get('user_id') if sess else None
+                except Exception:
+                    user_id = None
+            _audit_request(
+                user_id=user_id,
+                ip=self.client_address[0] if self.client_address else '',
+                method=self.command or '',
+                path=self.path or '',
+                status=status,
+                latency_ms=int(latency_s * 1000),
+            )
+        except Exception:
+            pass
+        # Suppress noisy attack-block lines from stderr
         if '403' not in str(args) and '429' not in str(args):
             super().log_message(format, *args)
+
+    def _extract_session_id(self):
+        """Best-effort session-id extraction from Cookie / Authorization
+        headers. Used by the audit logger to record the requesting user."""
+        try:
+            cookie = self.headers.get('Cookie', '')
+            for part in cookie.split(';'):
+                part = part.strip()
+                if part.startswith('session_id='):
+                    return part.split('=', 1)[1]
+            auth = self.headers.get('Authorization', '')
+            if auth.startswith('Bearer '):
+                return auth[7:].strip()
+        except Exception:
+            pass
+        return None
 
     def send_error(self, code, message=None, explain=None):
         """Override send_error to use UTF-8 encoding instead of Latin-1"""
@@ -2375,6 +2504,8 @@ class TradingAgentsAPIHandler(BaseHTTPRequestHandler):
             self.handle_paper_health(parsed_path)
         elif parsed_path.path == '/api/paper/symbol-health':
             self.handle_paper_symbol_health(parsed_path)
+        elif parsed_path.path == '/api/admin/audit':
+            self.handle_admin_audit(parsed_path)
         elif parsed_path.path == '/api/paper/attribution':
             self.handle_paper_attribution(parsed_path)
         elif parsed_path.path == '/api/admin/paper-overview':
@@ -9683,6 +9814,54 @@ class TradingAgentsAPIHandler(BaseHTTPRequestHandler):
             import traceback; traceback.print_exc()
             self.send_utf8_json_response({'success': False, 'error': str(e)}, 500)
 
+    def handle_admin_audit(self, parsed_path):
+        """GET /api/admin/audit?user_id=X&since=ISO&limit=200 — read audit log.
+
+        Admin-only. Returns recent rows ordered newest-first. Query params:
+          user_id  → filter to one user
+          path     → substring filter on path
+          since    → ISO timestamp (UTC) or Unix epoch seconds
+          limit    → max rows (default 200, capped at 2000)
+        """
+        if not self._require_admin_session():
+            return
+        try:
+            qs = self._qs(parsed_path)
+            user_id = qs.get('user_id', [None])[0]
+            path_q = qs.get('path', [None])[0]
+            since = qs.get('since', [None])[0]
+            limit = min(int(qs.get('limit', ['200'])[0]), 2000)
+            since_ts = 0.0
+            if since:
+                try:
+                    since_ts = float(since)
+                except ValueError:
+                    try:
+                        since_ts = datetime.fromisoformat(since).timestamp()
+                    except Exception:
+                        since_ts = 0.0
+            _ensure_audit_table()
+            sql = 'SELECT ts, user_id, ip, method, path, status, latency_ms FROM audit_log WHERE ts >= ?'
+            args = [since_ts]
+            if user_id is not None:
+                sql += ' AND user_id = ?'; args.append(int(user_id))
+            if path_q:
+                sql += ' AND path LIKE ?'; args.append(f'%{path_q}%')
+            sql += ' ORDER BY ts DESC LIMIT ?'; args.append(limit)
+            db_path = Path(__file__).parent / 'trading_agents.db'
+            with sqlite3.connect(str(db_path)) as c:
+                c.row_factory = sqlite3.Row
+                rows = c.execute(sql, args).fetchall()
+            out = [{
+                'ts': r['ts'], 'iso': datetime.fromtimestamp(r['ts']).isoformat(),
+                'user_id': r['user_id'], 'ip': r['ip'], 'method': r['method'],
+                'path': r['path'], 'status': r['status'], 'latency_ms': r['latency_ms'],
+            } for r in rows]
+            self.send_utf8_json_response({'success': True, 'count': len(out), 'rows': out})
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            self.send_utf8_json_response({'success': False, 'error': str(e)}, 500)
+
     def _handle_ops_endpoint(self):
         """Health + Prometheus metrics. Public (no auth), no rate-limit.
 
@@ -13882,6 +14061,14 @@ def run_server(host='0.0.0.0', port=8501):
                             _sched_log('info', f'session cleanup: removed {n_cleaned}')
                     except Exception as e:
                         _sched_log('error', f'session cleanup crashed: {e}')
+
+                    # T7.4 — prune audit_log past 90 days
+                    try:
+                        n_audit = cleanup_audit_log()
+                        if n_audit:
+                            _sched_log('info', f'audit prune: removed {n_audit} rows')
+                    except Exception as e:
+                        _sched_log('error', f'audit prune crashed: {e}')
 
                     # T7.2 — nightly SQLite backup + integrity check. Runs
                     # in the same 22:00 slot as the digests so it doesn't

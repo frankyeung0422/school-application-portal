@@ -82,6 +82,15 @@ def api_mod(monkeypatch, tmp_path):
         'active_sessions': {},
         'print': lambda *a, **kw: None,   # mute the diagnostic prints
         'SUBSCRIPTION_PLANS': {'basic': {'analysis_limit': 10}},
+        # Hard-code the constants instead of trying to extract multi-line
+        # tuples from source. Kept in sync with web/api.py.
+        '_SESSION_TTL_SECS': 7 * 24 * 3600,
+        '_SESSIONS_TABLE_READY': False,
+        '_AUDIT_TABLE_READY': False,
+        '_AUDIT_RETENTION_DAYS': 90,
+        '_AUDIT_SKIP_PREFIXES': ('/healthz', '/readyz', '/metrics',
+                                  '/favicon.ico', '/robots.txt', '/ads.txt'),
+        '_AUDIT_SKIP_SUFFIXES': ('.css', '.js', '.png', '.jpg', '.svg', '.ico', '.map'),
     }
     # Compile only the relevant function defs by scanning for them.
     snippets = []
@@ -90,6 +99,8 @@ def api_mod(monkeypatch, tmp_path):
         'hash_password', 'verify_password', '_maybe_upgrade_password_hash',
         '_ensure_sessions_table', 'create_session', 'get_session',
         'destroy_session', 'cleanup_expired_sessions',
+        '_ensure_audit_table', '_audit_skip', '_audit_request',
+        'cleanup_audit_log',
     }
     lines = src.splitlines(keepends=True)
     i = 0
@@ -112,9 +123,7 @@ def api_mod(monkeypatch, tmp_path):
             if name in target_names:
                 snippets.append(''.join(block))
             continue
-        # Capture top-level constants we depend on
-        if line.startswith('_SESSION_TTL_SECS') or line.startswith('_SESSIONS_TABLE_READY'):
-            snippets.append(line)
+        # Constants are pre-seeded in ns above; no need to extract from source
         i += 1
 
     exec(''.join(snippets), ns)
@@ -213,6 +222,64 @@ def test_destroy_session_removes_from_both_stores(api_mod):
     with sqlite3.connect(str(db_path)) as c:
         row = c.execute('SELECT 1 FROM sessions WHERE id=?', (sid,)).fetchone()
     assert row is None
+
+
+# ---------------------- audit log (T7.4) ----------------------
+
+def test_audit_skip_excludes_health_and_static(api_mod):
+    ns, _ = api_mod
+    assert ns['_audit_skip']('/healthz') is True
+    assert ns['_audit_skip']('/metrics') is True
+    assert ns['_audit_skip']('/readyz?token=x') is True
+    assert ns['_audit_skip']('/static/app.js') is True
+    assert ns['_audit_skip']('/favicon.ico') is True
+    # Real API paths must NOT be skipped
+    assert ns['_audit_skip']('/api/paper/run') is False
+    assert ns['_audit_skip']('/api/admin/audit') is False
+
+
+def test_audit_request_persists_row(api_mod):
+    ns, db_path = api_mod
+    ns['_audit_request'](user_id=42, ip='1.2.3.4', method='POST',
+                         path='/api/paper/run', status=200, latency_ms=87)
+    with sqlite3.connect(str(db_path)) as c:
+        c.row_factory = sqlite3.Row
+        row = c.execute('SELECT * FROM audit_log ORDER BY id DESC LIMIT 1').fetchone()
+    assert row['user_id'] == 42
+    assert row['ip'] == '1.2.3.4'
+    assert row['method'] == 'POST'
+    assert row['path'] == '/api/paper/run'
+    assert row['status'] == 200
+    assert row['latency_ms'] == 87
+
+
+def test_audit_skipped_paths_not_persisted(api_mod):
+    ns, db_path = api_mod
+    ns['_audit_request'](user_id=1, ip='x', method='GET', path='/healthz', status=200)
+    ns['_audit_request'](user_id=1, ip='x', method='GET', path='/metrics', status=200)
+    ns['_audit_request'](user_id=1, ip='x', method='GET', path='/api/paper/list', status=200)
+    with sqlite3.connect(str(db_path)) as c:
+        n = c.execute('SELECT COUNT(*) FROM audit_log').fetchone()[0]
+    assert n == 1, 'only /api/paper/list should be audited'
+
+
+def test_cleanup_audit_log_removes_old_rows(api_mod):
+    ns, db_path = api_mod
+    # Plant rows: one fresh, one ancient (200 days old)
+    with sqlite3.connect(str(db_path)) as c:
+        c.execute('''CREATE TABLE IF NOT EXISTS audit_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL, user_id INTEGER,
+            ip TEXT, method TEXT, path TEXT, status INTEGER, latency_ms INTEGER)''')
+        c.execute('INSERT INTO audit_log (ts, path) VALUES (?, ?)',
+                  (time.time(), '/api/x'))
+        c.execute('INSERT INTO audit_log (ts, path) VALUES (?, ?)',
+                  (time.time() - 200 * 86400, '/api/old'))
+        c.commit()
+    n = ns['cleanup_audit_log'](keep_days=90)
+    assert n == 1
+    with sqlite3.connect(str(db_path)) as c:
+        rows = [r[0] for r in c.execute('SELECT path FROM audit_log').fetchall()]
+    assert '/api/x' in rows and '/api/old' not in rows
 
 
 def test_cleanup_expired_sessions(api_mod):
