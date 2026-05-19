@@ -51,6 +51,10 @@ def api_mod(monkeypatch, tmp_path):
             analysis_count INTEGER DEFAULT 0,
             max_analyses INTEGER DEFAULT 10
         )''')
+        # Plant a baseline user so api_keys JOIN tests have someone to bind to
+        c.execute(
+            "INSERT INTO users (id, username, email, password_hash, plan_type) "
+            "VALUES (1, 'alice', 'a@e.com', 'x', 'basic')")
         c.commit()
 
     # Patch the web/api.py db-path resolution: every auth function builds
@@ -91,6 +95,9 @@ def api_mod(monkeypatch, tmp_path):
         '_AUDIT_SKIP_PREFIXES': ('/healthz', '/readyz', '/metrics',
                                   '/favicon.ico', '/robots.txt', '/ads.txt'),
         '_AUDIT_SKIP_SUFFIXES': ('.css', '.js', '.png', '.jpg', '.svg', '.ico', '.map'),
+        '_API_KEYS_TABLE_READY': False,
+        # Used by create_api_key — needs to be in the ns
+        'List': list,
     }
     # Compile only the relevant function defs by scanning for them.
     snippets = []
@@ -101,6 +108,8 @@ def api_mod(monkeypatch, tmp_path):
         'destroy_session', 'cleanup_expired_sessions',
         '_ensure_audit_table', '_audit_skip', '_audit_request',
         'cleanup_audit_log',
+        '_ensure_api_keys_table', 'create_api_key', 'revoke_api_key',
+        'list_api_keys', 'verify_api_key',
     }
     lines = src.splitlines(keepends=True)
     i = 0
@@ -154,16 +163,18 @@ def test_legacy_hash_upgraded_on_verify(api_mod):
     plain = 'legacy_secret'
     legacy = hashlib.sha256(plain.encode()).hexdigest()
     with sqlite3.connect(str(db_path)) as c:
+        # Upgrade-test user lives at id=2 — the fixture already plants
+        # id=1 for the API-keys tests.
         c.execute(
-            "INSERT INTO users (id, username, email, password_hash, plan_type) "
-            "VALUES (1, 'u', 'u@e.com', ?, 'basic')",
+            "INSERT OR REPLACE INTO users (id, username, email, password_hash, plan_type) "
+            "VALUES (2, 'legacy_user', 'l@e.com', ?, 'basic')",
             (legacy,))
         c.commit()
     # Call the upgrade helper as authenticate_user would
     assert ns['verify_password'](plain, legacy) is True
-    ns['_maybe_upgrade_password_hash'](1, plain, legacy)
+    ns['_maybe_upgrade_password_hash'](2, plain, legacy)
     with sqlite3.connect(str(db_path)) as c:
-        new_hash = c.execute('SELECT password_hash FROM users WHERE id=1').fetchone()[0]
+        new_hash = c.execute('SELECT password_hash FROM users WHERE id=2').fetchone()[0]
     assert new_hash.startswith(('$2a$', '$2b$', '$2y$')), f'no upgrade, still {new_hash[:10]!r}'
     # And it still validates the same password
     assert ns['verify_password'](plain, new_hash) is True
@@ -280,6 +291,64 @@ def test_cleanup_audit_log_removes_old_rows(api_mod):
     with sqlite3.connect(str(db_path)) as c:
         rows = [r[0] for r in c.execute('SELECT path FROM audit_log').fetchall()]
     assert '/api/x' in rows and '/api/old' not in rows
+
+
+# ---------------------- API keys (T8.1) ----------------------
+
+def test_api_key_create_returns_token_once(api_mod):
+    """create_api_key returns the raw token; we should be able to verify
+    it via verify_api_key once, and the stored hash should be bcrypt."""
+    ns, db_path = api_mod
+    # Need the legacy test user (already planted in fixture as id=1)
+    out = ns['create_api_key'](1, name='cron-runner', scopes='paper')
+    assert out['success'] is True
+    assert out['token'].startswith('tcn_')
+    assert len(out['token']) == 4 + 32  # 'tcn_' + 32 hex chars
+    # Stored hash must be bcrypt-prefixed
+    with sqlite3.connect(str(db_path)) as c:
+        c.row_factory = sqlite3.Row
+        row = c.execute('SELECT key_hash FROM api_keys WHERE id=?',
+                        (out['id'],)).fetchone()
+    assert row['key_hash'].startswith(('$2a$', '$2b$', '$2y$'))
+
+
+def test_verify_api_key_round_trip(api_mod):
+    """verify_api_key with the raw token returns a user dict; with a bad
+    token returns None."""
+    ns, _ = api_mod
+    out = ns['create_api_key'](1, name='good-key')
+    user = ns['verify_api_key'](out['token'])
+    assert user is not None
+    assert user['id'] == 1
+    assert user['username'] == 'alice'
+    # Wrong token must NOT authenticate
+    assert ns['verify_api_key']('tcn_' + 'x' * 32) is None
+    # Garbage prefix must NOT authenticate
+    assert ns['verify_api_key']('') is None
+    assert ns['verify_api_key']('not-a-key') is None
+
+
+def test_revoke_api_key_invalidates_token(api_mod):
+    ns, _ = api_mod
+    out = ns['create_api_key'](1, name='temp')
+    assert ns['verify_api_key'](out['token']) is not None
+    revoke_out = ns['revoke_api_key'](1, out['id'])
+    assert revoke_out['success'] is True
+    # After revoke, token must NOT authenticate
+    assert ns['verify_api_key'](out['token']) is None
+
+
+def test_list_api_keys_returns_metadata_without_secrets(api_mod):
+    ns, _ = api_mod
+    a = ns['create_api_key'](1, name='k1')
+    b = ns['create_api_key'](1, name='k2')
+    rows = ns['list_api_keys'](1)
+    assert len(rows) == 2
+    # Must NOT contain the key_hash field — that's a server-side secret
+    for r in rows:
+        assert 'key_hash' not in r, 'list_api_keys leaked the bcrypt hash'
+        assert r['prefix'].startswith('tcn_')
+        assert 'name' in r and 'scopes' in r
 
 
 def test_cleanup_expired_sessions(api_mod):

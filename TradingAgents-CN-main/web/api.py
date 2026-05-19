@@ -871,6 +871,133 @@ _AUDIT_SKIP_PREFIXES = ('/healthz', '/readyz', '/metrics',
 _AUDIT_SKIP_SUFFIXES = ('.css', '.js', '.png', '.jpg', '.svg', '.ico', '.map')
 
 
+_API_KEYS_TABLE_READY = False
+
+
+def _ensure_api_keys_table():
+    """T8.1 — api_keys table. Token = `tcn_<32 hex>` shown to user ONCE
+    at creation; only the bcrypt hash is stored. Lookups happen by an
+    8-char prefix index to keep the table queryable; the prefix isn't a
+    secret since we still verify the full key against the hash.
+    """
+    global _API_KEYS_TABLE_READY
+    if _API_KEYS_TABLE_READY:
+        return
+    try:
+        db_path = Path(__file__).parent / 'trading_agents.db'
+        with sqlite3.connect(str(db_path)) as c:
+            c.execute('''
+                CREATE TABLE IF NOT EXISTS api_keys (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    prefix TEXT NOT NULL,
+                    key_hash TEXT NOT NULL,
+                    name TEXT,
+                    scopes TEXT DEFAULT 'paper',
+                    created_at REAL NOT NULL,
+                    last_used_at REAL,
+                    revoked_at REAL,
+                    UNIQUE(prefix)
+                )
+            ''')
+            c.execute('CREATE INDEX IF NOT EXISTS idx_apikeys_user ON api_keys(user_id)')
+            c.commit()
+        _API_KEYS_TABLE_READY = True
+    except Exception as e:
+        print(f"⚠️ api_keys table create failed: {e}")
+
+
+def create_api_key(user_id: int, name: str = '',
+                   scopes: str = 'paper') -> Dict[str, Any]:
+    """Returns ``{success, token, prefix, id}``. The token is shown ONCE."""
+    _ensure_api_keys_table()
+    try:
+        from passlib.hash import bcrypt
+    except Exception:
+        return {'success': False, 'error': 'bcrypt unavailable'}
+    raw_token = 'tcn_' + os.urandom(16).hex()
+    prefix = raw_token[:12]   # 'tcn_' + 8 hex chars
+    h = bcrypt.hash(raw_token)
+    db_path = Path(__file__).parent / 'trading_agents.db'
+    with sqlite3.connect(str(db_path)) as c:
+        cur = c.execute(
+            'INSERT INTO api_keys (user_id, prefix, key_hash, name, scopes, created_at) '
+            'VALUES (?, ?, ?, ?, ?, ?)',
+            (user_id, prefix, h, name[:80], scopes[:80], time.time()))
+        c.commit()
+        new_id = cur.lastrowid
+    return {'success': True, 'token': raw_token, 'prefix': prefix, 'id': new_id}
+
+
+def revoke_api_key(user_id: int, key_id: int) -> Dict[str, Any]:
+    _ensure_api_keys_table()
+    db_path = Path(__file__).parent / 'trading_agents.db'
+    with sqlite3.connect(str(db_path)) as c:
+        cur = c.execute(
+            'UPDATE api_keys SET revoked_at=? WHERE id=? AND user_id=?',
+            (time.time(), key_id, user_id))
+        c.commit()
+    return {'success': cur.rowcount > 0}
+
+
+def list_api_keys(user_id: int) -> List[Dict[str, Any]]:
+    _ensure_api_keys_table()
+    db_path = Path(__file__).parent / 'trading_agents.db'
+    with sqlite3.connect(str(db_path)) as c:
+        c.row_factory = sqlite3.Row
+        rows = c.execute(
+            'SELECT id, prefix, name, scopes, created_at, last_used_at, revoked_at '
+            'FROM api_keys WHERE user_id=? ORDER BY id DESC',
+            (user_id,)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def verify_api_key(token: str) -> Optional[Dict[str, Any]]:
+    """Resolve a header-supplied token to a user_data-shaped dict
+    compatible with what create_session would use. Returns None on
+    invalid / revoked / unknown.
+    """
+    if not token or not token.startswith('tcn_'):
+        return None
+    _ensure_api_keys_table()
+    try:
+        from passlib.hash import bcrypt
+    except Exception:
+        return None
+    prefix = token[:12]
+    db_path = Path(__file__).parent / 'trading_agents.db'
+    with sqlite3.connect(str(db_path)) as c:
+        c.row_factory = sqlite3.Row
+        row = c.execute(
+            'SELECT k.id, k.user_id, k.key_hash, k.revoked_at, k.scopes, '
+            '       u.username, u.email, u.plan_type, u.analysis_count, u.max_analyses '
+            'FROM api_keys k JOIN users u ON u.id = k.user_id '
+            'WHERE k.prefix=?', (prefix,)).fetchone()
+    if not row or row['revoked_at']:
+        return None
+    try:
+        if not bcrypt.verify(token, row['key_hash']):
+            return None
+    except Exception:
+        return None
+    # Update last_used (best-effort, not in the same connection so it
+    # doesn't slow the auth path much)
+    try:
+        with sqlite3.connect(str(db_path)) as c:
+            c.execute('UPDATE api_keys SET last_used_at=? WHERE id=?',
+                      (time.time(), row['id']))
+            c.commit()
+    except Exception:
+        pass
+    return {
+        'id': row['user_id'], 'username': row['username'], 'email': row['email'],
+        'plan_type': row['plan_type'], 'analysis_count': row['analysis_count'],
+        'max_analyses': row['max_analyses'],
+        'scopes': (row['scopes'] or '').split(','),
+        'api_key_id': row['id'],
+    }
+
+
 def _ensure_audit_table():
     global _AUDIT_TABLE_READY
     if _AUDIT_TABLE_READY:
@@ -1698,6 +1825,48 @@ class TradingAgentsAPIHandler(BaseHTTPRequestHandler):
             pass
         return None
 
+    def _extract_api_key(self):
+        """T8.1: pull an X-API-Key header or a Bearer-prefixed key that
+        starts with tcn_. Returns the raw token or None."""
+        try:
+            x_key = self.headers.get('X-API-Key', '').strip()
+            if x_key and x_key.startswith('tcn_'):
+                return x_key
+            auth = self.headers.get('Authorization', '')
+            if auth.startswith('Bearer ') and auth[7:].strip().startswith('tcn_'):
+                return auth[7:].strip()
+        except Exception:
+            pass
+        return None
+
+    def _authed_user(self):
+        """Resolve the request to a user dict via session cookie OR API key.
+        Returns the same shape ``create_session`` consumed (id, username,
+        email, plan_type, ...). None if neither path authenticates."""
+        # Session cookie path
+        sid = self._extract_session_id()
+        if sid:
+            try:
+                sess = get_session(sid)
+                if sess and sess.get('user_id'):
+                    return {
+                        'id': sess['user_id'], 'username': sess.get('username'),
+                        'email': sess.get('email'), 'plan_type': sess.get('plan_type'),
+                        'analysis_count': sess.get('analysis_count', 0),
+                        'max_analyses': sess.get('max_analyses', 10),
+                        'auth_via': 'session',
+                    }
+            except Exception:
+                pass
+        # API key path
+        token = self._extract_api_key()
+        if token:
+            user = verify_api_key(token)
+            if user:
+                user['auth_via'] = 'api_key'
+                return user
+        return None
+
     def send_error(self, code, message=None, explain=None):
         """Override send_error to use UTF-8 encoding instead of Latin-1"""
         try:
@@ -2506,6 +2675,8 @@ class TradingAgentsAPIHandler(BaseHTTPRequestHandler):
             self.handle_paper_symbol_health(parsed_path)
         elif parsed_path.path == '/api/admin/audit':
             self.handle_admin_audit(parsed_path)
+        elif parsed_path.path == '/api/me/api-keys':
+            self.handle_api_keys_list(parsed_path)
         elif parsed_path.path == '/api/paper/attribution':
             self.handle_paper_attribution(parsed_path)
         elif parsed_path.path == '/api/admin/paper-overview':
@@ -2622,6 +2793,10 @@ class TradingAgentsAPIHandler(BaseHTTPRequestHandler):
             self.handle_paper_evolve()
         elif parsed_path.path == '/api/paper/evolve-config':
             self.handle_paper_evolve_config()
+        elif parsed_path.path == '/api/me/api-keys/create':
+            self.handle_api_keys_create()
+        elif parsed_path.path == '/api/me/api-keys/revoke':
+            self.handle_api_keys_revoke()
         elif parsed_path.path == '/api/user/notifications':
             self.handle_user_notifications_save()
         elif parsed_path.path == '/api/user/notifications/test':
@@ -9810,6 +9985,62 @@ class TradingAgentsAPIHandler(BaseHTTPRequestHandler):
                 'evolve_frequency_days': freq,
                 'error': None if ok else 'Account not found',
             })
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            self.send_utf8_json_response({'success': False, 'error': str(e)}, 500)
+
+    def handle_api_keys_list(self, parsed_path):
+        """GET /api/me/api-keys — list the current user's API keys.
+        Includes prefix (not full token), name, scopes, created/revoked ts."""
+        user = self._authed_user()
+        if not user:
+            self.send_utf8_json_response({'success': False, 'error': 'auth required'}, 401)
+            return
+        try:
+            self.send_utf8_json_response({
+                'success': True,
+                'keys': list_api_keys(user['id']),
+            })
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            self.send_utf8_json_response({'success': False, 'error': str(e)}, 500)
+
+    def handle_api_keys_create(self):
+        """POST /api/me/api-keys/create  body: {name, scopes='paper'}
+        Returns the new token ONCE — the user must save it."""
+        user = self._authed_user()
+        if not user:
+            self.send_utf8_json_response({'success': False, 'error': 'auth required'}, 401)
+            return
+        # Block: API keys can't be used to create more API keys (avoids a
+        # compromised key bootstrapping new ones).
+        if user.get('auth_via') == 'api_key':
+            self.send_utf8_json_response(
+                {'success': False, 'error': 'API key cannot mint new API keys'},
+                403)
+            return
+        try:
+            body = self._read_post_body() or {}
+            name = str(body.get('name') or '')[:80]
+            scopes = str(body.get('scopes') or 'paper')[:80]
+            out = create_api_key(user['id'], name=name, scopes=scopes)
+            self.send_utf8_json_response(out)
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            self.send_utf8_json_response({'success': False, 'error': str(e)}, 500)
+
+    def handle_api_keys_revoke(self):
+        """POST /api/me/api-keys/revoke  body: {key_id}
+        Idempotent — already-revoked keys return success=True."""
+        user = self._authed_user()
+        if not user:
+            self.send_utf8_json_response({'success': False, 'error': 'auth required'}, 401)
+            return
+        try:
+            body = self._read_post_body() or {}
+            key_id = int(body.get('key_id') or 0)
+            out = revoke_api_key(user['id'], key_id)
+            self.send_utf8_json_response(out)
         except Exception as e:
             import traceback; traceback.print_exc()
             self.send_utf8_json_response({'success': False, 'error': str(e)}, 500)
