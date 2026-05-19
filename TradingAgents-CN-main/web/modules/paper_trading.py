@@ -17,10 +17,11 @@ import json
 import logging
 import logging.handlers
 import sqlite3
+import threading
 import time
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 
 # ---------------------------------------------------------------------------
@@ -204,6 +205,135 @@ def _record_admin_action(account_id: int, user_id: Optional[int],
         _log(account_id, 'warning', f'admin audit write failed for action={action}: {e}')
 
 
+# ---------------------------------------------------------------------------
+# Symbol health tracking (Track 3)
+#
+# Previously: when yfinance returned no data for a symbol, _signals_for
+# returned None and the symbol just vanished from the day's universe. No
+# log, no record, no alert. Users would see "AAPL stopped trading" with
+# zero diagnostic trail.
+#
+# Now: every fetch attempt updates paper_symbol_health. A symbol that
+# fails _SYMBOL_DISABLE_THRESHOLD consecutive times is auto-blacklisted
+# for the user (until they re-enable it manually).
+# ---------------------------------------------------------------------------
+_SYMBOL_DISABLE_THRESHOLD = 5
+
+
+def _record_symbol_success(symbol: str) -> None:
+    """Mark a symbol fetch as successful — resets consecutive_failures."""
+    if not symbol:
+        return
+    try:
+        with _conn() as c:
+            c.execute('''INSERT INTO paper_symbol_health
+                         (symbol, last_success_at, total_successes, consecutive_failures)
+                         VALUES (?, CURRENT_TIMESTAMP, 1, 0)
+                         ON CONFLICT(symbol) DO UPDATE SET
+                            last_success_at=CURRENT_TIMESTAMP,
+                            total_successes = total_successes + 1,
+                            consecutive_failures = 0''',
+                      (symbol,))
+            c.commit()
+    except Exception as e:
+        _log(None, 'warning', f'symbol_health success write failed for {symbol}: {e}')
+
+
+def _record_symbol_failure(symbol: str, reason: str = '') -> int:
+    """Mark a symbol fetch as failed. Returns the new consecutive_failures
+    count so the caller can decide whether to disable the symbol."""
+    if not symbol:
+        return 0
+    try:
+        with _conn() as c:
+            c.execute('''INSERT INTO paper_symbol_health
+                         (symbol, last_failure_at, last_failure_reason,
+                          total_failures, consecutive_failures)
+                         VALUES (?, CURRENT_TIMESTAMP, ?, 1, 1)
+                         ON CONFLICT(symbol) DO UPDATE SET
+                            last_failure_at=CURRENT_TIMESTAMP,
+                            last_failure_reason=excluded.last_failure_reason,
+                            total_failures = total_failures + 1,
+                            consecutive_failures = consecutive_failures + 1''',
+                      (symbol, reason[:200]))
+            c.commit()
+            row = c.execute(
+                'SELECT consecutive_failures FROM paper_symbol_health WHERE symbol=?',
+                (symbol,)).fetchone()
+            return int(row['consecutive_failures']) if row else 0
+    except Exception as e:
+        _log(None, 'warning', f'symbol_health failure write failed for {symbol}: {e}')
+        return 0
+
+
+def get_symbol_health(symbol: Optional[str] = None,
+                      unhealthy_only: bool = False,
+                      limit: int = 100) -> Dict[str, Any]:
+    """Read symbol-health rows. Used by /api/paper/health and dashboards.
+
+    - symbol=None: return up to `limit` rows
+    - unhealthy_only=True: only rows with consecutive_failures > 0
+    """
+    init_paper_tables()
+    with _conn() as c:
+        if symbol:
+            row = c.execute(
+                'SELECT * FROM paper_symbol_health WHERE symbol=?', (symbol,)).fetchone()
+            return {'success': True, 'symbol': symbol, 'row': dict(row) if row else None}
+        where = 'WHERE consecutive_failures > 0' if unhealthy_only else ''
+        rows = c.execute(
+            f'SELECT * FROM paper_symbol_health {where} '
+            'ORDER BY consecutive_failures DESC, last_failure_at DESC LIMIT ?',
+            (int(limit),)).fetchall()
+        return {'success': True, 'rows': [dict(r) for r in rows]}
+
+
+# ---------------------------------------------------------------------------
+# Halt / gap detector (Track 3)
+#
+# A delisted stock that re-lists, or a long trading halt, leaves a gap in
+# the OHLCV date array. The MA/RSI/MACD indicators happily mix bars from
+# either side of the gap as if they were contiguous → spurious crossovers
+# fire immediately on re-listing, producing fake BUY signals.
+#
+# detect_gaps(dates) returns the (index, gap_days) pairs where the gap
+# between consecutive trading bars exceeds _GAP_THRESHOLD_DAYS. Callers
+# log + decide whether to defer trading the symbol.
+# ---------------------------------------------------------------------------
+_GAP_THRESHOLD_DAYS = 14   # weekends + holiday = 4-5 days max; > 14 = real halt
+
+
+def detect_gaps(dates: List[str]) -> List[Tuple[int, int]]:
+    """Return list of (right_index, gap_days) where dates[i] - dates[i-1] > threshold."""
+    out: List[Tuple[int, int]] = []
+    if not dates:
+        return out
+    prev: Optional[date] = None
+    for i, d in enumerate(dates):
+        try:
+            cur = date.fromisoformat(d)
+        except Exception:
+            continue
+        if prev is not None:
+            gap = (cur - prev).days
+            if gap > _GAP_THRESHOLD_DAYS:
+                out.append((i, gap))
+        prev = cur
+    return out
+
+
+def _validate_hk_lot(symbol: str) -> None:
+    """Log a warning when an HK symbol falls back to the default lot=100
+    because we don't have its true HKEX board-lot size in _HK_LOT_SIZES.
+    Audit finding: a wrong lot size can over-size an HK position by 10x."""
+    s = (symbol or '').upper()
+    if not s.endswith('.HK'):
+        return
+    if s not in _HK_LOT_SIZES:
+        _log(None, 'warning',
+             f'HK lot fallback used for {s}=100; verify true board-lot before live trading')
+
+
 def _conn():
     c = sqlite3.connect(str(_DB))
     c.row_factory = sqlite3.Row
@@ -217,7 +347,16 @@ def _conn():
 # storage or P&L math.
 # ---------------------------------------------------------------------------
 _FX_CACHE: Dict[str, tuple] = {}
+_FX_LOCK = threading.Lock()       # Track 3: thread-safe read-modify-write of cache
 _FX_TTL = 12 * 3600  # 12 hours
+# Per-key meta tracking — was the last value a real feed or a fallback?
+# Format: {pair: {'source': 'feed' | 'fallback_peg' | 'fallback_one', 'fetched_at': ts}}
+_FX_META: Dict[str, Dict[str, Any]] = {}
+# Tick-scoped stale-FX accumulator. Each call to _fx_rate() pushes the
+# (from, to, source) tuple here when source != 'feed'. _run_account_tick_impl
+# reads + clears at end of tick so the per-tick log/alert can mention what
+# rates were synthetic for this account's positions.
+_FX_STALE_TLS = threading.local()
 
 
 def _symbol_currency(symbol: str) -> str:
@@ -234,24 +373,46 @@ def _symbol_currency(symbol: str) -> str:
     return 'USD'
 
 
+def _push_fx_stale(pair: str, source: str) -> None:
+    """Record that this tick used a synthetic/fallback FX rate so the tick
+    summary can flag the account as having FX-staleness risk."""
+    bucket = getattr(_FX_STALE_TLS, 'pairs', None)
+    if bucket is None:
+        bucket = []
+        _FX_STALE_TLS.pairs = bucket
+    bucket.append((pair, source))
+
+
+def _drain_fx_stale() -> List[Tuple[str, str]]:
+    bucket = getattr(_FX_STALE_TLS, 'pairs', None) or []
+    _FX_STALE_TLS.pairs = []
+    return bucket
+
+
 def _fx_rate(from_ccy: str, to_ccy: str) -> float:
     """Return the multiplier turning 1 unit of from_ccy into to_ccy.
 
-    Uses yfinance ticker '<FROM><TO>=X' (e.g. USDHKD=X). Cached for 12h. On
-    failure, falls back to a hardcoded USDHKD rate so accounts don't break
-    just because the FX feed glitches.
+    Uses yfinance '<FROM><TO>=X' (e.g. USDHKD=X). Cached 12h under a lock so
+    concurrent ticks don't half-write the cache entry. On failure, falls
+    back to a hardcoded peg (and records source='fallback_peg' so the tick
+    log/email can warn the user — the audit found these fallbacks were
+    silent ±3% mispricing risks).
     """
     f, t = from_ccy.upper(), to_ccy.upper()
     if f == t:
         return 1.0
     key = f'{f}{t}'
-    cached = _FX_CACHE.get(key)
-    if cached and time.time() - cached[0] < _FX_TTL:
-        return cached[1]
+    with _FX_LOCK:
+        cached = _FX_CACHE.get(key)
+        if cached and time.time() - cached[0] < _FX_TTL:
+            meta = _FX_META.get(key, {})
+            if meta.get('source') and meta['source'] != 'feed':
+                _push_fx_stale(key, meta['source'])
+            return cached[1]
     rate: Optional[float] = None
+    source = 'feed'
     try:
         import yfinance as yf
-        # yfinance accepts e.g. 'USDHKD=X' for direct USD→HKD
         h = yf.Ticker(f'{f}{t}=X').history(period='5d', interval='1d')
         if h is not None and not h.empty:
             v = float(h['Close'].dropna().iloc[-1])
@@ -260,7 +421,6 @@ def _fx_rate(from_ccy: str, to_ccy: str) -> float:
     except Exception:
         rate = None
     if rate is None:
-        # Try the inverse (HKDUSD=X) and reciprocate
         try:
             import yfinance as yf
             h = yf.Ticker(f'{t}{f}=X').history(period='5d', interval='1d')
@@ -271,18 +431,25 @@ def _fx_rate(from_ccy: str, to_ccy: str) -> float:
         except Exception:
             rate = None
     if rate is None:
-        # Conservative pegged-USDHKD fallback so the engine never crashes.
-        # Warn so operators notice — real rate can move ±2-3% inside the peg.
         if (f, t) == ('USD', 'HKD'):
             rate = 7.80
-            print(f"⚠️ FX fallback used: USDHKD={rate} (yfinance feed unavailable, position values may be ±3% off)")
+            source = 'fallback_peg'
+            _log(None, 'warning',
+                 f"FX fallback used: {key}={rate} (feed unavailable, positions ±3% off)")
         elif (f, t) == ('HKD', 'USD'):
             rate = 1.0 / 7.80
-            print(f"⚠️ FX fallback used: HKDUSD={rate:.5f} (yfinance feed unavailable)")
+            source = 'fallback_peg'
+            _log(None, 'warning',
+                 f"FX fallback used: {key}={rate:.5f} (feed unavailable)")
         else:
             rate = 1.0
-            print(f"⚠️ FX fallback: no rate for {f}->{t}, using 1.0 (positions in mixed currencies will be wrong)")
-    _FX_CACHE[key] = (time.time(), rate)
+            source = 'fallback_one'
+            _log(None, 'error',
+                 f"FX fallback to 1.0: no rate for {key} — mixed-currency positions WILL BE WRONG")
+        _push_fx_stale(key, source)
+    with _FX_LOCK:
+        _FX_CACHE[key] = (time.time(), rate)
+        _FX_META[key] = {'source': source, 'fetched_at': time.time()}
     return rate
 
 
@@ -345,6 +512,7 @@ _HK_LOT_SIZES: Dict[str, int] = {
 
 
 _MTF_CACHE: Dict[str, tuple] = {}
+_MTF_LOCK = threading.Lock()
 _MTF_TTL = 12 * 3600  # weekly bar refresh OK at 12h cadence
 
 
@@ -355,32 +523,30 @@ def _weekly_trend_up(symbol: str) -> Optional[bool]:
     Returns None if data is missing — caller treats None as "don't gate".
     """
     key = f'wkemas:{symbol}'
-    cached = _MTF_CACHE.get(key)
-    if cached and time.time() - cached[0] < _MTF_TTL:
-        return cached[1]
+    with _MTF_LOCK:
+        cached = _MTF_CACHE.get(key)
+        if cached and time.time() - cached[0] < _MTF_TTL:
+            return cached[1]
+    result: Optional[bool] = None
     try:
         import yfinance as yf
         h = yf.Ticker(symbol).history(period='2y', interval='1wk')
-        if h is None or h.empty:
-            _MTF_CACHE[key] = (time.time(), None)
-            return None
-        closes = list(h['Close'].dropna().values)
-        if len(closes) < 55:
-            _MTF_CACHE[key] = (time.time(), None)
-            return None
-
-        def _ema(values, n):
-            k = 2 / (n + 1)
-            out = [values[0]]
-            for v in values[1:]:
-                out.append(v * k + out[-1] * (1 - k))
-            return out
-        e20 = _ema(closes, 20)
-        e50 = _ema(closes, 50)
-        result = bool(e20[-1] > e50[-1])
+        if h is not None and not h.empty:
+            closes = list(h['Close'].dropna().values)
+            if len(closes) >= 55:
+                def _ema(values, n):
+                    k = 2 / (n + 1)
+                    out = [values[0]]
+                    for v in values[1:]:
+                        out.append(v * k + out[-1] * (1 - k))
+                    return out
+                e20 = _ema(closes, 20)
+                e50 = _ema(closes, 50)
+                result = bool(e20[-1] > e50[-1])
     except Exception:
         result = None
-    _MTF_CACHE[key] = (time.time(), result)
+    with _MTF_LOCK:
+        _MTF_CACHE[key] = (time.time(), result)
     return result
 
 
@@ -452,7 +618,12 @@ def _lot_size(symbol: str) -> int:
     s = (symbol or '').upper()
     if not s.endswith('.HK'):
         return 1
-    return _HK_LOT_SIZES.get(s, 100)
+    if s in _HK_LOT_SIZES:
+        return _HK_LOT_SIZES[s]
+    # Unknown HK ticker — fall back to 100 but emit a warning. Audit
+    # finding: a wrong lot size silently over-sizes positions by up to 10x.
+    _validate_hk_lot(s)
+    return 100
 
 
 def init_paper_tables() -> None:
@@ -592,6 +763,21 @@ def init_paper_tables() -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_paper_admin_account
             ON paper_admin_actions(account_id, id DESC);
+
+        -- Symbol-health tracker (Track 3). Each row is "we attempted to
+        -- fetch OHLCV for this symbol and got either data or a None."
+        -- Aggregated by symbol so we can detect persistent failures
+        -- (delisting, ticker rename, halt) and surface them to the user
+        -- instead of silently dropping the symbol from the universe.
+        CREATE TABLE IF NOT EXISTS paper_symbol_health (
+            symbol TEXT PRIMARY KEY,
+            last_success_at TEXT,
+            last_failure_at TEXT,
+            last_failure_reason TEXT,
+            consecutive_failures INTEGER DEFAULT 0,
+            total_failures INTEGER DEFAULT 0,
+            total_successes INTEGER DEFAULT 0
+        );
         ''')
         c.commit()
 
@@ -1145,7 +1331,8 @@ def evolve_account_plan(user_id: int, account_id: int,
     }
 
 
-def get_account_health(user_id: int, account_id: int) -> Dict[str, Any]:
+def get_account_health(user_id: int, account_id: int,
+                       include_symbol_health: bool = True) -> Dict[str, Any]:
     """Operational health snapshot for a single account.
 
     Surfaces the things that previously lived only in scattered log lines:
@@ -1193,6 +1380,32 @@ def get_account_health(user_id: int, account_id: int) -> Dict[str, Any]:
         status_flags.append('stale')
     if a['status'] != 'active':
         status_flags.append(a['status'])
+    # Symbol health summary — pull only the unhealthy ones the account
+    # currently holds or has in its plan, so the dashboard banner is signal
+    # not noise.
+    symbol_health: List[Dict[str, Any]] = []
+    if include_symbol_health:
+        try:
+            plan = json.loads(a['plan_json'])
+            plan_syms = set(plan.get('symbols') or [])
+            plan_syms.update(plan.get('custom_symbols') or [])
+            with _conn() as c:
+                held = [r['symbol'] for r in c.execute(
+                    "SELECT DISTINCT symbol FROM paper_positions WHERE account_id=? AND status='open'",
+                    (account_id,)).fetchall()]
+                plan_syms.update(held)
+                if plan_syms:
+                    placeholders = ','.join('?' * len(plan_syms))
+                    rows = c.execute(
+                        f"SELECT * FROM paper_symbol_health "
+                        f"WHERE consecutive_failures > 0 AND symbol IN ({placeholders})",
+                        tuple(plan_syms)).fetchall()
+                    symbol_health = [dict(r) for r in rows]
+        except Exception as e:
+            _log(account_id, 'warning', f'symbol_health surface failed: {e}')
+    if symbol_health:
+        status_flags.append('symbol_health_issue')
+
     return {
         'success': True,
         'account_id': account_id,
@@ -1208,6 +1421,7 @@ def get_account_health(user_id: int, account_id: int) -> Dict[str, Any]:
         'last_admin_action': dict(last_admin) if last_admin else None,
         'paused_reason': a['paused_reason'],
         'status_flags': status_flags,
+        'symbol_health': symbol_health,
     }
 
 
@@ -1714,13 +1928,32 @@ def close_account(user_id: int, account_id: int) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 def _signals_for(symbol: str, plan: Dict[str, Any], account_ccy: str = 'USD'):
     """Return aligned (dates, closes, highs, lows, signals) for a symbol,
-    with prices converted into the account's base currency."""
+    with prices converted into the account's base currency.
+
+    Side effects (Track 3):
+      - Updates paper_symbol_health on success/failure so persistently
+        dead tickers can be surfaced via /api/paper/health.
+      - Logs gap-warnings when the date sequence has a halt-sized hole.
+    """
     data = _fetch(symbol, '1y')
     if not data:
+        n = _record_symbol_failure(symbol, 'yfinance returned no data')
+        if n >= _SYMBOL_DISABLE_THRESHOLD:
+            _log(None, 'error',
+                 f'symbol {symbol} has failed {n} consecutive fetches — likely delisted')
         return None
     dates, closes, highs, lows = data
     if len(closes) < 60:
+        _record_symbol_failure(symbol, f'history<60 bars (got {len(closes)})')
         return None
+    # Halt/gap detection — log only; the indicator math will still compute,
+    # but the operator now knows a synthetic crossover is possible.
+    gaps = detect_gaps(dates)
+    if gaps:
+        worst = max(gaps, key=lambda g: g[1])
+        _log(None, 'warning',
+             f'{symbol} OHLCV has {len(gaps)} gap(s); largest = {worst[1]} days '
+             f'at index {worst[0]} (possible halt/relisting → spurious signals risk)')
     sym_ccy = _symbol_currency(symbol)
     if sym_ccy != account_ccy:
         closes = _convert_series(closes, sym_ccy, account_ccy)
@@ -1730,6 +1963,7 @@ def _signals_for(symbol: str, plan: Dict[str, Any], account_ccy: str = 'USD'):
                             closes, highs, lows)
     exit_sigs = _build_exit_signals(plan['strategies'], plan.get('combine_mode', 'any'),
                                     closes, highs, lows)
+    _record_symbol_success(symbol)
     return dates, closes, highs, lows, sigs, exit_sigs
 
 
@@ -1754,7 +1988,23 @@ def run_account_tick(user_id: int, account_id: int,
                 'account_id': account_id}
     err: Optional[str] = None
     try:
+        # Clear any leftover FX-stale records before the tick so we measure
+        # only the FX rates this tick relied on.
+        _drain_fx_stale()
         result = _run_account_tick_impl(user_id, account_id, until_date)
+        stale_fx = _drain_fx_stale()
+        if stale_fx:
+            # Dedupe while preserving insertion order
+            seen = {}
+            for pair, src in stale_fx:
+                seen[pair] = src
+            stale_summary = ' '.join(f'{p}={s}' for p, s in seen.items())
+            _log(account_id, 'warning',
+                 f'tick used synthetic FX rates: {stale_summary} — account valuations '
+                 f'may be ±3% off until the FX feed recovers')
+            result.setdefault('warnings', []).append({
+                'kind': 'fx_stale', 'pairs': seen,
+            })
         # Persist a brief tick summary to the log for forensics.
         if result.get('success'):
             _log(account_id, 'info',

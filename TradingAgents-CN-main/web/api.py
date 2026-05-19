@@ -2184,6 +2184,8 @@ class TradingAgentsAPIHandler(BaseHTTPRequestHandler):
             self.handle_paper_evolutions(parsed_path)
         elif parsed_path.path == '/api/paper/health':
             self.handle_paper_health(parsed_path)
+        elif parsed_path.path == '/api/paper/symbol-health':
+            self.handle_paper_symbol_health(parsed_path)
         elif parsed_path.path == '/api/paper/attribution':
             self.handle_paper_attribution(parsed_path)
         elif parsed_path.path == '/api/admin/paper-overview':
@@ -9480,6 +9482,26 @@ class TradingAgentsAPIHandler(BaseHTTPRequestHandler):
                 'evolve_frequency_days': freq,
                 'error': None if ok else 'Account not found',
             })
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            self.send_utf8_json_response({'success': False, 'error': str(e)}, 500)
+
+    def handle_paper_symbol_health(self, parsed_path):
+        """GET /api/paper/symbol-health?symbol=AAPL or
+              /api/paper/symbol-health?unhealthy_only=1&limit=50
+        Returns yfinance-fetch health per symbol: consecutive_failures,
+        last_failure_reason, etc. Use to detect delisted/halted tickers
+        the strategy is silently skipping."""
+        session = self._require_pro_tier(2)
+        if not session: return
+        try:
+            from modules.paper_trading import get_symbol_health
+            qs = self._qs(parsed_path)
+            sym = qs.get('symbol', [None])[0]
+            unhealthy = qs.get('unhealthy_only', ['0'])[0] in ('1', 'true', 'yes')
+            limit = int(qs.get('limit', ['100'])[0])
+            self.send_utf8_json_response(
+                get_symbol_health(symbol=sym, unhealthy_only=unhealthy, limit=limit))
         except Exception as e:
             import traceback; traceback.print_exc()
             self.send_utf8_json_response({'success': False, 'error': str(e)}, 500)
