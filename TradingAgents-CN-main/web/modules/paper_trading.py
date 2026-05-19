@@ -91,7 +91,54 @@ def _build_exit_signals(strategies: List[str], entry_combine_mode: str,
 
 
 _DB = Path(__file__).resolve().parents[1] / 'trading_agents.db'
-FEE_BPS = 5.0 / 10000.0  # 0.05% one-way
+
+# Legacy fallback. New code should call _fee_bps(symbol, side) instead.
+# Kept for back-compat with any external callers that imported FEE_BPS.
+FEE_BPS = 5.0 / 10000.0
+
+# Per-venue fee model. Audit finding: the old flat 5 bps overstated US P&L
+# (real retail = ~1 bp) and understated HK by ~8 bps per round-trip
+# (commission + 0.1% stamp duty on sell side). Treating both at 5 bps
+# inflated HK backtest returns by ~1.6% per round-trip.
+#
+# Each entry = (buy_bps, sell_bps). Add new venues here as needed.
+_FEE_TABLE = {
+    'US': (1.0 / 10000.0, 1.0 / 10000.0),                 # 1 bp each side
+    'HK': (3.0 / 10000.0, 13.0 / 10000.0),                # 3 bp buy, 3 bp comm + 10 bp stamp + slippage on sell
+    'DEFAULT': (5.0 / 10000.0, 5.0 / 10000.0),
+}
+
+
+def _venue_for(symbol: str) -> str:
+    s = (symbol or '').upper()
+    if s.endswith('.HK'):
+        return 'HK'
+    if s.endswith('.SS') or s.endswith('.SZ'):
+        return 'CN'
+    return 'US'
+
+
+def _fee_bps(symbol: str, side: str) -> float:
+    """Fee in bps (decimal, e.g. 0.0005 = 5 bps) for the given symbol/side."""
+    venue = _venue_for(symbol)
+    buy_bps, sell_bps = _FEE_TABLE.get(venue, _FEE_TABLE['DEFAULT'])
+    return buy_bps if side == 'buy' else sell_bps
+
+
+# Anti-churn cooldown: minimum bars between a sell and a re-entry on the
+# same symbol. Default 1 = "no same-day re-entry on the bar you just sold,
+# at minimum sleep one bar before re-entering". Verified necessary by the
+# Track-1 smoke test which showed XOM/TEAM bought→sold→bought on the same
+# day under combine_mode='any' + majority exit.
+_DEFAULT_HOLD_COOLDOWN_DAYS = 1
+# Floor on realized vol used by vol-target sizing — without this an
+# ultra-low-vol stock would get the max-per-name cap regardless of signal
+# quality (audit finding #10). 5% annualized is a sane floor for any
+# normal equity; below that the denominator is dominated by noise/halt.
+_VOL_TARGET_SIGMA_FLOOR = 0.05
+# Min trade value (account-currency) — prevents the engine from placing
+# odd-lot $5 orders when the strategy allocates a sliver of cash.
+_DEFAULT_MIN_TRADE_VALUE = 100.0
 
 
 # ---------------------------------------------------------------------------
@@ -641,6 +688,9 @@ def create_account(user_id: int, plan: Dict[str, Any]) -> Dict[str, Any]:
         'vix_gate_threshold': float(plan.get('vix_gate_threshold') or 0),  # e.g. 30 = no new longs when VIX > 30
         'mtf_gate': bool(plan.get('mtf_gate')),                          # require weekly EMA20>EMA50 before new long
         'vol_target_annual_pct': float(plan.get('vol_target_annual_pct') or 0),  # e.g. 12 = aim for 12% annualized vol per position
+        # Track-2 anti-churn + sizing-hygiene knobs (all default-on; safe to omit)
+        'hold_cooldown_days': max(0, int(plan.get('hold_cooldown_days', _DEFAULT_HOLD_COOLDOWN_DAYS))),
+        'min_trade_value': max(0.0, float(plan.get('min_trade_value') or _DEFAULT_MIN_TRADE_VALUE)),
     }
     today = date.today().isoformat()
 
@@ -1627,7 +1677,8 @@ def close_account(user_id: int, account_id: int) -> Dict[str, Any]:
             if sym_ccy != account_ccy and closes:
                 closes = _convert_series(closes, sym_ccy, account_ccy)
             last = closes[-1] if closes else p['entry_price']
-            proceeds = p['shares'] * last * (1 - FEE_BPS)
+            sell_bps = _fee_bps(p['symbol'], 'sell')
+            proceeds = p['shares'] * last * (1 - sell_bps)
             pnl_abs = proceeds - p['shares'] * p['entry_price']
             pnl_pct = ((last / p['entry_price']) - 1) * 100 if p['entry_price'] else 0
             cash += proceeds
@@ -1640,7 +1691,7 @@ def close_account(user_id: int, account_id: int) -> Dict[str, Any]:
                          VALUES (?, ?, 'sell', ?, ?, ?, ?, ?, ?, 'account_closed', ?)''',
                       (account_id, p['id'], p['symbol'], p['shares'],
                        float(last), float(p['shares'] * last),
-                       float(p['shares'] * last * FEE_BPS), float(cash), today))
+                       float(p['shares'] * last * sell_bps), float(cash), today))
 
         c.execute("UPDATE paper_accounts SET status='closed', cash=? WHERE id=?",
                   (cash, account_id))
@@ -1809,6 +1860,9 @@ def _run_account_tick_impl(user_id: int, account_id: int,
         vix_gate = float(plan.get('vix_gate_threshold') or 0)
         mtf_gate = bool(plan.get('mtf_gate'))
         vol_target = float(plan.get('vol_target_annual_pct') or 0) / 100.0  # 0 = use fixed pos_pct
+        # New anti-churn + sizing-hygiene knobs (Track 2).
+        hold_cooldown_days = int(plan.get('hold_cooldown_days', _DEFAULT_HOLD_COOLDOWN_DAYS))
+        min_trade_value = float(plan.get('min_trade_value') or _DEFAULT_MIN_TRADE_VALUE)
 
         # VIX regime gate: skip new entries this whole tick if VIX above threshold.
         # Existing positions still tick (exits, equity) — only new buys are paused.
@@ -1960,7 +2014,8 @@ def _run_account_tick_impl(user_id: int, account_id: int,
                         if sig == 0 and prev_sig == 1:
                             exit_reason = 'signal'
                 if exit_reason:
-                    proceeds = p['shares'] * price * (1 - FEE_BPS)
+                    sell_bps = _fee_bps(sym, 'sell')
+                    proceeds = p['shares'] * price * (1 - sell_bps)
                     pnl_abs = proceeds - p['shares'] * p['entry_price']
                     pnl_pct = (price / p['entry_price'] - 1) * 100 if p['entry_price'] else 0
                     cash += proceeds
@@ -1972,7 +2027,7 @@ def _run_account_tick_impl(user_id: int, account_id: int,
                                  (account_id, position_id, type, symbol, shares, price, value, fee, cash_after, reason, ts_date)
                                  VALUES (?, ?, 'sell', ?, ?, ?, ?, ?, ?, ?, ?)''',
                               (account_id, p['id'], sym, p['shares'], price,
-                               float(p['shares'] * price), float(p['shares'] * price * FEE_BPS),
+                               float(p['shares'] * price), float(p['shares'] * price * sell_bps),
                                float(cash), exit_reason, d))
                     new_tx += 1
                     # Update per-symbol P&L tracking; check blacklist threshold
@@ -1993,13 +2048,9 @@ def _run_account_tick_impl(user_id: int, account_id: int,
                                 print(f"⚠️ Account {account_id} blacklisted {sym}: DD ${dd_dollars:.2f} / ${slice_est:.2f} = {dd_ratio:.2f}% (>= {sym_dd_stop_pct}%)")
 
             # 2) Check entries
-            # NOTE: we deliberately do NOT require a strict 0->1 crossing here.
-            # An active BUY signal (sig==1) is enough to enter when not already
-            # holding. The "skip if already holding" check below prevents
-            # double-buys, and the exit path still requires a strict 1->0 flip,
-            # so the trade lifecycle stays clean. Strict crossing was the
-            # source of the "0 transactions forever" symptom on AI-mode
-            # accounts whose strategy signal turned on before account creation.
+            # NOTE: relaxed entry — `sig==1` is enough; the "skip if already
+            # holding" check prevents double-buys. Exits are softened via
+            # _build_exit_signals so the lifecycle stays balanced.
             for sym, s in series.items():
                 if d not in s['idx_by_date']:
                     continue
@@ -2012,10 +2063,11 @@ def _run_account_tick_impl(user_id: int, account_id: int,
                     continue
                 if sym in weekly_block:
                     continue
-                # VIX gate: skip new entries on today's bar when VIX above threshold.
-                # Apply only to current-day entries to avoid retroactively suppressing
-                # historical replay decisions.
-                if vix_block_entries and d == today_iso:
+                # VIX gate — audit fix: previously this only blocked today's
+                # bar (`d == today_iso`), so a fresh account replaying Mar
+                # 2020 entered at the worst possible time. Now block all
+                # entries on any replay day when the gate is tripped.
+                if vix_block_entries:
                     continue
                 sig = s['signals'][i]
                 if sig != 1:
@@ -2026,26 +2078,31 @@ def _run_account_tick_impl(user_id: int, account_id: int,
                     (account_id, sym)).fetchone()
                 if already:
                     continue
+                # Anti-churn cooldown — block re-entry on a symbol we just
+                # closed within hold_cooldown_days. Fixes the buy→sell→buy
+                # same-day pattern observed during Track-1 smoke test.
+                if hold_cooldown_days > 0:
+                    last_close = c.execute(
+                        "SELECT exit_date FROM paper_positions "
+                        "WHERE account_id=? AND symbol=? AND status='closed' "
+                        "ORDER BY id DESC LIMIT 1",
+                        (account_id, sym)).fetchone()
+                    if last_close and last_close['exit_date']:
+                        try:
+                            gap_days = (date.fromisoformat(d) -
+                                        date.fromisoformat(last_close['exit_date'])).days
+                            if gap_days < hold_cooldown_days:
+                                continue
+                        except Exception:
+                            pass
                 price = float(s['closes'][i])
 
-                # Position sizing: vol-target if enabled, else fixed pos_pct.
-                # Vol-target weight = target_annualized_vol / symbol_realized_vol.
-                # Capped at max_per_name_pct so a low-vol stock doesn't take 80%.
-                if vol_target > 0:
-                    sigma = _realized_vol_annual(s['closes'][:i + 1], 30)
-                    if sigma > 0:
-                        weight = min(vol_target / sigma, max_per_name_pct)
-                        # Floor at a small allocation so very-low-vol names still get a sensible slice
-                        weight = max(weight, 0.01)
-                        slice_cash = float(a['initial_capital']) * weight
-                    else:
-                        slice_cash = cash * pos_pct
-                else:
-                    slice_cash = cash * pos_pct
-
-                # Leverage cap: total deployed (positions @ current MTM + this trade) must not
-                # exceed 100% of initial capital. Prevents pos_size_pct from silently
-                # creating leveraged simulations.
+                # Compute current account equity for the sizing/cap basis.
+                # Audit finding: caps using ONLY initial_capital lock the
+                # account at its starting size forever — an account that
+                # doubled couldn't deploy the gains. We use the LARGER of
+                # initial and current equity as the cap basis, so winners
+                # can compound while losers stay protected.
                 positions_mtm = 0.0
                 for r in c.execute(
                     "SELECT symbol, shares FROM paper_positions WHERE account_id=? AND status='open'",
@@ -2053,24 +2110,44 @@ def _run_account_tick_impl(user_id: int, account_id: int,
                     s_held = series.get(r['symbol'])
                     if s_held and d in s_held['idx_by_date']:
                         positions_mtm += float(r['shares']) * float(s_held['closes'][s_held['idx_by_date'][d]])
-                budget_left = max(0.0, float(a['initial_capital']) - positions_mtm)
+                current_equity = cash + positions_mtm
+                cap_basis = max(float(a['initial_capital']), current_equity)
+
+                # Position sizing
+                if vol_target > 0:
+                    sigma = _realized_vol_annual(s['closes'][:i + 1], 30)
+                    # Floor sigma to avoid blow-up sizing on near-zero-vol names.
+                    sigma = max(sigma, _VOL_TARGET_SIGMA_FLOOR)
+                    weight = min(vol_target / sigma, max_per_name_pct)
+                    weight = max(weight, 0.01)
+                    slice_cash = cap_basis * weight
+                else:
+                    slice_cash = cash * pos_pct
+
+                # Leverage cap on max(initial, current) instead of initial only.
+                budget_left = max(0.0, cap_basis - positions_mtm)
                 slice_cash = min(slice_cash, budget_left)
 
-                # Per-name concentration cap: this single position cannot exceed
-                # max_per_name_pct of initial capital at entry cost.
-                per_name_cap = float(a['initial_capital']) * max_per_name_pct
+                # Per-name cap also on the dynamic basis.
+                per_name_cap = cap_basis * max_per_name_pct
                 slice_cash = min(slice_cash, per_name_cap)
 
                 if slice_cash <= 0:
                     continue
 
-                # Round down to a valid board-lot multiple (1 for US, 100/500/1000/etc for HK)
+                # Per-venue buy fee (used for both lot rounding and cost calc)
+                buy_bps = _fee_bps(sym, 'buy')
                 lot = _lot_size(sym)
-                lots = int(slice_cash / (price * lot * (1 + FEE_BPS))) if price > 0 else 0
+                lots = int(slice_cash / (price * lot * (1 + buy_bps))) if price > 0 else 0
                 shares = lots * lot
                 if shares <= 0:
                     continue
-                cost = shares * price * (1 + FEE_BPS)
+                trade_value = shares * price
+                # Min trade value floor — avoid placing tiny odd-lot orders
+                # whose fees dominate.
+                if trade_value < min_trade_value:
+                    continue
+                cost = trade_value * (1 + buy_bps)
                 cash -= cost
                 cur = c.execute('''INSERT INTO paper_positions
                              (account_id, symbol, shares, entry_price, entry_date, entry_reason, status)
@@ -2081,7 +2158,7 @@ def _run_account_tick_impl(user_id: int, account_id: int,
                              (account_id, position_id, type, symbol, shares, price, value, fee, cash_after, reason, ts_date)
                              VALUES (?, ?, 'buy', ?, ?, ?, ?, ?, ?, 'entry_signal', ?)''',
                           (account_id, pos_id, sym, shares, price,
-                           float(shares * price), float(shares * price * FEE_BPS),
+                           float(trade_value), float(trade_value * buy_bps),
                            float(cash), d))
                 new_tx += 1
 
@@ -2116,7 +2193,8 @@ def _run_account_tick_impl(user_id: int, account_id: int,
                         if not s or d not in s['idx_by_date']:
                             continue
                         ep = float(s['closes'][s['idx_by_date'][d]])
-                        proceeds = p['shares'] * ep * (1 - FEE_BPS)
+                        sell_bps = _fee_bps(p['symbol'], 'sell')
+                        proceeds = p['shares'] * ep * (1 - sell_bps)
                         pnl_abs = proceeds - p['shares'] * p['entry_price']
                         pnl_pct = (ep / p['entry_price'] - 1) * 100 if p['entry_price'] else 0
                         cash += proceeds
@@ -2128,7 +2206,7 @@ def _run_account_tick_impl(user_id: int, account_id: int,
                                      (account_id, position_id, type, symbol, shares, price, value, fee, cash_after, reason, ts_date)
                                      VALUES (?, ?, 'sell', ?, ?, ?, ?, ?, ?, 'auto_drawdown_stop', ?)''',
                                   (account_id, p['id'], p['symbol'], p['shares'], ep,
-                                   float(p['shares'] * ep), float(p['shares'] * ep * FEE_BPS),
+                                   float(p['shares'] * ep), float(p['shares'] * ep * sell_bps),
                                    float(cash), d))
                         new_tx += 1
                     # Update final-day equity snapshot post-liquidation
