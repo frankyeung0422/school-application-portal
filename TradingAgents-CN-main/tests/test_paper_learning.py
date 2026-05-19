@@ -158,3 +158,143 @@ def test_blend_with_live_underperforming_baseline_drops(pt):
     # 0.6*50 + 0.4*(-50) = 30 - 20 = 10
     assert blended < backtest_score
     assert abs(blended - 10.0) < 1e-6
+
+
+# ============================================================================
+# T6.2 — champion / challenger framework
+# ============================================================================
+
+def test_challengers_table_created(pt):
+    """init_paper_tables must add the paper_challengers table."""
+    with sqlite3.connect(str(pt._DB)) as c:
+        names = [r[0] for r in c.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='paper_challengers'"
+        ).fetchall()]
+    assert 'paper_challengers' in names
+
+
+def test_add_challenger_respects_max_cap(pt, monkeypatch):
+    """Adding > MAX_CHALLENGERS active candidates must be a no-op for
+    the overflow — caller is responsible for dropping a loser first."""
+    from modules import paper_learning as pl
+    monkeypatch.setattr(pl, 'MAX_CHALLENGERS', 2)
+    acct = _seed_account(pt)
+    a = pl.add_challenger(acct, {'strategies': ['ma_cross']}, 'mutation', pt._conn)
+    b = pl.add_challenger(acct, {'strategies': ['rsi_meanreversion']}, 'mutation', pt._conn)
+    c_id = pl.add_challenger(acct, {'strategies': ['macd_cross']}, 'mutation', pt._conn)
+    assert a is not None and b is not None
+    assert c_id is None, 'third candidate must be rejected at the cap'
+
+
+def test_mutate_plan_perturbs_within_bounds(pt):
+    """mutate_plan must keep TP/SL/pos within their configured bounds."""
+    from modules import paper_learning as pl
+    import random
+    rng = random.Random(42)
+    champ = {'strategies': ['ma_cross'], 'combine_mode': 'any',
+             'take_profit_pct': 10.0, 'stop_loss_pct': 5.0, 'pos_size_pct': 20.0,
+             'symbols': ['AAPL']}
+    for _ in range(50):
+        m = pl.mutate_plan(champ, rng)
+        assert 2 <= m['take_profit_pct'] <= 30
+        assert 1 <= m['stop_loss_pct'] <= 15
+        assert 5 <= m['pos_size_pct'] <= 80
+        # Symbols are user-owned; must not be mutated
+        assert m.get('symbols') == ['AAPL']
+
+
+def test_evaluate_challengers_increments_streaks(pt):
+    """A challenger that beats the champion records a win_streak bump.
+    A challenger that loses gets loss_streak instead."""
+    from modules import paper_learning as pl
+    acct = _seed_account(pt)
+    pl.add_challenger(acct, {'strategies': ['rsi_meanreversion']}, 'mutation', pt._conn,
+                      note='strong')
+    pl.add_challenger(acct, {'strategies': ['breakout']}, 'mutation', pt._conn,
+                      note='weak')
+
+    def scorer(plan_dict):
+        # Strong challenger wins, weak loses
+        if 'rsi_meanreversion' in plan_dict.get('strategies', []):
+            return {'score': 100.0, 'annual_return_pct': 50.0}
+        return {'score': -10.0, 'annual_return_pct': -5.0}
+
+    summary = pl.evaluate_challengers(acct, champion_score=10.0,
+                                       scorer=scorer, conn_factory=pt._conn)
+    assert len(summary['evaluated']) == 2
+    winners = [e for e in summary['evaluated'] if e['won']]
+    losers = [e for e in summary['evaluated'] if not e['won']]
+    assert len(winners) == 1 and winners[0]['source'] == 'mutation'
+    assert winners[0]['win_streak'] == 1
+    assert losers[0]['loss_streak'] == 1
+
+
+def test_promote_after_win_streak(pt, monkeypatch):
+    """A challenger that wins WIN_STREAK_TO_PROMOTE cycles in a row
+    must end up as the promoted summary entry, and promote_challenger
+    must swap the live plan_json."""
+    from modules import paper_learning as pl
+    monkeypatch.setattr(pl, 'WIN_STREAK_TO_PROMOTE', 2)
+    acct = _seed_account(pt)
+    cid = pl.add_challenger(acct, {'strategies': ['macd_cross']}, 'mutation', pt._conn)
+    def scorer(_):
+        return {'score': 100.0, 'annual_return_pct': 50.0}
+    # Cycle 1: win, streak 1 (no promote yet)
+    s1 = pl.evaluate_challengers(acct, 0.0, scorer, pt._conn)
+    assert s1['promoted'] is None
+    # Cycle 2: win, streak 2 = promote!
+    s2 = pl.evaluate_challengers(acct, 0.0, scorer, pt._conn)
+    assert s2['promoted'] is not None
+    assert s2['promoted']['id'] == cid
+    # Apply the promotion and verify the live plan_json swapped
+    pl.promote_challenger(cid, acct, pt._conn)
+    with sqlite3.connect(str(pt._DB)) as c:
+        c.row_factory = sqlite3.Row
+        row = c.execute('SELECT plan_json FROM paper_accounts WHERE id=?',
+                        (acct,)).fetchone()
+    live_plan = json.loads(row['plan_json'])
+    assert live_plan.get('strategies') == ['macd_cross']
+
+
+def test_loss_streak_drops_challenger(pt, monkeypatch):
+    from modules import paper_learning as pl
+    monkeypatch.setattr(pl, 'LOSS_STREAK_TO_DROP', 2)
+    acct = _seed_account(pt)
+    cid = pl.add_challenger(acct, {'strategies': ['breakout']}, 'mutation', pt._conn)
+    def scorer(_):
+        return {'score': -50.0, 'annual_return_pct': -20.0}
+    pl.evaluate_challengers(acct, 100.0, scorer, pt._conn)   # loss 1
+    s = pl.evaluate_challengers(acct, 100.0, scorer, pt._conn)  # loss 2 → drop
+    assert any(d['id'] == cid for d in s['dropped'])
+    with sqlite3.connect(str(pt._DB)) as c:
+        c.row_factory = sqlite3.Row
+        row = c.execute('SELECT status FROM paper_challengers WHERE id=?',
+                        (cid,)).fetchone()
+    assert row['status'] == 'dropped'
+
+
+def test_promotion_supersedes_other_challengers(pt, monkeypatch):
+    """When one challenger promotes, all other active challengers should
+    be dropped — they were comparing against the now-defunct champion."""
+    from modules import paper_learning as pl
+    monkeypatch.setattr(pl, 'WIN_STREAK_TO_PROMOTE', 1)
+    acct = _seed_account(pt)
+    winner = pl.add_challenger(acct, {'strategies': ['macd_cross']}, 'mutation', pt._conn)
+    pl.add_challenger(acct, {'strategies': ['rsi_meanreversion']}, 'mutation', pt._conn)
+    def scorer(plan_dict):
+        if 'macd_cross' in plan_dict.get('strategies', []):
+            return {'score': 100.0, 'annual_return_pct': 50.0}
+        return {'score': -1.0, 'annual_return_pct': 0.0}  # not enough to win
+    s = pl.evaluate_challengers(acct, 0.0, scorer, pt._conn)
+    assert s['promoted']['id'] == winner
+    pl.promote_challenger(winner, acct, pt._conn)
+    with sqlite3.connect(str(pt._DB)) as c:
+        c.row_factory = sqlite3.Row
+        rows = c.execute(
+            'SELECT id, status FROM paper_challengers WHERE account_id=?',
+            (acct,)).fetchall()
+    statuses = {r['id']: r['status'] for r in rows}
+    assert statuses[winner] == 'promoted'
+    # The other challenger must have been swept aside
+    others = [s for cid, s in statuses.items() if cid != winner]
+    assert all(s == 'dropped' for s in others)

@@ -857,6 +857,17 @@ def init_paper_tables() -> None:
             c.execute("ALTER TABLE paper_accounts ADD COLUMN disabled_symbols_json TEXT DEFAULT '[]'")
         if 'base_currency' not in cols:
             c.execute("ALTER TABLE paper_accounts ADD COLUMN base_currency TEXT DEFAULT 'USD'")
+        # T6.2 — challenger pool table. Done here so callers don't need
+        # to import paper_learning separately to get the schema right.
+        try:
+            from .paper_learning import ensure_challengers_table
+            ensure_challengers_table(c)
+        except Exception:
+            try:
+                from web.modules.paper_learning import ensure_challengers_table  # type: ignore
+                ensure_challengers_table(c)
+            except Exception:
+                pass
         if 'last_evolved_at' not in cols:
             c.execute('ALTER TABLE paper_accounts ADD COLUMN last_evolved_at TEXT')
         if 'live_score_last' not in cols:
@@ -1563,16 +1574,82 @@ def evolve_account_plan(user_id: int, account_id: int,
     best_annual = float(best.get('annual_return_pct') or 0.0)
     new_plan_fields = best.get('plan') or {}
 
+    # T6.2 — champion/challenger evaluation. The optimizer's top-1 plan
+    # gets added to the challenger pool (capped at MAX_CHALLENGERS), and
+    # every existing active challenger is re-scored against the new
+    # champion baseline. A challenger only promotes after sustained
+    # OOS wins (WIN_STREAK_TO_PROMOTE).
+    challenger_summary: Dict[str, Any] = {}
+    try:
+        try:
+            from . import paper_learning as _pl
+        except Exception:
+            from web.modules import paper_learning as _pl  # type: ignore
+
+        # Seed: add the optimizer's winner as a fresh challenger if it
+        # has the strategy fields we need and isn't the live plan.
+        if new_plan_fields:
+            cand = dict(plan)
+            for k in ('strategies', 'combine_mode', 'take_profit_pct',
+                      'stop_loss_pct', 'pos_size_pct'):
+                if k in new_plan_fields and new_plan_fields[k] is not None:
+                    cand[k] = new_plan_fields[k]
+            _pl.add_challenger(account_id, cand, source='optimizer',
+                               conn_factory=_conn,
+                               note=f'evolution {now_iso[:19] if False else datetime.now().isoformat()[:19]}')
+
+        # Build a scorer closure that re-uses simulate_plan with the same
+        # walk-forward slice the baseline used.
+        def _score_challenger(plan_dict: Dict[str, Any]) -> Dict[str, Any]:
+            p = dict(base_plan)
+            p.update({k: plan_dict[k] for k in (
+                'strategies', 'combine_mode', 'take_profit_pct',
+                'stop_loss_pct', 'pos_size_pct') if k in plan_dict})
+            res = simulate_plan(p, slice_range=(0.7, 1.0))
+            if not res.get('success'):
+                return {'score': -1e9, 'annual_return_pct': 0.0}
+            s, a = _score_result(res['metrics'], test_days, target_annual)
+            return {'score': s, 'annual_return_pct': a}
+
+        challenger_summary = _pl.evaluate_challengers(
+            account_id, baseline_score, _score_challenger, _conn)
+    except Exception as e:
+        _log(account_id, 'warning', f'challenger eval skipped: {e}')
+        challenger_summary = {'error': str(e)}
+
     applied = False
     after_plan = dict(plan)
-    if apply_if_better and (best_score - baseline_score) >= _EVOLVE_MIN_GAIN and new_plan_fields:
-        # Update only the strategy-related fields — keep symbols/AI-mode/etc
-        # owned by the user's account config.
+    apply_source = None
+
+    # First preference: a challenger that just hit WIN_STREAK_TO_PROMOTE.
+    # This is the no-regret path — that challenger has beaten the champion
+    # for K consecutive cycles, not just won a single lucky search.
+    promoted = (challenger_summary or {}).get('promoted')
+    if apply_if_better and promoted:
+        try:
+            from . import paper_learning as _pl
+        except Exception:
+            from web.modules import paper_learning as _pl  # type: ignore
+        promo_result = _pl.promote_challenger(promoted['id'], account_id, _conn)
+        if promo_result:
+            for k in ('strategies', 'combine_mode', 'take_profit_pct',
+                      'stop_loss_pct', 'pos_size_pct'):
+                if k in promo_result['plan']:
+                    after_plan[k] = promo_result['plan'][k]
+            applied = True
+            apply_source = f"challenger_promoted:{promoted['source']}"
+
+    # Fallback: direct optimizer apply (original Track-4 behavior) — only
+    # fires when no challenger was promoted this cycle.
+    if (not applied and apply_if_better
+            and (best_score - baseline_score) >= _EVOLVE_MIN_GAIN
+            and new_plan_fields):
         for k in ('strategies', 'combine_mode', 'take_profit_pct',
                  'stop_loss_pct', 'pos_size_pct'):
             if k in new_plan_fields and new_plan_fields[k] is not None:
                 after_plan[k] = new_plan_fields[k]
         applied = True
+        apply_source = 'optimizer_direct'
 
     # Persist the round
     top_compact = []
@@ -1591,12 +1668,17 @@ def evolve_account_plan(user_id: int, account_id: int,
 
     note_bits = []
     if applied:
-        note_bits.append(f"applied (OOS score +{best_score - baseline_score:.2f})")
+        if apply_source and apply_source.startswith('challenger_promoted'):
+            note_bits.append(f"applied via {apply_source}")
+        else:
+            note_bits.append(f"applied (OOS score +{best_score - baseline_score:.2f})")
     else:
         note_bits.append(f"not applied (gain {best_score - baseline_score:.2f} < {_EVOLVE_MIN_GAIN})")
     note_bits.append(f"trials={opt.get('trials_count')}")
     if opt.get('hit_target_count'):
         note_bits.append(f"hit_target={opt['hit_target_count']}")
+    if challenger_summary.get('evaluated'):
+        note_bits.append(f"challengers={len(challenger_summary['evaluated'])}")
     note = ' · '.join(note_bits)
 
     now_iso = datetime.now().isoformat()
@@ -1658,6 +1740,8 @@ def evolve_account_plan(user_id: int, account_id: int,
         'top': top_compact,
         'trials_count': opt.get('trials_count'),
         'search_space': opt.get('search_space'),
+        'challengers': challenger_summary,
+        'apply_source': apply_source,
         'target_monthly_pct': target_monthly_pct,
         'target_annual_pct': target_annual,
         'note': note,
