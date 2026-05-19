@@ -9445,6 +9445,7 @@ class TradingAgentsAPIHandler(BaseHTTPRequestHandler):
             account_id = int(body.get('account_id') or 0)
             target_monthly = float(body.get('target_monthly_pct') or 5.0)
             apply_if_better = bool(body.get('apply_if_better', True))
+            expand_search = bool(body.get('expand_search', False))
             max_iter = body.get('max_iterations')
             if max_iter is not None:
                 max_iter = int(max_iter)
@@ -9453,7 +9454,8 @@ class TradingAgentsAPIHandler(BaseHTTPRequestHandler):
                                     target_monthly_pct=target_monthly,
                                     trigger='api',
                                     apply_if_better=apply_if_better,
-                                    max_iterations=max_iter))
+                                    max_iterations=max_iter,
+                                    expand_search=expand_search))
         except Exception as e:
             import traceback; traceback.print_exc()
             self.send_utf8_json_response({'success': False, 'error': str(e)}, 500)

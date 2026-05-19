@@ -334,6 +334,119 @@ def _validate_hk_lot(symbol: str) -> None:
              f'HK lot fallback used for {s}=100; verify true board-lot before live trading')
 
 
+# ---------------------------------------------------------------------------
+# Sector concentration cap (Audit finding #11)
+#
+# Without sector controls, an account can hold 5 HK banks all firing the
+# same MACD on the same day — 100% financials, zero diversification. Now
+# the entry loop computes the open-position MTM per sector and rejects
+# new entries that would breach `max_per_sector_pct`.
+#
+# Sector data: yfinance.info['sector'] is the source of truth but slow
+# (HTTP per symbol). We cache lazily to paper_symbol_meta with a 30-day
+# TTL; a small inline fallback covers the most common HK/US tickers so
+# the test suite and offline runs don't depend on the network.
+# ---------------------------------------------------------------------------
+_SECTOR_TTL_DAYS = 30
+_SECTOR_INLINE_FALLBACK: Dict[str, str] = {
+    # US mega-caps — most likely to appear in account universes
+    'AAPL': 'Technology', 'MSFT': 'Technology', 'GOOGL': 'Technology',
+    'GOOG': 'Technology', 'META': 'Technology', 'NVDA': 'Technology',
+    'AMZN': 'Consumer Cyclical', 'TSLA': 'Consumer Cyclical',
+    'XOM': 'Energy', 'CVX': 'Energy', 'COP': 'Energy',
+    'JPM': 'Financial Services', 'BAC': 'Financial Services',
+    'WFC': 'Financial Services', 'GS': 'Financial Services',
+    'V': 'Financial Services', 'MA': 'Financial Services',
+    'WMT': 'Consumer Defensive', 'PG': 'Consumer Defensive',
+    'KO': 'Consumer Defensive', 'PEP': 'Consumer Defensive',
+    'JNJ': 'Healthcare', 'LLY': 'Healthcare', 'PFE': 'Healthcare',
+    'UNH': 'Healthcare', 'MRK': 'Healthcare',
+    'TEAM': 'Technology', 'CRM': 'Technology', 'NFLX': 'Communication',
+    'SPY': 'ETF', 'QQQ': 'ETF', 'IWM': 'ETF',
+    # HK majors
+    '0005.HK': 'Financial Services',   # HSBC
+    '2318.HK': 'Financial Services',   # Ping An
+    '2388.HK': 'Financial Services',   # BOC Hong Kong
+    '1398.HK': 'Financial Services',   # ICBC
+    '3988.HK': 'Financial Services',   # Bank of China
+    '0388.HK': 'Financial Services',   # HKEX
+    '0939.HK': 'Financial Services',   # CCB
+    '2628.HK': 'Financial Services',   # China Life
+    '0700.HK': 'Technology',           # Tencent
+    '9988.HK': 'Consumer Cyclical',    # Alibaba-SW
+    '1810.HK': 'Technology',           # Xiaomi
+    '3690.HK': 'Consumer Cyclical',    # Meituan
+    '9618.HK': 'Consumer Cyclical',    # JD-SW
+    '0883.HK': 'Energy',               # CNOOC
+    '0857.HK': 'Energy',               # PetroChina
+    '0386.HK': 'Energy',               # Sinopec
+    '0001.HK': 'Industrials',          # CK Hutchison
+    '0011.HK': 'Financial Services',   # Hang Seng Bank
+    '0016.HK': 'Real Estate',          # SHK Properties
+    '0017.HK': 'Real Estate',          # New World
+}
+
+
+def _symbol_sector(symbol: str, allow_network: bool = True) -> Optional[str]:
+    """Return the sector for a symbol, or None when unknown.
+
+    Lookup priority:
+      1. paper_symbol_meta cache (fresh within _SECTOR_TTL_DAYS)
+      2. _SECTOR_INLINE_FALLBACK static table (offline-safe)
+      3. yfinance.info['sector'] (when allow_network=True); cached on success
+    """
+    if not symbol:
+        return None
+    sym = symbol.upper()
+    try:
+        with _conn() as c:
+            row = c.execute(
+                'SELECT sector, fetched_at FROM paper_symbol_meta WHERE symbol=?',
+                (sym,)).fetchone()
+        if row and row['sector']:
+            try:
+                age_days = (datetime.now() - datetime.fromisoformat(row['fetched_at'])).days
+                if age_days <= _SECTOR_TTL_DAYS:
+                    return row['sector']
+            except Exception:
+                return row['sector']
+    except Exception:
+        pass
+
+    inline = _SECTOR_INLINE_FALLBACK.get(sym)
+    if inline:
+        # Persist the inline value so subsequent reads skip the dict lookup
+        _store_symbol_sector(sym, inline, source='inline')
+        return inline
+
+    if not allow_network:
+        return None
+    sector: Optional[str] = None
+    try:
+        import yfinance as yf
+        info = yf.Ticker(sym).info
+        sector = (info.get('sector') or '').strip() or None
+    except Exception as e:
+        _log(None, 'warning', f'yfinance sector lookup failed for {sym}: {e}')
+    if sector:
+        _store_symbol_sector(sym, sector, source='yfinance')
+    return sector
+
+
+def _store_symbol_sector(symbol: str, sector: str, source: str = '') -> None:
+    try:
+        with _conn() as c:
+            c.execute('''INSERT INTO paper_symbol_meta (symbol, sector, fetched_at)
+                         VALUES (?, ?, CURRENT_TIMESTAMP)
+                         ON CONFLICT(symbol) DO UPDATE SET
+                            sector=excluded.sector,
+                            fetched_at=CURRENT_TIMESTAMP''',
+                      (symbol.upper(), sector))
+            c.commit()
+    except Exception as e:
+        _log(None, 'warning', f'symbol_meta write failed for {symbol}: {e}')
+
+
 def _conn():
     c = sqlite3.connect(str(_DB))
     c.row_factory = sqlite3.Row
@@ -778,6 +891,17 @@ def init_paper_tables() -> None:
             total_failures INTEGER DEFAULT 0,
             total_successes INTEGER DEFAULT 0
         );
+
+        -- Static metadata per symbol — sector, industry, etc.  Populated
+        -- lazily by _symbol_sector() and refreshed at most once per
+        -- _SECTOR_TTL_DAYS. Lets the entry loop enforce sector
+        -- concentration caps without hitting yfinance every tick.
+        CREATE TABLE IF NOT EXISTS paper_symbol_meta (
+            symbol TEXT PRIMARY KEY,
+            sector TEXT,
+            industry TEXT,
+            fetched_at TEXT
+        );
         ''')
         c.commit()
 
@@ -877,6 +1001,8 @@ def create_account(user_id: int, plan: Dict[str, Any]) -> Dict[str, Any]:
         # Track-2 anti-churn + sizing-hygiene knobs (all default-on; safe to omit)
         'hold_cooldown_days': max(0, int(plan.get('hold_cooldown_days', _DEFAULT_HOLD_COOLDOWN_DAYS))),
         'min_trade_value': max(0.0, float(plan.get('min_trade_value') or _DEFAULT_MIN_TRADE_VALUE)),
+        # Track-4 strategy-quality knobs (opt-in; 0 = disabled)
+        'max_per_sector_pct': max(0.0, min(100.0, float(plan.get('max_per_sector_pct') or 0))),
     }
     today = date.today().isoformat()
 
@@ -1176,11 +1302,22 @@ def evolve_account_plan(user_id: int, account_id: int,
                         target_monthly_pct: float = 5.0,
                         trigger: str = 'manual',
                         apply_if_better: bool = True,
-                        max_iterations: Optional[int] = None) -> Dict[str, Any]:
+                        max_iterations: Optional[int] = None,
+                        expand_search: bool = False) -> Dict[str, Any]:
     """
     Run one generation of strategy evolution for an account.
 
-    Returns: {success, applied, before, after, baseline, best, top, trials}.
+    expand_search defaults to False so we REFINE within the strategies the
+    user already picked. Set True to let the optimizer also explore other
+    strategies — useful when the current mix is underperforming and the
+    user wants the agent to suggest something new.
+
+    Per-account RNG seed (account_id) ensures two different accounts on
+    the same symbol universe don't converge on the same "lucky" config —
+    audit finding #20.
+
+    Returns: {success, applied, before, after, baseline, best, top, trials,
+             search_space}.
     """
     init_paper_tables()
     try:
@@ -1236,8 +1373,11 @@ def evolve_account_plan(user_id: int, account_id: int,
 
     iters = max_iterations or _EVOLVE_MIN_TRIALS
     iters = max(_EVOLVE_MIN_TRIALS, min(_EVOLVE_MAX_TRIALS, int(iters)))
+    # Per-account seed prevents the cross-account convergence audit issue.
     opt = optimize_plan(base_plan, target_monthly_pct=target_monthly_pct,
-                        max_iterations=iters, walk_forward=True, train_pct=0.7)
+                        max_iterations=iters, walk_forward=True, train_pct=0.7,
+                        expand_search=expand_search,
+                        rng_seed=account_id)
     if not opt.get('success'):
         return {'success': False, 'error': opt.get('error', 'optimization failed'),
                 'baseline_score': round(baseline_score, 3),
@@ -1325,6 +1465,7 @@ def evolve_account_plan(user_id: int, account_id: int,
         },
         'top': top_compact,
         'trials_count': opt.get('trials_count'),
+        'search_space': opt.get('search_space'),
         'target_monthly_pct': target_monthly_pct,
         'target_annual_pct': target_annual,
         'note': note,
@@ -2113,6 +2254,18 @@ def _run_account_tick_impl(user_id: int, account_id: int,
         # New anti-churn + sizing-hygiene knobs (Track 2).
         hold_cooldown_days = int(plan.get('hold_cooldown_days', _DEFAULT_HOLD_COOLDOWN_DAYS))
         min_trade_value = float(plan.get('min_trade_value') or _DEFAULT_MIN_TRADE_VALUE)
+        # Sector concentration cap (Track 4 / audit #11). 0 = disabled.
+        max_per_sector_pct = float(plan.get('max_per_sector_pct') or 0) / 100.0
+        # Pre-resolve sectors for everything in the universe so the entry
+        # loop doesn't pay per-symbol yfinance latency. allow_network=True
+        # but cached after first fetch.
+        sector_by_symbol: Dict[str, Optional[str]] = {}
+        if max_per_sector_pct > 0:
+            for sym in symbols:
+                try:
+                    sector_by_symbol[sym] = _symbol_sector(sym, allow_network=True)
+                except Exception:
+                    sector_by_symbol[sym] = None
 
         # VIX regime gate: skip new entries this whole tick if VIX above threshold.
         # Existing positions still tick (exits, equity) — only new buys are paused.
@@ -2233,28 +2386,61 @@ def _run_account_tick_impl(user_id: int, account_id: int,
                     continue
                 i = s['idx_by_date'][d]
                 price = float(s['closes'][i])
+                bar_high = float(s['highs'][i]) if i < len(s['highs']) else price
+                bar_low = float(s['lows'][i]) if i < len(s['lows']) else price
+                entry = float(p['entry_price'])
 
                 # Update high-water mark for trailing stop
                 pid = p['id']
                 if trailing_stop_pct > 0:
-                    peak_price[pid] = max(peak_price.get(pid, float(p['entry_price'])), price)
+                    peak_price[pid] = max(peak_price.get(pid, entry), price)
 
+                # Gap-aware TP/SL (Audit #6).
+                # Old check used `price` (close) only — but in reality TP/SL
+                # are limit/stop orders that trigger intraday. A bar where
+                # the LOW touches the stop must fill at the stop (or worse,
+                # at the bar's low if the open already gapped past).
+                #
+                # Fill model:
+                #   - If the threshold sits within [bar_low, bar_high] →
+                #     fill exactly at the threshold (limit-order semantics).
+                #   - If the entire bar is past the threshold (gap-through)
+                #     → fill at the WORSE extreme: bar_low for SL, bar_high
+                #     for TP. This is conservative and prevents the old
+                #     model's silent assumption that TP/SL always filled
+                #     exactly at the trigger price.
                 exit_reason: Optional[str] = None
-                if tp > 0 and price >= p['entry_price'] * (1 + tp):
-                    exit_reason = 'TP'
-                elif sl > 0 and price <= p['entry_price'] * (1 - sl):
+                exit_price = price  # default — overwritten on TP/SL hit
+                tp_level = entry * (1 + tp) if tp > 0 else None
+                sl_level = entry * (1 - sl) if sl > 0 else None
+                atr_sl_level = (entry - atr_stop_mult * s['atr']) if (
+                    atr_stop_mult > 0 and s.get('atr', 0) > 0) else None
+                trail_level = (peak_price.get(pid, 0) * (1 - trailing_stop_pct)) if (
+                    trailing_stop_pct > 0 and peak_price.get(pid, 0) > 0) else None
+
+                # Evaluate stop-loss family first (loss-side has priority — if
+                # both TP and SL would have triggered on the same gap-day, the
+                # SL is the worse-case assumption).
+                if sl_level is not None and bar_low <= sl_level:
                     exit_reason = 'SL'
-                elif atr_stop_mult > 0 and s.get('atr', 0) > 0 and price <= p['entry_price'] - atr_stop_mult * s['atr']:
+                    exit_price = sl_level if bar_high >= sl_level else bar_low
+                elif atr_sl_level is not None and bar_low <= atr_sl_level:
                     exit_reason = 'ATR_SL'
-                elif trailing_stop_pct > 0 and peak_price.get(pid, 0) > 0 and price <= peak_price[pid] * (1 - trailing_stop_pct):
+                    exit_price = atr_sl_level if bar_high >= atr_sl_level else bar_low
+                elif trail_level is not None and bar_low <= trail_level:
                     exit_reason = 'TRAIL_SL'
+                    exit_price = trail_level if bar_high >= trail_level else bar_low
+                elif tp_level is not None and bar_high >= tp_level:
+                    exit_reason = 'TP'
+                    # If TP gap-up, we conservatively still fill at TP (limit
+                    # order would have triggered first); a market-on-stop
+                    # would gap-up favorably, which we DON'T model since it
+                    # would overstate P&L.
+                    exit_price = tp_level if bar_low <= tp_level else tp_level
                 else:
                     # Exit policy: prefer the explicit exit_signals array
                     # (computed at a softer combine-mode than entry — see
-                    # _build_exit_signals). This fixes the asymmetry where
-                    # `combine_mode='any'` made the original strict 1→0
-                    # crossing on the entry-combined array almost impossible
-                    # to trigger, leaving accounts that bought and never sold.
+                    # _build_exit_signals).
                     exit_arr = s.get('exit_signals')
                     if exit_arr is not None and exit_arr[i] == 1:
                         exit_reason = 'signal'
@@ -2263,21 +2449,25 @@ def _run_account_tick_impl(user_id: int, account_id: int,
                         prev_sig = s['signals'][i - 1] if i > 0 else 0
                         if sig == 0 and prev_sig == 1:
                             exit_reason = 'signal'
+                    # Signal exit fills at close — no gap modeling, since we
+                    # had no pending limit/stop order.
+                    exit_price = price
                 if exit_reason:
                     sell_bps = _fee_bps(sym, 'sell')
-                    proceeds = p['shares'] * price * (1 - sell_bps)
-                    pnl_abs = proceeds - p['shares'] * p['entry_price']
-                    pnl_pct = (price / p['entry_price'] - 1) * 100 if p['entry_price'] else 0
+                    proceeds = p['shares'] * exit_price * (1 - sell_bps)
+                    pnl_abs = proceeds - p['shares'] * entry
+                    pnl_pct = (exit_price / entry - 1) * 100 if entry else 0
                     cash += proceeds
                     c.execute('''UPDATE paper_positions SET status='closed',
                                  exit_price=?, exit_date=?, exit_reason=?,
                                  pnl_abs=?, pnl_pct=? WHERE id=?''',
-                              (price, d, exit_reason, float(pnl_abs), float(pnl_pct), p['id']))
+                              (exit_price, d, exit_reason, float(pnl_abs), float(pnl_pct), p['id']))
                     c.execute('''INSERT INTO paper_transactions
                                  (account_id, position_id, type, symbol, shares, price, value, fee, cash_after, reason, ts_date)
                                  VALUES (?, ?, 'sell', ?, ?, ?, ?, ?, ?, ?, ?)''',
-                              (account_id, p['id'], sym, p['shares'], price,
-                               float(p['shares'] * price), float(p['shares'] * price * sell_bps),
+                              (account_id, p['id'], sym, p['shares'], exit_price,
+                               float(p['shares'] * exit_price),
+                               float(p['shares'] * exit_price * sell_bps),
                                float(cash), exit_reason, d))
                     new_tx += 1
                     # Update per-symbol P&L tracking; check blacklist threshold
@@ -2362,6 +2552,36 @@ def _run_account_tick_impl(user_id: int, account_id: int,
                         positions_mtm += float(r['shares']) * float(s_held['closes'][s_held['idx_by_date'][d]])
                 current_equity = cash + positions_mtm
                 cap_basis = max(float(a['initial_capital']), current_equity)
+
+                # Sector concentration cap — sum MTM of open positions in
+                # the candidate's sector; reject the entry if a min-sized
+                # add would already breach max_per_sector_pct * cap_basis.
+                # Disabled when max_per_sector_pct == 0 or sector unknown.
+                if max_per_sector_pct > 0:
+                    cand_sector = sector_by_symbol.get(sym)
+                    if cand_sector:
+                        sector_mtm = 0.0
+                        for r in c.execute(
+                            "SELECT symbol, shares FROM paper_positions "
+                            "WHERE account_id=? AND status='open'",
+                            (account_id,)).fetchall():
+                            held_sec = sector_by_symbol.get(r['symbol']) or _symbol_sector(
+                                r['symbol'], allow_network=False)
+                            if held_sec != cand_sector:
+                                continue
+                            s_held = series.get(r['symbol'])
+                            if s_held and d in s_held['idx_by_date']:
+                                sector_mtm += float(r['shares']) * float(
+                                    s_held['closes'][s_held['idx_by_date'][d]])
+                        sector_cap = cap_basis * max_per_sector_pct
+                        # Reject if already at or past the cap; we don't try
+                        # to fit a smaller order — keeps logic simple and
+                        # avoids placing token positions.
+                        if sector_mtm >= sector_cap:
+                            _log(account_id, 'info',
+                                 f'sector cap blocked {sym} ({cand_sector}): '
+                                 f'sector MTM ${sector_mtm:.0f} >= cap ${sector_cap:.0f}')
+                            continue
 
                 # Position sizing
                 if vol_target > 0:
