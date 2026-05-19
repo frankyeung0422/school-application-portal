@@ -28,6 +28,19 @@ sys.path.insert(0, str(project_root))
 # =========================
 # RATE LIMITING & IP BLOCKING
 # =========================
+# T8.3 — per-plan request quotas (rolling 60-second window). Higher tiers
+# get more headroom for legitimate burst use (e.g. nightly cron jobs that
+# hit /api/paper/run on many accounts in a tight loop).
+USER_RATE_QUOTAS = {
+    'free': 30,
+    'basic': 30,
+    'starter': 60,
+    'pro': 120,
+    'elite': 300,
+    'institutional': 600,
+}
+
+
 class RateLimiter:
     """Simple rate limiter to prevent DoS attacks"""
     def __init__(self, max_requests=30, time_window=60, ban_threshold=10, ban_duration=3600):
@@ -115,6 +128,47 @@ class RateLimiter:
             self.requests[ip].append(now)
             return True
     
+    def check_user_rate_limit(self, user_id: int, plan_type: str = 'basic') -> bool:
+        """T8.3 — per-user rate limit on top of the IP limit.
+
+        Quotas (requests / 60 seconds, looked up by plan_type from
+        ``USER_RATE_QUOTAS`` below):
+          free     30
+          basic    30
+          starter  60
+          pro     120
+          elite   300
+          institutional  600
+
+        Returns True if the user is under their quota for the rolling
+        60-second window, False otherwise. NOT keyed by IP — a script
+        that legitimately runs from many machines (typical for Pro+
+        users with cron + cloud) shouldn't be artificially limited by
+        IP-level limits as long as their user-level quota is fine.
+
+        Implementation reuses the same ``requests`` deque infrastructure
+        as the IP limiter; the key is namespaced with a ``user:`` prefix
+        so the two budgets don't collide.
+        """
+        if not user_id:
+            return True   # Anonymous requests fall through to IP limiter only
+        key = f'user:{int(user_id)}'
+        quota = USER_RATE_QUOTAS.get((plan_type or 'basic').lower(),
+                                      USER_RATE_QUOTAS['basic'])
+        with self.lock:
+            now = time.time()
+            # Prune the user's deque to the last `time_window` seconds.
+            if key in self.requests:
+                while self.requests[key] and now - self.requests[key][0] > self.time_window:
+                    self.requests[key].popleft()
+            if len(self.requests[key]) >= quota:
+                # Don't ban users on user-level overage — they have a
+                # legitimate session; just throttle. (IP-level ban-after-N
+                # is for anonymous DoS.)
+                return False
+            self.requests[key].append(now)
+            return True
+
     def get_stats(self):
         """Get rate limiter statistics"""
         with self.lock:
@@ -14199,6 +14253,18 @@ p{color:#8b95b8;font-size:14px;line-height:1.6;}
                 "current_tier": tier,
                 "required_tier": min_tier,
             }, 403)
+            return None
+        # T8.3 — per-user rolling-window rate limit on top of the IP limit.
+        # Pro/elite/institutional get higher quotas (see USER_RATE_QUOTAS).
+        user_id = session.get('user_id') or session.get('id')
+        if user_id and not rate_limiter.check_user_rate_limit(int(user_id), plan_type):
+            self.send_utf8_json_response({
+                "success": False,
+                "error": f"用戶速率限制 — 您的 {plan_type} 方案每分鐘 {USER_RATE_QUOTAS.get(plan_type, 30)} 次,請稍後再試",
+                "code": "user_rate_limited",
+                "current_plan": plan_type,
+                "quota": USER_RATE_QUOTAS.get(plan_type, 30),
+            }, 429)
             return None
         return session
     
