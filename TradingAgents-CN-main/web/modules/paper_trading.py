@@ -59,9 +59,9 @@ except Exception:
     from web.modules.pro_backtest import _fetch  # type: ignore
 
 try:
-    from modules.autotrade_sim import _combine_signals, _build_signals
+    from modules.autotrade_sim import _combine_signals
 except Exception:
-    from web.modules.autotrade_sim import _combine_signals, _build_signals  # type: ignore
+    from web.modules.autotrade_sim import _combine_signals  # type: ignore
 
 
 def _build_exit_signals(strategies: List[str], entry_combine_mode: str,
@@ -1871,7 +1871,9 @@ def send_weekly_leaderboards() -> Dict[str, Any]:
     except Exception as ie:
         return {'sent': 0, 'errors': [f'import: {ie}']}
 
-    sent = 0; skipped = 0; errors: List[str] = []
+    sent = 0
+    skipped = 0
+    errors: List[str] = []
     with _conn() as c:
         users = [r[0] for r in c.execute(
             'SELECT DISTINCT user_id FROM user_universes').fetchall()]
@@ -2041,7 +2043,6 @@ def close_account(user_id: int, account_id: int) -> Dict[str, Any]:
         if not a:
             return {'success': False, 'error': 'Account not found'}
 
-        plan = json.loads(a['plan_json'])
         open_rows = c.execute(
             "SELECT * FROM paper_positions WHERE account_id=? AND status='open'",
             (account_id,)).fetchall()

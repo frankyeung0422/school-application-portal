@@ -21,10 +21,8 @@ Run from the repo root:
 from __future__ import annotations
 
 import json
-import os
 import sqlite3
 import sys
-import tempfile
 import threading
 from datetime import datetime, timedelta
 from pathlib import Path

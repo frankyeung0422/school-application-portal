@@ -12,7 +12,6 @@ never break the request — we'd rather emit a partial /metrics page than
 from __future__ import annotations
 
 import logging
-import os
 import sqlite3
 import threading
 import time

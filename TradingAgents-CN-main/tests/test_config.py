@@ -62,15 +62,29 @@ def test_required_with_sentinel_value_also_raises(cfg, monkeypatch):
         cfg.get('TEMPLATE_KEY', required=True)
 
 
-def test_sentinel_treated_as_missing(cfg, monkeypatch, caplog):
+def test_sentinel_treated_as_missing(cfg, monkeypatch):
     """When the value matches a known template sentinel, get() returns
-    the default and logs a warning."""
+    the default and logs a warning. We attach our own handler because
+    the paper_trading logger has propagate=False (the rotating-file
+    handler owns the stream), which means pytest's caplog fixture
+    can't capture records once paper_trading has been imported."""
     monkeypatch.setenv('TEMPLATE_KEY', 'changeme')
-    with caplog.at_level(logging.WARNING, logger='paper_trading'):
+    captured: list = []
+
+    class _ListHandler(logging.Handler):
+        def emit(self, record):
+            captured.append(record.getMessage())
+
+    h = _ListHandler(level=logging.WARNING)
+    pt_logger = logging.getLogger('paper_trading')
+    pt_logger.addHandler(h)
+    try:
         out = cfg.get('TEMPLATE_KEY', default='fallback')
+    finally:
+        pt_logger.removeHandler(h)
     assert out == 'fallback'
-    assert any('template placeholder' in rec.message for rec in caplog.records), (
-        f'no sentinel-warning log emitted; got: {[r.message for r in caplog.records]}')
+    assert any('template placeholder' in m for m in captured), (
+        f'no sentinel-warning log emitted; got: {captured}')
 
 
 def test_sentinel_case_insensitive(cfg, monkeypatch):

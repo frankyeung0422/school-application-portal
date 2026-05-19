@@ -12,14 +12,14 @@ from typing import Any, Dict, List, Optional
 
 try:
     from modules.pro_backtest import (
-        _fetch, _sma, _ema, _rsi, _macd,
-        strat_sma_crossover, strat_ema_crossover,
+        _fetch, _sma,
+        strat_sma_crossover,
         strat_rsi_meanrev, strat_macd, strat_donchian,
     )
 except Exception:
     from web.modules.pro_backtest import (  # type: ignore
-        _fetch, _sma, _ema, _rsi, _macd,
-        strat_sma_crossover, strat_ema_crossover,
+        _fetch, _sma,
+        strat_sma_crossover,
         strat_rsi_meanrev, strat_macd, strat_donchian,
     )
 
