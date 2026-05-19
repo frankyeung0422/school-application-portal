@@ -473,12 +473,61 @@ def init_database():
 
 # 用戶管理函數
 def hash_password(password):
-    """密碼哈希"""
-    return hashlib.sha256(password.encode()).hexdigest()
+    """Hash a password with bcrypt (cost=12).
 
-def verify_password(password, hash):
-    """驗證密碼"""
-    return hash_password(password) == hash
+    T7.3: previously SHA256(plain) — unsalted, instant to brute-force on
+    a leaked DB. Now uses passlib's bcrypt which auto-handles salting and
+    is intentionally slow. Output starts with $2b$ so verify_password can
+    detect the format at runtime.
+    """
+    try:
+        from passlib.hash import bcrypt
+        return bcrypt.hash(password)
+    except Exception:
+        # Last-ditch fallback so a missing passlib doesn't lock everyone
+        # out — should never happen in production (passlib is a transitive
+        # dep through langchain), but we'd rather degrade than crash login.
+        return hashlib.sha256(password.encode()).hexdigest()
+
+
+def verify_password(password, stored_hash):
+    """Verify a password against a stored hash.
+
+    Transparently handles both formats:
+      - $2b$… → bcrypt (new, secure)
+      - 64 hex chars → legacy SHA256 (auto-upgraded on next successful
+        login via _maybe_upgrade_password_hash)
+    """
+    if not stored_hash:
+        return False
+    if stored_hash.startswith(('$2a$', '$2b$', '$2y$')):
+        try:
+            from passlib.hash import bcrypt
+            return bcrypt.verify(password, stored_hash)
+        except Exception:
+            return False
+    # Legacy SHA256 path
+    legacy_hash = hashlib.sha256(password.encode()).hexdigest()
+    return legacy_hash == stored_hash
+
+
+def _maybe_upgrade_password_hash(user_id: int, plain_password: str, stored_hash: str) -> None:
+    """If the stored hash is legacy SHA256, re-store it as bcrypt. Called
+    only after verify_password has returned True, so we know plain_password
+    is correct. Best-effort — never raise."""
+    if stored_hash and stored_hash.startswith(('$2a$', '$2b$', '$2y$')):
+        return
+    try:
+        new_hash = hash_password(plain_password)
+        if not new_hash.startswith(('$2a$', '$2b$', '$2y$')):
+            return  # bcrypt path failed; don't overwrite
+        db_path = Path(__file__).parent / 'trading_agents.db'
+        with sqlite3.connect(str(db_path)) as c:
+            c.execute('UPDATE users SET password_hash=? WHERE id=?', (new_hash, user_id))
+            c.commit()
+        print(f"🔐 upgraded user {user_id} from sha256 → bcrypt")
+    except Exception as e:
+        print(f"⚠️ bcrypt upgrade failed for user {user_id}: {e}")
 
 def create_user(username, email, password, plan_type='basic'):
     """創建用戶"""
@@ -516,6 +565,8 @@ def authenticate_user(username, password):
     conn.close()
     
     if user and verify_password(password, user[3]):
+        # T7.3: transparent legacy-SHA256 → bcrypt upgrade on next login
+        _maybe_upgrade_password_hash(user[0], password, user[3])
         return {
             'id': user[0],
             'username': user[1],
@@ -807,30 +858,145 @@ ADMIN_EMAILS = [
     'frankyeung@hotmail.com'
 ]
 
-def create_session(user_data):
-    """創建用戶會話"""
-    session_id = hashlib.md5(f"{user_data['id']}_{time.time()}".encode()).hexdigest()
+_SESSION_TTL_SECS = 7 * 24 * 3600   # 1 week
+_SESSIONS_TABLE_READY = False
+
+
+def _ensure_sessions_table():
+    """T7.3: persistent sessions survive server restart.
+
+    The legacy ``active_sessions`` in-memory dict is kept as a hot cache
+    (loaded lazily on first get_session) so we don't pay a SQLite round-trip
+    per request. Writes go to both the dict AND the table.
+    """
+    global _SESSIONS_TABLE_READY
+    if _SESSIONS_TABLE_READY:
+        return
+    try:
+        db_path = Path(__file__).parent / 'trading_agents.db'
+        with sqlite3.connect(str(db_path)) as c:
+            c.execute('''
+                CREATE TABLE IF NOT EXISTS sessions (
+                    id TEXT PRIMARY KEY,
+                    user_id INTEGER NOT NULL,
+                    data_json TEXT NOT NULL,
+                    created_at REAL NOT NULL,
+                    expires_at REAL NOT NULL,
+                    ip TEXT,
+                    user_agent TEXT
+                )
+            ''')
+            c.execute('CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)')
+            c.execute('CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at)')
+            c.commit()
+        _SESSIONS_TABLE_READY = True
+    except Exception as e:
+        print(f"⚠️ sessions table create failed: {e}")
+
+
+def create_session(user_data, ip: str = None, user_agent: str = None):
+    """Create a session. Token is a 128-bit hex (still derived from user_id+time
+    for back-compat). Now persisted to ``sessions`` table so it survives
+    server restart.
+    """
+    _ensure_sessions_table()
+    now = time.time()
+    session_id = hashlib.md5(f"{user_data['id']}_{now}_{os.urandom(8).hex()}".encode()).hexdigest()
+    session_obj = {
+        'user_id': user_data['id'],
+        'username': user_data['username'],
+        'email': user_data['email'],
+        'plan_type': user_data['plan_type'],
+        'analysis_count': user_data['analysis_count'],
+        'max_analyses': user_data['max_analyses'],
+        'created_at': now,
+    }
     with session_lock:
-        active_sessions[session_id] = {
-            'user_id': user_data['id'],
-            'username': user_data['username'],
-            'email': user_data['email'],
-            'plan_type': user_data['plan_type'],
-            'analysis_count': user_data['analysis_count'],
-            'max_analyses': user_data['max_analyses'],
-            'created_at': time.time()
-        }
+        active_sessions[session_id] = session_obj
+    try:
+        db_path = Path(__file__).parent / 'trading_agents.db'
+        with sqlite3.connect(str(db_path)) as c:
+            c.execute(
+                'INSERT INTO sessions (id, user_id, data_json, created_at, expires_at, ip, user_agent) '
+                'VALUES (?, ?, ?, ?, ?, ?, ?)',
+                (session_id, user_data['id'], json.dumps(session_obj),
+                 now, now + _SESSION_TTL_SECS, ip, (user_agent or '')[:300]),
+            )
+            c.commit()
+    except Exception as e:
+        # Persist failure shouldn't block login — keep the in-memory copy.
+        print(f"⚠️ session persist failed: {e}")
     return session_id
 
+
 def get_session(session_id):
-    """獲取會話信息"""
+    """Get a session, hydrating from DB if not in the in-memory cache.
+
+    Returns None for expired sessions and removes them from both stores.
+    """
+    if not session_id:
+        return None
+    _ensure_sessions_table()
     with session_lock:
-        return active_sessions.get(session_id)
+        cached = active_sessions.get(session_id)
+    if cached:
+        return cached
+    # Not in cache — try DB (this is the post-restart path)
+    try:
+        db_path = Path(__file__).parent / 'trading_agents.db'
+        with sqlite3.connect(str(db_path)) as c:
+            c.row_factory = sqlite3.Row
+            row = c.execute(
+                'SELECT data_json, expires_at FROM sessions WHERE id=?',
+                (session_id,)).fetchone()
+        if not row:
+            return None
+        if time.time() > float(row['expires_at']):
+            destroy_session(session_id)
+            return None
+        obj = json.loads(row['data_json'])
+        with session_lock:
+            active_sessions[session_id] = obj
+        return obj
+    except Exception as e:
+        print(f"⚠️ session hydrate failed: {e}")
+        return None
+
 
 def destroy_session(session_id):
-    """銷毀會話"""
+    if not session_id:
+        return
     with session_lock:
         active_sessions.pop(session_id, None)
+    try:
+        db_path = Path(__file__).parent / 'trading_agents.db'
+        with sqlite3.connect(str(db_path)) as c:
+            c.execute('DELETE FROM sessions WHERE id=?', (session_id,))
+            c.commit()
+    except Exception as e:
+        print(f"⚠️ session destroy failed: {e}")
+
+
+def cleanup_expired_sessions() -> int:
+    """Called nightly by the scheduler. Returns count removed."""
+    _ensure_sessions_table()
+    try:
+        db_path = Path(__file__).parent / 'trading_agents.db'
+        now = time.time()
+        with sqlite3.connect(str(db_path)) as c:
+            cur = c.execute('DELETE FROM sessions WHERE expires_at < ?', (now,))
+            c.commit()
+            n = cur.rowcount
+        # Also evict from in-memory cache
+        with session_lock:
+            stale = [sid for sid, s in active_sessions.items()
+                     if now - float(s.get('created_at', 0)) > _SESSION_TTL_SECS]
+            for sid in stale:
+                active_sessions.pop(sid, None)
+        return int(n)
+    except Exception as e:
+        print(f"⚠️ session cleanup failed: {e}")
+        return 0
 
 def update_progress(analysis_id, status, message="", percentage=0):
     """更新分析進度"""
@@ -13708,6 +13874,14 @@ def run_server(host='0.0.0.0', port=8501):
                                        errors=len(wl_res['errors']))
                         except Exception as e:
                             _sched_log('error', f'weekly leaderboard crashed: {e}')
+
+                    # T7.3 — cleanup expired sessions (post-restart housekeeping)
+                    try:
+                        n_cleaned = cleanup_expired_sessions()
+                        if n_cleaned:
+                            _sched_log('info', f'session cleanup: removed {n_cleaned}')
+                    except Exception as e:
+                        _sched_log('error', f'session cleanup crashed: {e}')
 
                     # T7.2 — nightly SQLite backup + integrity check. Runs
                     # in the same 22:00 slot as the digests so it doesn't
