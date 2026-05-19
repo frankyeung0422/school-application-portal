@@ -13709,6 +13709,27 @@ def run_server(host='0.0.0.0', port=8501):
                         except Exception as e:
                             _sched_log('error', f'weekly leaderboard crashed: {e}')
 
+                    # T7.2 — nightly SQLite backup + integrity check. Runs
+                    # in the same 22:00 slot as the digests so it doesn't
+                    # need its own scheduler thread.
+                    try:
+                        from modules.observability import backup_db
+                        from pathlib import Path as _P
+                        src = _P(__file__).parent / 'trading_agents.db'
+                        backup_dir = _P(__file__).parent / 'backups'
+                        bres = backup_db(src, backup_dir, keep_days=14)
+                        if bres['success']:
+                            _sched_log('info', 'nightly backup ok',
+                                       path=bres['backup_path'],
+                                       pruned=bres['pruned'])
+                        else:
+                            _sched_log('error',
+                                       f'nightly backup failed: '
+                                       f'integrity={bres["integrity"]} '
+                                       f'error={bres["error"]}')
+                    except Exception as e:
+                        _sched_log('error', f'nightly backup crashed: {e}')
+
                 # Healthy iteration — clear the back-off + outage state.
                 if consecutive_failures > 0:
                     _sched_log('info',
