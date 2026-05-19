@@ -448,8 +448,20 @@ def _store_symbol_sector(symbol: str, sector: str, source: str = '') -> None:
 
 
 def _conn():
-    c = sqlite3.connect(str(_DB))
+    c = sqlite3.connect(str(_DB), timeout=5.0)
     c.row_factory = sqlite3.Row
+    # T7.2: WAL + NORMAL sync set once per connection (PRAGMAs are
+    # connection-scoped on the journal-mode side and process-scoped for
+    # the file format — applying every time is cheap and idempotent).
+    try:
+        from .observability import apply_pragmas
+    except Exception:
+        try:
+            from web.modules.observability import apply_pragmas  # type: ignore
+        except Exception:
+            apply_pragmas = None  # type: ignore
+    if apply_pragmas:
+        apply_pragmas(c)
     return c
 
 
@@ -1443,6 +1455,15 @@ def evolve_account_plan(user_id: int, account_id: int,
             c.execute('UPDATE paper_accounts SET last_evolved_at=? WHERE id=?',
                       (now_iso, account_id))
         c.commit()
+    # Metrics — counted regardless of apply outcome.
+    try:
+        from .observability import counter_inc
+        counter_inc('paper_evolutions_total', trigger=trigger,
+                    outcome='applied' if applied else 'not_applied')
+        if applied:
+            counter_inc('paper_promotions_total', trigger=trigger)
+    except Exception:
+        pass
 
     return {
         'success': True,
@@ -2126,9 +2147,18 @@ def run_account_tick(user_id: int, account_id: int,
     behaviour and remains a pure replay-from-last_run_date function.
     """
     init_paper_tables()
+    _tick_t0 = time.time()
+    try:
+        from .observability import counter_inc, histogram_observe
+    except Exception:
+        try:
+            from web.modules.observability import counter_inc, histogram_observe  # type: ignore
+        except Exception:
+            counter_inc = histogram_observe = lambda *a, **kw: None  # type: ignore
     if not _claim_tick(account_id):
         _log(account_id, 'warning',
              'tick rejected — another tick is already running for this account')
+        counter_inc('paper_ticks_total', outcome='rejected_locked')
         return {'success': False, 'error': 'tick already running for this account',
                 'account_id': account_id}
     err: Optional[str] = None
@@ -2158,14 +2188,21 @@ def run_account_tick(user_id: int, account_id: int,
                  new_tx=result.get('new_transactions'),
                  last_run=result.get('last_run_date'),
                  paused=bool(result.get('paused')))
+            counter_inc('paper_ticks_total',
+                        outcome='paused' if result.get('paused') else 'ok')
         else:
             _log(account_id, 'warning', f"tick returned not-success: {result.get('error')}")
+            counter_inc('paper_ticks_total', outcome='not_success')
+            counter_inc('paper_errors_total', source='tick_not_success')
+        histogram_observe('paper_tick_duration_seconds', time.time() - _tick_t0)
         return result
     except Exception as e:
         import traceback
         tb = traceback.format_exc()
         err = f"{type(e).__name__}: {e}"
         _log(account_id, 'error', f'tick CRASHED: {err}\n{tb}')
+        counter_inc('paper_ticks_total', outcome='crashed')
+        counter_inc('paper_errors_total', source='tick_crash')
         # Best-effort alert so the user knows the account stopped trading.
         try:
             from modules.notify import notify_user  # type: ignore

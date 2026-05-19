@@ -1389,11 +1389,20 @@ class TradingAgentsAPIHandler(BaseHTTPRequestHandler):
                 pass
     
     def log_message(self, format, *args):
-        """Override to suppress excessive logging from attacks"""
+        """Override to suppress excessive logging from attacks + emit metrics."""
+        # Record request latency histogram (best-effort) — log_message
+        # runs after the response is fully sent, so _req_t0 is reliable.
+        t0 = getattr(self, '_req_t0', None)
+        if t0 is not None:
+            try:
+                from modules.observability import histogram_observe
+                histogram_observe('request_latency_seconds', time.time() - t0)
+            except Exception:
+                pass
         # Only log if not a blocked attack
         if '403' not in str(args) and '429' not in str(args):
             super().log_message(format, *args)
-    
+
     def send_error(self, code, message=None, explain=None):
         """Override send_error to use UTF-8 encoding instead of Latin-1"""
         try:
@@ -1768,8 +1777,22 @@ class TradingAgentsAPIHandler(BaseHTTPRequestHandler):
     
     def do_GET(self):
         """處理GET請求"""
+        # Ops endpoints — short-circuit BEFORE rate-limiting and auth so
+        # operators / orchestrators can always probe health. These also
+        # don't get audit-logged (would dwarf the user-action signal).
+        if self.path.split('?', 1)[0] in ('/healthz', '/readyz', '/metrics'):
+            return self._handle_ops_endpoint()
+        # Metric: record request count + latency. We can't reliably hook
+        # send_response because some paths short-circuit; using log_request
+        # which the stdlib calls AFTER the response is fully written.
+        self._req_t0 = time.time()
+        try:
+            from modules.observability import counter_inc
+            counter_inc('paper_requests_total', method='GET')
+        except Exception:
+            pass
         print(f"📥 [TRACE 1] Entered do_GET handler: {self.path} from {self.client_address[0]}")
-        
+
         # Rate limiting check (first line of defense)
         try:
             print(f"📥 [TRACE 2] Starting rate limit check...")
@@ -2206,6 +2229,12 @@ class TradingAgentsAPIHandler(BaseHTTPRequestHandler):
     
     def do_POST(self):
         """處理POST請求"""
+        self._req_t0 = time.time()
+        try:
+            from modules.observability import counter_inc
+            counter_inc('paper_requests_total', method='POST')
+        except Exception:
+            pass
         # Rate limiting check (first line of defense)
         try:
             client_ip = self.client_address[0]
@@ -9488,6 +9517,54 @@ class TradingAgentsAPIHandler(BaseHTTPRequestHandler):
             import traceback; traceback.print_exc()
             self.send_utf8_json_response({'success': False, 'error': str(e)}, 500)
 
+    def _handle_ops_endpoint(self):
+        """Health + Prometheus metrics. Public (no auth), no rate-limit.
+
+        - GET /healthz  → JSON {status, db_ok, scheduler_heartbeat_age_s, ...}
+                          Always 200 unless the request itself errored — the
+                          payload's `status` and `flags` carry the verdict.
+        - GET /readyz   → 200 if heartbeat<2h+db_ok, else 503. Plain text
+                          so k8s/docker can use it without JSON parsing.
+        - GET /metrics  → Prometheus text-format counters/histograms/gauges.
+        """
+        path = self.path.split('?', 1)[0]
+        try:
+            from modules.observability import healthz, render_prometheus
+            from pathlib import Path as _P
+            db = _P(__file__).parent / 'trading_agents.db'
+            if path == '/metrics':
+                body = render_prometheus().encode('utf-8')
+                self.send_response(200)
+                self.send_header('Content-Type', 'text/plain; version=0.0.4; charset=utf-8')
+                self.send_header('Content-Length', str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+            h = healthz(db)
+            if path == '/readyz':
+                ok = bool(h.get('db_ok')) and 'scheduler_stale' not in h.get('flags', [])
+                self.send_response(200 if ok else 503)
+                self.send_header('Content-Type', 'text/plain; charset=utf-8')
+                self.end_headers()
+                self.wfile.write(b'ok' if ok else b'unready')
+                return
+            # /healthz
+            import json as _json
+            body = _json.dumps(h).encode('utf-8')
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        except Exception as e:
+            try:
+                self.send_response(500)
+                self.send_header('Content-Type', 'text/plain')
+                self.end_headers()
+                self.wfile.write(f'ops endpoint error: {e}'.encode('utf-8'))
+            except Exception:
+                pass
+
     def handle_paper_symbol_health(self, parsed_path):
         """GET /api/paper/symbol-health?symbol=AAPL or
               /api/paper/symbol-health?unhealthy_only=1&limit=50
@@ -13551,6 +13628,12 @@ def run_server(host='0.0.0.0', port=8501):
             from modules.paper_trading import _log as pt_log
         except Exception:
             pt_log = None
+        # Heartbeat — written every iteration so /healthz can detect a
+        # dead scheduler thread.
+        try:
+            from modules.observability import heartbeat
+        except Exception:
+            heartbeat = None
         def _sched_log(level: str, msg: str, **kw):
             if pt_log:
                 pt_log('scheduler', level, msg, **kw)
@@ -13559,6 +13642,8 @@ def run_server(host='0.0.0.0', port=8501):
 
         while True:
             interval = _SCHED_NORMAL_INTERVAL
+            if heartbeat:
+                heartbeat('ok')
             try:
                 from modules.paper_trading import list_auto_run_accounts, run_account_tick
                 due = list_auto_run_accounts()
@@ -13636,6 +13721,8 @@ def run_server(host='0.0.0.0', port=8501):
                 tb = traceback.format_exc()
                 _sched_log('error',
                            f'scheduler iteration #{consecutive_failures} crashed: {e}\n{tb}')
+                if heartbeat:
+                    heartbeat('crashed' if consecutive_failures >= _SCHED_ALERT_THRESHOLD else 'backoff')
                 # Exponential back-off: 60s, 120s, 240s ... capped at the
                 # normal hourly cadence. Prevents a hot-loop hammering a
                 # broken dependency.
