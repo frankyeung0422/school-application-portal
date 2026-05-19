@@ -859,6 +859,11 @@ def init_paper_tables() -> None:
             c.execute("ALTER TABLE paper_accounts ADD COLUMN base_currency TEXT DEFAULT 'USD'")
         if 'last_evolved_at' not in cols:
             c.execute('ALTER TABLE paper_accounts ADD COLUMN last_evolved_at TEXT')
+        if 'live_score_last' not in cols:
+            # T6.1 — snapshot of the most recent _live_fitness score at the
+            # last evolution, so /api/paper/health and the dashboard can
+            # show whether realized performance is improving or decaying.
+            c.execute('ALTER TABLE paper_accounts ADD COLUMN live_score_last REAL')
         if 'evolve_frequency_days' not in cols:
             # 0 = disable auto-evolution; users opt-in by setting > 0
             c.execute('ALTER TABLE paper_accounts ADD COLUMN evolve_frequency_days INTEGER DEFAULT 0')
@@ -1293,6 +1298,141 @@ def reset_account(user_id: int, account_id: int) -> Dict[str, Any]:
 _EVOLVE_MIN_TRIALS = 30
 _EVOLVE_MAX_TRIALS = 80
 _EVOLVE_MIN_GAIN = 5.0   # need OOS score lead >= 5 pts before swapping plan
+# T6.1: how much the LIVE realized P&L should count vs the backtest OOS
+# score. 0.0 = pure backtest (legacy behavior); 1.0 = pure live. 0.4 is
+# a middle ground that lets live evidence move the score by ~40% while
+# still grounding new evolutions in robust walk-forward backtest data.
+_LIVE_FITNESS_WEIGHT = 0.4
+# Minimum number of closed live trades since last_evolved_at before the
+# live component is trusted. With fewer trades the realized P&L is too
+# noisy; we fall back to pure-backtest scoring.
+_LIVE_FITNESS_MIN_TRADES = 3
+
+
+def _live_fitness(account_id: int, since_iso: Optional[str],
+                  target_annual_pct: float) -> Dict[str, Any]:
+    """Score the account's REALIZED equity curve since ``since_iso`` (or
+    since account creation if None). Mirrors autotrade_sim._score_result
+    so the result is directly blendable with the optimizer's OOS score.
+
+    Returns ``{score, annual_return_pct, max_dd_pct, sharpe, n_trades,
+    period_days, applicable, reason}``. ``applicable`` is False when
+    there's not enough data — the caller should then fall back to pure
+    backtest scoring.
+    """
+    init_paper_tables()
+    out: Dict[str, Any] = {
+        'score': 0.0, 'annual_return_pct': 0.0, 'max_dd_pct': 0.0,
+        'sharpe': 0.0, 'n_trades': 0, 'period_days': 0,
+        'applicable': False, 'reason': '',
+    }
+    try:
+        with _conn() as c:
+            a = c.execute('SELECT initial_capital, start_date FROM paper_accounts WHERE id=?',
+                          (account_id,)).fetchone()
+            if not a:
+                out['reason'] = 'account not found'
+                return out
+            initial_capital = float(a['initial_capital'] or 0)
+            # Pick the window: explicit since_iso > account start_date.
+            window_start = since_iso or a['start_date']
+            equity_rows = c.execute(
+                'SELECT date, equity FROM paper_equity_history '
+                'WHERE account_id=? AND date >= ? ORDER BY date',
+                (account_id, window_start)).fetchall()
+            if len(equity_rows) < 5:
+                out['reason'] = f'only {len(equity_rows)} equity snapshots since {window_start}'
+                return out
+            trade_rows = c.execute(
+                "SELECT pnl_pct FROM paper_positions "
+                "WHERE account_id=? AND status='closed' AND exit_date >= ?",
+                (account_id, window_start)).fetchall()
+    except Exception as e:
+        out['reason'] = f'db read failed: {e}'
+        return out
+
+    n_trades = len(trade_rows)
+    out['n_trades'] = n_trades
+    out['period_days'] = max(1, len(equity_rows))
+
+    if n_trades < _LIVE_FITNESS_MIN_TRADES:
+        out['reason'] = f'only {n_trades} closed trades — need >= {_LIVE_FITNESS_MIN_TRADES}'
+        return out
+
+    # Total return = (last_equity / first_equity) - 1
+    first_eq = float(equity_rows[0]['equity'] or initial_capital)
+    last_eq = float(equity_rows[-1]['equity'] or initial_capital)
+    if first_eq <= 0:
+        first_eq = initial_capital or 1.0
+    total_ret_pct = ((last_eq / first_eq) - 1.0) * 100.0
+
+    # Annualized — period_days approximated by snapshot count (one per
+    # trading day), so we use 252-day year for the compound.
+    period_days = max(1, len(equity_rows))
+    annual = (((1.0 + total_ret_pct / 100.0) ** (252.0 / period_days)) - 1.0) * 100.0
+
+    # Max drawdown from the rolling peak
+    peak = first_eq
+    max_dd_pct = 0.0
+    for r in equity_rows:
+        eq = float(r['equity'] or 0)
+        if eq > peak:
+            peak = eq
+        if peak > 0:
+            dd = (peak - eq) / peak * 100.0
+            if dd > max_dd_pct:
+                max_dd_pct = dd
+
+    # Sharpe — daily returns from the equity series, annualized 252.
+    rets: List[float] = []
+    for i in range(1, len(equity_rows)):
+        prev = float(equity_rows[i - 1]['equity'] or 0)
+        cur = float(equity_rows[i]['equity'] or 0)
+        if prev > 0:
+            rets.append(cur / prev - 1.0)
+    if len(rets) > 5:
+        import statistics
+        mean = statistics.fmean(rets)
+        try:
+            std = statistics.stdev(rets)
+        except statistics.StatisticsError:
+            std = 0.0
+        sharpe = (mean / std * (252 ** 0.5)) if std > 0 else 0.0
+    else:
+        sharpe = 0.0
+
+    # Score blend matches autotrade_sim._score_result: annual - 0.5*dd
+    # + 2*sharpe + (15 bonus if hit target) - (20 penalty if losing).
+    score = annual - 0.5 * max_dd_pct + 2.0 * sharpe
+    if annual >= target_annual_pct:
+        score += 15.0
+    if total_ret_pct < 0:
+        score -= 20.0
+    out.update({
+        'score': round(score, 3),
+        'annual_return_pct': round(annual, 3),
+        'max_dd_pct': round(max_dd_pct, 3),
+        'sharpe': round(sharpe, 3),
+        'total_return_pct': round(total_ret_pct, 3),
+        'applicable': True,
+        'reason': 'ok',
+    })
+    return out
+
+
+def _blend_baseline_with_live(baseline_score: float, baseline_annual: float,
+                              live: Dict[str, Any]) -> Tuple[float, float, float]:
+    """Returns (blended_score, blended_annual, live_weight_used).
+
+    If live isn't applicable (too few trades), the weight collapses to 0
+    and we return the baseline unchanged.
+    """
+    if not live.get('applicable'):
+        return baseline_score, baseline_annual, 0.0
+    w = _LIVE_FITNESS_WEIGHT
+    blended_score = (1.0 - w) * baseline_score + w * float(live['score'])
+    blended_annual = (1.0 - w) * baseline_annual + w * float(live['annual_return_pct'])
+    return blended_score, blended_annual, w
 
 
 def _account_universe(plan: Dict[str, Any]) -> List[str]:
@@ -1378,10 +1518,33 @@ def evolve_account_plan(user_id: int, account_id: int,
         baseline_score = -1e9
         baseline_annual = 0.0
         baseline_metrics = {}
+        backtest_only_score = -1e9
     else:
         _, base_train_annual = _score_result(baseline_train['metrics'], train_days, target_annual)
         baseline_score, baseline_annual = _score_result(baseline_test['metrics'], test_days, target_annual)
         baseline_metrics = baseline_test['metrics']
+        backtest_only_score = baseline_score
+
+    # T6.1 — blend with realized live P&L since the account's last evolution
+    # (or since creation if never evolved). This makes the optimizer actually
+    # LEARN from how the live plan has been performing, not just from
+    # walk-forward backtests on yfinance data.
+    last_evolved_at = None
+    try:
+        with _conn() as c:
+            row = c.execute(
+                'SELECT last_evolved_at FROM paper_accounts WHERE id=?',
+                (account_id,)).fetchone()
+            if row and row['last_evolved_at']:
+                # last_evolved_at is an ISO datetime; we need a date for
+                # the equity-history filter. Take the date portion.
+                last_evolved_at = row['last_evolved_at'].split('T')[0]
+    except Exception:
+        last_evolved_at = None
+    live = _live_fitness(account_id, last_evolved_at, target_annual)
+    baseline_score, baseline_annual, live_weight_used = _blend_baseline_with_live(
+        baseline_score, baseline_annual, live,
+    )
 
     iters = max_iterations or _EVOLVE_MIN_TRIALS
     iters = max(_EVOLVE_MIN_TRIALS, min(_EVOLVE_MAX_TRIALS, int(iters)))
@@ -1449,11 +1612,16 @@ def evolve_account_plan(user_id: int, account_id: int,
                    int(opt.get('trials_count') or 0),
                    1 if applied else 0, json.dumps(top_compact), note))
         if applied:
-            c.execute('UPDATE paper_accounts SET plan_json=?, last_evolved_at=? WHERE id=?',
-                      (json.dumps(after_plan), now_iso, account_id))
+            c.execute('UPDATE paper_accounts SET plan_json=?, last_evolved_at=?, '
+                      'live_score_last=? WHERE id=?',
+                      (json.dumps(after_plan), now_iso,
+                       float(live.get('score') or 0) if live.get('applicable') else None,
+                       account_id))
         else:
-            c.execute('UPDATE paper_accounts SET last_evolved_at=? WHERE id=?',
-                      (now_iso, account_id))
+            c.execute('UPDATE paper_accounts SET last_evolved_at=?, live_score_last=? WHERE id=?',
+                      (now_iso,
+                       float(live.get('score') or 0) if live.get('applicable') else None,
+                       account_id))
         c.commit()
     # Metrics — counted regardless of apply outcome.
     try:
@@ -1475,6 +1643,9 @@ def evolve_account_plan(user_id: int, account_id: int,
             'score': round(baseline_score, 3),
             'annual_return_pct': round(baseline_annual, 3),
             'metrics': baseline_metrics,
+            'backtest_only_score': round(backtest_only_score, 3),
+            'live': live,
+            'live_weight_used': live_weight_used,
         },
         'best': {
             'score': round(best_score, 3),
