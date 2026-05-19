@@ -59,9 +59,9 @@ except Exception:
     from web.modules.pro_backtest import _fetch  # type: ignore
 
 try:
-    from modules.autotrade_sim import _combine_signals
+    from modules.autotrade_sim import _combine_signals, _build_signals
 except Exception:
-    from web.modules.autotrade_sim import _combine_signals  # type: ignore
+    from web.modules.autotrade_sim import _combine_signals, _build_signals  # type: ignore
 
 
 def _build_exit_signals(strategies: List[str], entry_combine_mode: str,
@@ -857,19 +857,23 @@ def init_paper_tables() -> None:
             c.execute("ALTER TABLE paper_accounts ADD COLUMN disabled_symbols_json TEXT DEFAULT '[]'")
         if 'base_currency' not in cols:
             c.execute("ALTER TABLE paper_accounts ADD COLUMN base_currency TEXT DEFAULT 'USD'")
-        # T6.2 — challenger pool table. Done here so callers don't need
-        # to import paper_learning separately to get the schema right.
+        # T6.2/T6.3/T6.5 — paper_learning side tables. Done here so callers
+        # don't need to import paper_learning separately to get the schema.
         try:
-            from .paper_learning import ensure_challengers_table, ensure_regime_table
+            from .paper_learning import (
+                ensure_challengers_table, ensure_regime_table, ensure_bandit_table,
+            )
             ensure_challengers_table(c)
             ensure_regime_table(c)
+            ensure_bandit_table(c)
         except Exception:
             try:
                 from web.modules.paper_learning import (  # type: ignore
-                    ensure_challengers_table, ensure_regime_table,
+                    ensure_challengers_table, ensure_regime_table, ensure_bandit_table,
                 )
                 ensure_challengers_table(c)
                 ensure_regime_table(c)
+                ensure_bandit_table(c)
             except Exception:
                 pass
         if 'last_evolved_at' not in cols:
@@ -882,6 +886,12 @@ def init_paper_tables() -> None:
         if 'evolve_frequency_days' not in cols:
             # 0 = disable auto-evolution; users opt-in by setting > 0
             c.execute('ALTER TABLE paper_accounts ADD COLUMN evolve_frequency_days INTEGER DEFAULT 0')
+        # T6.5: record which sub-strategy fired the BUY signal for each
+        # position so the Thompson-sampling bandit can credit/penalise
+        # the right one when the position closes.
+        pos_cols = {row[1] for row in c.execute('PRAGMA table_info(paper_positions)').fetchall()}
+        if 'entry_strategy' not in pos_cols:
+            c.execute('ALTER TABLE paper_positions ADD COLUMN entry_strategy TEXT')
         if 'tick_running' not in cols:
             # Advisory lock for run_account_tick — set to a started-at ISO
             # timestamp while a tick is in flight, NULL when idle. Concurrent
@@ -2902,6 +2912,28 @@ def _run_account_tick_impl(user_id: int, account_id: int,
                                  exit_price=?, exit_date=?, exit_reason=?,
                                  pnl_abs=?, pnl_pct=? WHERE id=?''',
                               (exit_price, d, exit_reason, float(pnl_abs), float(pnl_pct), p['id']))
+                    # T6.5: credit/debit the bandit for the strategy that
+                    # opened this position. We treat any positive P&L
+                    # (after fees) as a win — break-even or negative as
+                    # a loss. Best-effort: never let a bandit write fail
+                    # the tick.
+                    entry_strat_for_pos = None
+                    try:
+                        entry_strat_for_pos = p['entry_strategy'] if 'entry_strategy' in p.keys() else None
+                    except Exception:
+                        entry_strat_for_pos = None
+                    if entry_strat_for_pos:
+                        try:
+                            try:
+                                from .paper_learning import record_bandit_reward
+                            except Exception:
+                                from web.modules.paper_learning import record_bandit_reward  # type: ignore
+                            record_bandit_reward(account_id, entry_strat_for_pos,
+                                                 won=(pnl_abs > 0),
+                                                 conn_factory=_conn)
+                        except Exception as e:
+                            _log(account_id, 'warning',
+                                 f'bandit reward write failed for {entry_strat_for_pos}: {e}')
                     c.execute('''INSERT INTO paper_transactions
                                  (account_id, position_id, type, symbol, shares, price, value, fee, cash_after, reason, ts_date)
                                  VALUES (?, ?, 'sell', ?, ?, ?, ?, ?, ?, ?, ?)''',
@@ -3063,10 +3095,25 @@ def _run_account_tick_impl(user_id: int, account_id: int,
                     continue
                 cost = trade_value * (1 + buy_bps)
                 cash -= cost
+                # T6.5: tag the trade with which sub-strategy actually
+                # voted BUY at this bar. Compute each strategy's vote and
+                # pick the first one — that's the strategy we'll
+                # credit/debit on close. Pure-best-effort; if it fails the
+                # column stays NULL and the bandit just skips this row.
+                entry_strategy = None
+                try:
+                    for cand_strat in (plan.get('strategies') or []):
+                        votes = _build_signals(cand_strat, s['closes'], s['highs'], s['lows'])
+                        if i < len(votes) and votes[i] == 1:
+                            entry_strategy = cand_strat
+                            break
+                except Exception:
+                    entry_strategy = None
                 cur = c.execute('''INSERT INTO paper_positions
-                             (account_id, symbol, shares, entry_price, entry_date, entry_reason, status)
-                             VALUES (?, ?, ?, ?, ?, ?, 'open')''',
-                          (account_id, sym, shares, price, d, 'signal'))
+                             (account_id, symbol, shares, entry_price, entry_date, entry_reason,
+                              entry_strategy, status)
+                             VALUES (?, ?, ?, ?, ?, ?, ?, 'open')''',
+                          (account_id, sym, shares, price, d, 'signal', entry_strategy))
                 pos_id = cur.lastrowid
                 c.execute('''INSERT INTO paper_transactions
                              (account_id, position_id, type, symbol, shares, price, value, fee, cash_after, reason, ts_date)

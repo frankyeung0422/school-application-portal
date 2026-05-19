@@ -534,6 +534,140 @@ def source_llm_proposal(champion: Dict[str, Any],
     return out
 
 
+# ---------------------------------------------------------------------------
+# T6.5 — Thompson-sampling bandit allocator over sub-strategies.
+#
+# When a plan uses combine_mode='any' or 'majority' with multiple
+# strategies, the entry signal currently treats every strategy equally.
+# But some strategies' signals will end up paying off more than others
+# on this specific symbol universe. A Beta(α, β) bandit per (account,
+# strategy) tracks realized win counts (α) vs loss counts (β) and lets
+# us draw a posterior weight at decision time. Underperformers naturally
+# get less capital without anyone having to re-tune the plan.
+#
+# Storage: bandit_state(account_id, strategy, alpha, beta, last_updated).
+# α and β start at 1.0 (uniform prior) — equivalent to 1 win + 1 loss of
+# pretend history.
+#
+# Convention: only winning trades increment α; losing trades increment
+# β. Break-even trades do nothing. We keep the update simple so the
+# behaviour is auditable — fancier reward shaping comes later if
+# warranted.
+# ---------------------------------------------------------------------------
+
+def ensure_bandit_table(conn: sqlite3.Connection) -> None:
+    conn.executescript('''
+        CREATE TABLE IF NOT EXISTS bandit_state (
+            account_id INTEGER NOT NULL,
+            strategy TEXT NOT NULL,
+            alpha REAL NOT NULL DEFAULT 1.0,
+            beta REAL NOT NULL DEFAULT 1.0,
+            wins INTEGER NOT NULL DEFAULT 0,
+            losses INTEGER NOT NULL DEFAULT 0,
+            last_updated TEXT,
+            PRIMARY KEY (account_id, strategy)
+        );
+    ''')
+    conn.commit()
+
+
+def _ensure_bandit_rows(account_id: int, strategies: List[str], conn_factory) -> None:
+    """Idempotently create a row for each (account, strategy) pair."""
+    if not strategies:
+        return
+    now = datetime.now().isoformat()
+    with conn_factory() as c:
+        for s in strategies:
+            c.execute(
+                'INSERT OR IGNORE INTO bandit_state '
+                '(account_id, strategy, alpha, beta, wins, losses, last_updated) '
+                'VALUES (?, ?, 1.0, 1.0, 0, 0, ?)',
+                (account_id, s, now))
+        c.commit()
+
+
+def record_bandit_reward(account_id: int, strategy: str, won: bool,
+                          conn_factory) -> Dict[str, Any]:
+    """Called when a position closes. Bumps α (won) or β (lost).
+
+    Returns the new (alpha, beta) so callers / tests can assert behaviour.
+    """
+    if not strategy:
+        return {}
+    _ensure_bandit_rows(account_id, [strategy], conn_factory)
+    now = datetime.now().isoformat()
+    with conn_factory() as c:
+        if won:
+            c.execute(
+                'UPDATE bandit_state SET alpha = alpha + 1, wins = wins + 1, '
+                'last_updated=? WHERE account_id=? AND strategy=?',
+                (now, account_id, strategy))
+        else:
+            c.execute(
+                'UPDATE bandit_state SET beta = beta + 1, losses = losses + 1, '
+                'last_updated=? WHERE account_id=? AND strategy=?',
+                (now, account_id, strategy))
+        c.commit()
+        c.row_factory = sqlite3.Row
+        row = c.execute(
+            'SELECT alpha, beta, wins, losses FROM bandit_state '
+            'WHERE account_id=? AND strategy=?',
+            (account_id, strategy)).fetchone()
+    return dict(row) if row else {}
+
+
+def bandit_weights(account_id: int, strategies: List[str],
+                   conn_factory,
+                   rng: Optional[random.Random] = None) -> Dict[str, float]:
+    """Draw a Thompson-sampled weight per strategy, normalised to sum=1.
+
+    For each strategy:
+       sample = Beta(α, β).rvs()
+    then normalise across the active strategies. Strategies the account
+    has never tried get the prior weight (Beta(1,1) = uniform).
+
+    The caller (paper_trading entry loop) uses these to weight how much
+    each strategy's BUY vote counts during combine_mode='any'/'majority'
+    voting. A strategy with α=5, β=20 (poor win rate) will average
+    around weight 5/(5+20)=0.2 — its vote rarely flips a 'majority' tally.
+    """
+    if not strategies:
+        return {}
+    rng = rng or random
+    _ensure_bandit_rows(account_id, strategies, conn_factory)
+    with conn_factory() as c:
+        c.row_factory = sqlite3.Row
+        rows = {r['strategy']: (float(r['alpha']), float(r['beta']))
+                for r in c.execute(
+                    'SELECT strategy, alpha, beta FROM bandit_state '
+                    'WHERE account_id=?', (account_id,)).fetchall()}
+    samples: Dict[str, float] = {}
+    total = 0.0
+    for s in strategies:
+        a, b = rows.get(s, (1.0, 1.0))
+        # Beta sample via gamma trick — stdlib random doesn't ship Beta.
+        x = rng.gammavariate(a, 1.0)
+        y = rng.gammavariate(b, 1.0)
+        v = x / (x + y) if (x + y) > 0 else 0.5
+        samples[s] = v
+        total += v
+    if total <= 0:
+        # All zero — uniform fallback so we don't divide by zero
+        return {s: 1.0 / len(strategies) for s in strategies}
+    return {s: v / total for s, v in samples.items()}
+
+
+def get_bandit_state(account_id: int, conn_factory) -> List[Dict[str, Any]]:
+    """Snapshot of an account's bandit state — for dashboards / debugging."""
+    with conn_factory() as c:
+        c.row_factory = sqlite3.Row
+        rows = c.execute(
+            'SELECT * FROM bandit_state WHERE account_id=? '
+            'ORDER BY (CAST(wins AS REAL)/(wins+losses+0.0001)) DESC',
+            (account_id,)).fetchall()
+    return [dict(r) for r in rows]
+
+
 def mutate_plan(champion: Dict[str, Any],
                 rng: Optional[random.Random] = None) -> Dict[str, Any]:
     """Return a single mutated copy of ``champion``. Tweaks 1-2 fields

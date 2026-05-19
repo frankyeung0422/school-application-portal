@@ -507,6 +507,88 @@ def test_source_llm_proposal_rejects_non_json(monkeypatch):
     assert pl.source_llm_proposal(champ, base_plan=champ, scorer=None) is None
 
 
+# ============================================================================
+# T6.5 — Thompson-sampling bandit
+# ============================================================================
+
+def test_bandit_table_created(pt):
+    with sqlite3.connect(str(pt._DB)) as c:
+        names = [r[0] for r in c.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='bandit_state'"
+        ).fetchall()]
+    assert 'bandit_state' in names
+
+
+def test_bandit_reward_increments_alpha_on_win(pt):
+    from modules import paper_learning as pl
+    acct = _seed_account(pt)
+    out = pl.record_bandit_reward(acct, 'macd_cross', won=True, conn_factory=pt._conn)
+    assert out['alpha'] == 2.0   # prior 1 + win 1
+    assert out['beta'] == 1.0
+    assert out['wins'] == 1
+    assert out['losses'] == 0
+
+
+def test_bandit_reward_increments_beta_on_loss(pt):
+    from modules import paper_learning as pl
+    acct = _seed_account(pt)
+    out = pl.record_bandit_reward(acct, 'rsi_meanreversion', won=False, conn_factory=pt._conn)
+    assert out['alpha'] == 1.0
+    assert out['beta'] == 2.0
+    assert out['losses'] == 1
+
+
+def test_bandit_weights_normalize_to_one(pt):
+    from modules import paper_learning as pl
+    import random
+    acct = _seed_account(pt)
+    weights = pl.bandit_weights(acct, ['ma_cross', 'rsi_meanreversion', 'macd_cross'],
+                                  conn_factory=pt._conn, rng=random.Random(7))
+    assert abs(sum(weights.values()) - 1.0) < 1e-9
+    assert set(weights.keys()) == {'ma_cross', 'rsi_meanreversion', 'macd_cross'}
+
+
+def test_bandit_concentrates_weight_on_winner(pt):
+    """A strategy that wins 50× in a row should get materially more
+    Thompson-sampled weight than one with a default Beta(1,1) prior."""
+    from modules import paper_learning as pl
+    import random
+    acct = _seed_account(pt)
+    # Train strategy 'good' with 50 wins, 'bad' with 50 losses
+    for _ in range(50):
+        pl.record_bandit_reward(acct, 'good', won=True, conn_factory=pt._conn)
+        pl.record_bandit_reward(acct, 'bad', won=False, conn_factory=pt._conn)
+    # Average over many draws to suppress per-sample variance
+    rng = random.Random(42)
+    n = 200
+    sum_good = sum_bad = 0.0
+    for _ in range(n):
+        w = pl.bandit_weights(acct, ['good', 'bad'], conn_factory=pt._conn, rng=rng)
+        sum_good += w['good']
+        sum_bad += w['bad']
+    avg_good = sum_good / n
+    avg_bad = sum_bad / n
+    # With α=51,β=1 vs α=1,β=51, posterior means are ~0.98 vs ~0.02
+    assert avg_good > 0.8, f"winning bandit didn't dominate: good={avg_good}"
+    assert avg_bad < 0.2, f"losing bandit didn't recede: bad={avg_bad}"
+
+
+def test_get_bandit_state_orders_by_win_rate(pt):
+    from modules import paper_learning as pl
+    acct = _seed_account(pt)
+    # 'best' = 8W, 2L; 'mid' = 5W, 5L; 'worst' = 1W, 9L
+    for _ in range(8): pl.record_bandit_reward(acct, 'best', True, pt._conn)
+    for _ in range(2): pl.record_bandit_reward(acct, 'best', False, pt._conn)
+    for _ in range(5): pl.record_bandit_reward(acct, 'mid', True, pt._conn)
+    for _ in range(5): pl.record_bandit_reward(acct, 'mid', False, pt._conn)
+    for _ in range(1): pl.record_bandit_reward(acct, 'worst', True, pt._conn)
+    for _ in range(9): pl.record_bandit_reward(acct, 'worst', False, pt._conn)
+    rows = pl.get_bandit_state(acct, pt._conn)
+    names = [r['strategy'] for r in rows]
+    assert names[0] == 'best'
+    assert names[-1] == 'worst'
+
+
 def test_promotion_supersedes_other_challengers(pt, monkeypatch):
     """When one challenger promotes, all other active challengers should
     be dropped — they were comparing against the now-defunct champion."""
