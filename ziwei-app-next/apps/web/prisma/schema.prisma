@@ -1,0 +1,376 @@
+// Ziwei App — Postgres schema. Replaces the legacy SQLite at data/fortune_app.db.
+// Migration script: scripts/migrate-sqlite-to-postgres.ts (lands in P2).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ──────────────────────────────────────────────────────────────────
+// Identity
+// ──────────────────────────────────────────────────────────────────
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String?  @map("password_hash") // null when using magic link
+  displayName  String?  @map("display_name")
+  role         UserRole @default(USER)
+  birthYear    Int?     @map("birth_year") // for birthday emails / personalized fortune
+  birthMonth   Int?     @map("birth_month")
+  birthDay     Int?     @map("birth_day")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  lastSeenAt   DateTime? @map("last_seen_at")
+
+  subscription      Subscription?
+  charts            Chart[]
+  alerts            Alert[]
+  emailPrefs        EmailPreference?
+  costLedger        CostLedgerEntry[]
+  referralsSent     Referral[]       @relation("ReferrerRelation")
+  referralsReceived Referral[]       @relation("RefereeRelation")
+  events            Event[]
+  passwordResets    PasswordReset[]
+  oauthAccounts     OAuthAccount[]
+  chatConversations ChatConversation[]
+
+  @@map("users")
+}
+
+model MagicLinkToken {
+  id        String   @id @default(cuid())
+  email     String
+  tokenHash String   @unique @map("token_hash")
+  expiresAt DateTime @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([email])
+  @@map("magic_link_tokens")
+}
+
+model OAuthAccount {
+  id                   String    @id @default(cuid())
+  userId               String    @map("user_id")
+  provider             String    // 'google'
+  providerAccountId    String    @map("provider_account_id")
+  email                String?
+  refreshToken         String?   @map("refresh_token")
+  accessTokenExpiresAt DateTime? @map("access_token_expires_at")
+  createdAt            DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+  @@map("oauth_accounts")
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+model PasswordReset {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  token     String   @unique
+  expiresAt DateTime @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("password_resets")
+}
+
+// ──────────────────────────────────────────────────────────────────
+// Subscription / Billing (Stripe)
+// ──────────────────────────────────────────────────────────────────
+
+model Subscription {
+  id                   String             @id @default(cuid())
+  userId               String             @unique @map("user_id")
+  stripeCustomerId     String             @unique @map("stripe_customer_id")
+  stripeSubscriptionId String?            @unique @map("stripe_subscription_id")
+  plan                 SubscriptionPlan
+  status               SubscriptionStatus @default(TRIALING)
+  currentPeriodStart   DateTime?          @map("current_period_start")
+  currentPeriodEnd     DateTime?          @map("current_period_end")
+  trialEndsAt          DateTime?          @map("trial_ends_at")
+  cancelAt             DateTime?          @map("cancel_at")
+  canceledAt           DateTime?          @map("canceled_at")
+  createdAt            DateTime           @default(now()) @map("created_at")
+  updatedAt            DateTime           @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@map("subscriptions")
+}
+
+enum SubscriptionPlan {
+  FREE
+  MONTHLY
+  ANNUAL
+  MASTER
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  INCOMPLETE
+  PAUSED
+}
+
+model WebhookEvent {
+  id          String   @id @default(cuid())
+  source      String   // 'stripe' | 'sendgrid' | 'elevenlabs' etc.
+  eventId     String   @unique @map("event_id") // dedup key
+  eventType   String   @map("event_type")
+  payload     Json
+  processedAt DateTime? @map("processed_at")
+  error       String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([source, eventType])
+  @@map("webhook_events")
+}
+
+// ──────────────────────────────────────────────────────────────────
+// Charts & calculation cache
+// ──────────────────────────────────────────────────────────────────
+
+model Chart {
+  id          String   @id @default(cuid())
+  userId      String   @map("user_id")
+  label       String?  // user-given label, e.g. "我", "妻子", "孩子"
+  birthInfo   Json     @map("birth_info") // {year, month, day, hour, minute, gender, calendar}
+  chartHash   String   @map("chart_hash") // sha256 of canonical birth info
+  chartJson   Json     @map("chart_json") // @ziwei/engine output
+  engineVersion String @map("engine_version")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chatConversations ChatConversation[]
+
+  @@unique([userId, chartHash])
+  @@index([chartHash])
+  @@map("charts")
+}
+
+model ChartCache {
+  id            String   @id @default(cuid())
+  chartHash     String   @unique @map("chart_hash")
+  chartJson     Json     @map("chart_json")
+  engineVersion String   @map("engine_version")
+  hitCount      Int      @default(0) @map("hit_count")
+  lastAccessed  DateTime @default(now()) @map("last_accessed")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@index([lastAccessed])
+  @@map("chart_cache")
+}
+
+// ──────────────────────────────────────────────────────────────────
+// Alerts (命理預警)
+// ──────────────────────────────────────────────────────────────────
+
+model Alert {
+  id              String   @id @default(cuid())
+  userId          String   @map("user_id")
+  alertHash       String   @map("alert_hash") // dedup per user
+  alertType       String   @map("alert_type") // 'health' | 'accident' | 'financial' | etc.
+  severity        Int      // 1-5
+  title           String
+  description     String
+  palace          String?
+  starsJson       Json?    @map("stars_json")
+  period          String?  // e.g. "2026年", "大限45-54"
+  recommendations Json?    // string[]
+  isRead          Boolean  @default(false) @map("is_read")
+  isDismissed     Boolean  @default(false) @map("is_dismissed")
+  emailSent       Boolean  @default(false) @map("email_sent")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, alertHash])
+  @@index([userId, severity])
+  @@map("alerts")
+}
+
+// ──────────────────────────────────────────────────────────────────
+// Email
+// ──────────────────────────────────────────────────────────────────
+
+model EmailPreference {
+  id                  String   @id @default(cuid())
+  userId              String   @unique @map("user_id")
+  dailyFortuneEnabled Boolean  @default(true) @map("daily_fortune_enabled")
+  weeklyHoroscopeEnabled Boolean @default(true) @map("weekly_horoscope_enabled")
+  marketingEnabled    Boolean  @default(true) @map("marketing_enabled")
+  lastSentDate        DateTime? @map("last_sent_date")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("email_preferences")
+}
+
+// ──────────────────────────────────────────────────────────────────
+// AI cost tracking
+// ──────────────────────────────────────────────────────────────────
+
+model CostLedgerEntry {
+  id            String   @id @default(cuid())
+  userId        String?  @map("user_id")
+  promptId      String   @map("prompt_id")
+  promptVersion String   @map("prompt_version")
+  model         String   // 'claude-opus-4-7' | 'gemini-2.5-pro' | etc.
+  inputTokens   Int      @map("input_tokens")
+  cachedTokens  Int      @default(0) @map("cached_tokens")
+  outputTokens  Int      @map("output_tokens")
+  usdCost       Decimal  @map("usd_cost") @db.Decimal(10, 6)
+  latencyMs     Int      @map("latency_ms")
+  success       Boolean  @default(true)
+  error         String?
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([promptId, createdAt])
+  @@map("cost_ledger")
+}
+
+// ──────────────────────────────────────────────────────────────────
+// Analytics events (PostHog-mirrored canonical store)
+// ──────────────────────────────────────────────────────────────────
+
+model Event {
+  id         String   @id @default(cuid())
+  userId     String?  @map("user_id")
+  sessionId  String?  @map("session_id")
+  eventName  String   @map("event_name")
+  properties Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([eventName, createdAt])
+  @@index([userId, createdAt])
+  @@map("events")
+}
+
+// ──────────────────────────────────────────────────────────────────
+// Referrals
+// ──────────────────────────────────────────────────────────────────
+
+model Referral {
+  id              String   @id @default(cuid())
+  code            String   @unique // user-friendly invite code
+  referrerId      String   @map("referrer_id")
+  refereeId       String?  @unique @map("referee_id")
+  redeemedAt      DateTime? @map("redeemed_at")
+  rewardApplied   Boolean  @default(false) @map("reward_applied")
+  stripeCouponId  String?  @map("stripe_coupon_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  referrer User  @relation("ReferrerRelation", fields: [referrerId], references: [id], onDelete: Cascade)
+  referee  User? @relation("RefereeRelation",  fields: [refereeId],  references: [id], onDelete: SetNull)
+
+  @@index([referrerId])
+  @@map("referrals")
+}
+
+// ──────────────────────────────────────────────────────────────────
+// Marketing content pipeline (P5)
+// ──────────────────────────────────────────────────────────────────
+
+model MarketingPost {
+  id            String   @id @default(cuid())
+  scheduledDate DateTime @map("scheduled_date")
+  slot          MarketingSlot
+  contentType   String   @map("content_type") // 'daily_zodiac' | 'educational' | etc.
+  status        MarketingStatus @default(PLANNED)
+  title         String?
+  body          String?  @db.Text
+  hashtags      String?
+  imagePath     String?  @map("image_path")
+  videoPath     String?  @map("video_path")
+  channels      String[] // 'fb' | 'ig' | 'threads' | 'tiktok' | 'yt-shorts' | 'xhs'
+  channelPostIds Json?   @map("channel_post_ids") // {fb: "...", ig: "...", ...}
+  qcScore       Float?   @map("qc_score") // 0-10 from QC agent
+  qcNotes       Json?    @map("qc_notes")
+  postedAt      DateTime? @map("posted_at")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@unique([scheduledDate, slot])
+  @@index([status])
+  @@index([scheduledDate])
+  @@map("marketing_posts")
+}
+
+enum MarketingSlot {
+  MORNING
+  EVENING
+}
+
+enum MarketingStatus {
+  PLANNED
+  GENERATING
+  READY
+  APPROVED
+  POSTING
+  POSTED
+  FAILED
+  SKIPPED
+  QUEUED_REVIEW
+}
+
+// ──────────────────────────────────────────────────────────────────
+// AI 師傅 Chat — chart-anchored conversations (premium killer feature)
+// ──────────────────────────────────────────────────────────────────
+
+model ChatConversation {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  chartId   String   @map("chart_id")
+  title     String?  // first user message truncated, or auto-generated
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chart    Chart         @relation(fields: [chartId], references: [id], onDelete: Cascade)
+  messages ChatMessage[]
+
+  @@index([userId, chartId])
+  @@index([userId, updatedAt])
+  @@map("chat_conversations")
+}
+
+model ChatMessage {
+  id             String   @id @default(cuid())
+  conversationId String   @map("conversation_id")
+  role           String   // 'user' | 'assistant'
+  content        String   @db.Text
+  inputTokens    Int?     @map("input_tokens")
+  outputTokens   Int?     @map("output_tokens")
+  model          String?
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  conversation ChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@map("chat_messages")
+}
