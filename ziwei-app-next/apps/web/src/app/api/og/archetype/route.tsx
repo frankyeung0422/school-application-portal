@@ -83,7 +83,7 @@ export async function GET(req: NextRequest) {
             {traits.map((t, i) => (
               <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
                 <div style={{ fontSize: 32, color: '#E8C36A', letterSpacing: '0.08em' }}>{t}</div>
-                <div style={{ fontSize: 11, color: '#9F8550', letterSpacing: '0.3em' }}>·</div>
+                <div style={{ width: 4, height: 4, background: '#9F8550', borderRadius: 4 }} />
               </div>
             ))}
           </div>
@@ -95,11 +95,11 @@ export async function GET(req: NextRequest) {
           </div>
         </div>
 
-        {/* Corner accents */}
-        <div style={{ position: 'absolute', top: 60, left: 60, fontSize: 24, color: '#C9A14A', opacity: 0.5 }}>◇</div>
-        <div style={{ position: 'absolute', top: 60, right: 60, fontSize: 24, color: '#C9A14A', opacity: 0.5 }}>◇</div>
-        <div style={{ position: 'absolute', bottom: 60, left: 60, fontSize: 24, color: '#C9A14A', opacity: 0.5 }}>◇</div>
-        <div style={{ position: 'absolute', bottom: 60, right: 60, fontSize: 24, color: '#C9A14A', opacity: 0.5 }}>◇</div>
+        {/* Corner accents — thin gold rules */}
+        <div style={{ position: 'absolute', top: 70, left: 60, width: 40, height: 1, background: '#C9A14A', opacity: 0.6 }} />
+        <div style={{ position: 'absolute', top: 70, right: 60, width: 40, height: 1, background: '#C9A14A', opacity: 0.6 }} />
+        <div style={{ position: 'absolute', bottom: 70, left: 60, width: 40, height: 1, background: '#C9A14A', opacity: 0.6 }} />
+        <div style={{ position: 'absolute', bottom: 70, right: 60, width: 40, height: 1, background: '#C9A14A', opacity: 0.6 }} />
       </div>
     ),
     {
