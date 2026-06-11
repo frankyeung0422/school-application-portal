@@ -350,6 +350,79 @@ def _kelly_fraction(wins: int, losses: int,
     return max(_KELLY_HARD_FLOOR, min(_KELLY_HARD_CEIL, raw * safety))
 
 
+# --------------------------------------------------------------------------
+# P7 — correlation-aware sizing. Kelly / vol-target size each name in
+# isolation, so a book of N highly-correlated names quietly carries ~N× the
+# intended risk. Before opening a new position we measure the candidate's
+# return correlation against what the account already holds and shrink the
+# slice when it adds the same bet again. Sizing-only (never blocks an entry)
+# and computed from the series the tick already fetched — zero extra I/O.
+# --------------------------------------------------------------------------
+_CORR_WINDOW = 60          # trailing daily returns used per pair
+_CORR_MIN_POINTS = 20      # below this the pair is "no information"
+_CORR_FREE_THRESHOLD = 0.3 # correlation below this costs nothing
+_CORR_SLOPE = 0.8          # mult = 1 − slope·(avg_corr − threshold)
+_CORR_MIN_MULT = 0.5       # never cut a slice below half
+
+
+def _pearson(a: List[float], b: List[float]) -> Optional[float]:
+    n = len(a)
+    if n < 3 or n != len(b):
+        return None
+    ma = sum(a) / n
+    mb = sum(b) / n
+    cov = sum((a[i] - ma) * (b[i] - mb) for i in range(n))
+    va = sum((x - ma) ** 2 for x in a)
+    vb = sum((x - mb) ** 2 for x in b)
+    if va <= 1e-18 or vb <= 1e-18:
+        return None  # flat series carries no correlation information
+    return cov / ((va ** 0.5) * (vb ** 0.5))
+
+
+def _corr_sizing_multiplier(series: Dict[str, Dict[str, Any]], cand_sym: str,
+                            held_syms: List[str], asof_date: str) -> float:
+    """Multiplier in [_CORR_MIN_MULT, 1.0] for the candidate's entry size,
+    from its average trailing-return correlation with held names. Returns
+    are aligned on COMMON dates (HK/US holiday mismatches would otherwise
+    fabricate decorrelation). Degrades to 1.0 whenever there's no usable
+    information — this must never be the reason an account can't trade."""
+    cand = series.get(cand_sym)
+    if not cand or not held_syms:
+        return 1.0
+    cand_idx = cand['idx_by_date']
+    corrs: List[float] = []
+    for hs in held_syms:
+        if hs == cand_sym:
+            continue
+        held = series.get(hs)
+        if not held:
+            continue
+        common = [d for d in held['dates']
+                  if d <= asof_date and d in cand_idx]
+        if len(common) < _CORR_MIN_POINTS + 1:
+            continue
+        common = common[-(_CORR_WINDOW + 1):]
+        held_idx = held['idx_by_date']
+        rc, rh = [], []
+        for j in range(1, len(common)):
+            c0 = float(cand['closes'][cand_idx[common[j - 1]]])
+            c1 = float(cand['closes'][cand_idx[common[j]]])
+            h0 = float(held['closes'][held_idx[common[j - 1]]])
+            h1 = float(held['closes'][held_idx[common[j]]])
+            if c0 <= 0 or h0 <= 0:
+                continue
+            rc.append(c1 / c0 - 1.0)
+            rh.append(h1 / h0 - 1.0)
+        r = _pearson(rc, rh)
+        if r is not None:
+            corrs.append(r)
+    if not corrs:
+        return 1.0
+    avg = sum(corrs) / len(corrs)
+    mult = 1.0 - _CORR_SLOPE * max(0.0, avg - _CORR_FREE_THRESHOLD)
+    return max(_CORR_MIN_MULT, min(1.0, mult))
+
+
 # ---------------------------------------------------------------------------
 # Per-account advisory lock + atomic claim/release.
 # We use a column on paper_accounts ("tick_running") rather than a separate
@@ -1481,6 +1554,10 @@ def create_account(user_id: int, plan: Dict[str, Any]) -> Dict[str, Any]:
         # 'ml_ranker' (LightGBM learning-to-rank; falls back to heuristic
         # when the model is missing or stale).
         'pick_source': (plan.get('pick_source') or 'heuristic').lower(),
+        # P7 — correlation-aware sizing, ON for new accounts. Legacy plans
+        # without the field keep their exact pre-P7 sizing (the tick reads
+        # plan.get('corr_aware_sizing') with a falsy default).
+        'corr_aware_sizing': bool(plan.get('corr_aware_sizing', True)),
     }
     today = date.today().isoformat()
 
@@ -3906,9 +3983,11 @@ def _run_account_tick_impl(user_id: int, account_id: int,
                 # initial and current equity as the cap basis, so winners
                 # can compound while losers stay protected.
                 positions_mtm = 0.0
+                held_syms_now: List[str] = []
                 for r in c.execute(
                     "SELECT entry_price, symbol, shares FROM paper_positions WHERE account_id=? AND status='open'",
                     (account_id,)).fetchall():
+                    held_syms_now.append(r['symbol'])
                     s_held = series.get(r['symbol'])
                     if s_held:
                         lk = _last_known_close(s_held, d)
@@ -4040,6 +4119,20 @@ def _run_account_tick_impl(user_id: int, account_id: int,
 
                 # P2 — ranker-confidence gate (1.0 for non-ranker accounts).
                 slice_cash *= size_gate
+
+                # P7 — correlation-aware sizing: shrink the slice (never to
+                # below half, never blocking) when the candidate's returns
+                # correlate with what the book already holds. Same-bet
+                # stacking is how "diversified" accounts blow their vol
+                # target in one drawdown.
+                if bool(plan.get('corr_aware_sizing')) and held_syms_now:
+                    corr_mult = _corr_sizing_multiplier(
+                        series, sym, held_syms_now, d)
+                    if corr_mult < 1.0:
+                        slice_cash *= corr_mult
+                        _log(account_id, 'info',
+                             f'corr sizing {sym}: ×{corr_mult:.2f} '
+                             f'(vs {len(held_syms_now)} held)')
 
                 # Leverage cap on max(initial, current) instead of initial only.
                 budget_left = max(0.0, cap_basis - positions_mtm)
