@@ -103,6 +103,70 @@ export function computeSelfTransformations(chart: Chart): SelfTransformation[] {
   return out;
 }
 
+// ── 化忌 chain tracing (飛忌連環) ─────────────────────────────────────
+//
+// 北派 reading: each palace's stem flies 忌 somewhere; following the 忌 from
+// palace to palace exposes where a life-domain's pressure ultimately drains.
+// Chain endings:
+//   自化忌出 — the chain reaches a palace whose own stem 忌s a star in itself
+//              (energy exits the chart; classic "leak" signature),
+//   回頭忌   — the chain flies back into a palace already on the path (cycle;
+//              the loop's palaces feed each other's pressure),
+//   入而不出 — next hop's target star is unplaced (only on pre-0.4 charts).
+
+export interface JiChainStep {
+  fromPalace: PalaceName;
+  stem: HeavenlyStem;
+  star: string;
+  toPalace: PalaceName;
+}
+
+export interface JiChain {
+  start: PalaceName;
+  steps: JiChainStep[];
+  terminal: '自化忌出' | '回頭忌' | '入而不出';
+  /** 祿隨忌走 — the start palace's 化祿 flies to the same palace as its 化忌. */
+  luFollowsJi: boolean;
+  /** Compact Chinese rendering for prompts, e.g. 命宮→夫妻→財帛(回頭忌). */
+  text: string;
+}
+
+/** Trace the serial 忌 chain starting from every palace. */
+export function traceJiChains(chart: Chart): JiChain[] {
+  const byName = new Map<PalaceName, Palace>();
+  for (const p of chart.palaces) byName.set(p.name, p);
+
+  const jiTargetOf = (p: Palace): { star: string; to: Palace | null } => {
+    const star = FOUR_TRANSFORMATIONS[p.ganzhi[0] as HeavenlyStem].忌;
+    return { star, to: starLocation(chart, star) };
+  };
+
+  return chart.palaces.map((startPalace): JiChain => {
+    const steps: JiChainStep[] = [];
+    const visited = new Set<PalaceName>([startPalace.name]);
+    let current = startPalace;
+    let terminal: JiChain['terminal'] = '入而不出';
+
+    for (let depth = 0; depth < 12; depth++) {
+      const { star, to } = jiTargetOf(current);
+      if (!to) { terminal = '入而不出'; break; }
+      steps.push({ fromPalace: current.name, stem: current.ganzhi[0] as HeavenlyStem, star, toPalace: to.name });
+      if (to.name === current.name) { terminal = '自化忌出'; break; }
+      if (visited.has(to.name)) { terminal = '回頭忌'; break; }
+      visited.add(to.name);
+      current = to;
+    }
+
+    const startTable = FOUR_TRANSFORMATIONS[startPalace.ganzhi[0] as HeavenlyStem];
+    const luTarget = starLocation(chart, startTable.祿);
+    const luFollowsJi = !!luTarget && steps.length > 0 && luTarget.name === steps[0].toPalace;
+
+    const pathNames = [startPalace.name, ...steps.map((s) => s.toPalace)];
+    const text = `${pathNames.join('→')}(${terminal}${luFollowsJi ? '、祿隨忌走' : ''})`;
+    return { start: startPalace.name, steps, terminal, luFollowsJi, text };
+  });
+}
+
 export interface SanFangSiZheng {
   palace: PalaceName;
   /** 本宮 + 對宮 + 兩個三合宮, in that order. */

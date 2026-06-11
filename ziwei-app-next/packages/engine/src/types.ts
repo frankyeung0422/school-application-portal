@@ -14,6 +14,8 @@ export interface BirthInfo {
   minute: number; // 0-59
   gender: Gender;
   calendar: CalendarType;
+  /** Only meaningful with calendar='lunar': the month is a 閏月 (leap month). */
+  isLeapMonth?: boolean;
   /** Optional timezone offset in minutes (default: HKT +480). */
   tzOffsetMinutes?: number;
   /** Birthplace latitude, north-positive degrees. Only used by the 果老 engine (default: Hong Kong 22.32). */
@@ -116,4 +118,8 @@ export interface Chart {
   palaces: Palace[]; // length 12, in canonical order starting from 命宮
   /** 大限 decades (12, covering ~120 years). Optional: absent on charts cached by engine <0.4. */
   decades?: DecadeLuck[];
+  /** 命主 star (by 命宮 branch). Optional: absent on charts cached by engine <0.5. */
+  mingLord?: string;
+  /** 身主 star (by 生年支). Optional: absent on charts cached by engine <0.5. */
+  shenLord?: string;
 }

@@ -3,7 +3,9 @@ import { Solar } from 'lunar-javascript';
 import type { BirthInfo, HeavenlyStem, EarthlyBranch } from './types';
 import { HEAVENLY_STEMS, EARTHLY_BRANCHES } from './types';
 import { effectiveBirthMoment } from './solar-time';
+import { resolveSolarBirth } from './solar-to-lunar';
 import { analyzeBaziStrength, type BaziStrength } from './bazi-strength';
+import { computeShenSha, type ShenShaHit } from './bazi-shensha';
 
 /**
  * Bazi (八字) computation. Wraps lunar-javascript's EightChar API and
@@ -95,9 +97,15 @@ export interface BaziChart {
   strength?: BaziStrength;
   /** Minutes added to clock time when 真太陽時 was applied (0 otherwise). */
   solarTimeCorrectionMinutes?: number;
+  /** 神煞 hits. Optional: absent on charts cached by engine <0.3. */
+  shenSha?: ShenShaHit[];
+  /** 胎元 ganzhi (conception pillar). Optional: engine ≥0.3. */
+  taiYuan?: string;
+  /** 八字命宮 ganzhi. Optional: engine ≥0.3. */
+  mingGong?: string;
 }
 
-export const BAZI_ENGINE_VERSION = '0.2.0' as const;
+export const BAZI_ENGINE_VERSION = '0.3.0' as const;
 
 function asStem(s: string): HeavenlyStem {
   if (!HEAVENLY_STEMS.includes(s as HeavenlyStem)) throw new Error(`Bad stem: ${s}`);
@@ -109,12 +117,10 @@ function asBranch(s: string): EarthlyBranch {
 }
 
 export function computeBazi(birth: BirthInfo): BaziChart {
-  // lunar-javascript expects solar input; lunar input would need reverse conversion.
-  // For now we treat 'lunar' calendar inputs the same as solar — production should fix.
-  // 真太陽時 (opt-in) shifts the moment before any pillar derivation.
-  const eff = birth.calendar === 'solar'
-    ? effectiveBirthMoment(birth)
-    : { year: birth.year, month: birth.month, day: birth.day, hour: birth.hour, minute: birth.minute, correctionMinutes: 0 };
+  // Lunar input → solar equivalent (incl. 閏月) first, then 真太陽時 (opt-in)
+  // shifts the moment before any pillar derivation.
+  const solarBirth = resolveSolarBirth(birth);
+  const eff = effectiveBirthMoment(solarBirth);
   const solar = Solar.fromYmdHms(eff.year, eff.month, eff.day, eff.hour, eff.minute, 0);
   const lunar = solar.getLunar();
   const ec = lunar.getEightChar();
@@ -223,8 +229,8 @@ export function computeBazi(birth: BirthInfo): BaziChart {
     engineVersion: BAZI_ENGINE_VERSION,
     birthInfo: birth,
     solarDate: {
-      year: birth.year, month: birth.month, day: birth.day,
-      hour: birth.hour, minute: birth.minute,
+      year: solarBirth.year, month: solarBirth.month, day: solarBirth.day,
+      hour: solarBirth.hour, minute: solarBirth.minute,
     },
     lunarDate: {
       year: lunar.getYear(),
@@ -242,13 +248,22 @@ export function computeBazi(birth: BirthInfo): BaziChart {
     solarTimeCorrectionMinutes: eff.correctionMinutes,
   };
   chart.strength = analyzeBaziStrength(chart);
+  chart.shenSha = computeShenSha(pillars);
+  // 胎元/命宮 from lunar-javascript's EightChar (standard 三命通會 rules).
+  try {
+    chart.taiYuan = ec.getTaiYuan();
+    chart.mingGong = ec.getMingGong();
+  } catch {
+    // older lunar-javascript builds may lack these — fields stay undefined
+  }
   return chart;
 }
 
 /** Stable hash for cache lookup. Same shape as ziwei chartHash. */
 export function baziHash(birth: BirthInfo): string {
   const tst = birth.trueSolarTime ? '-tst' : '';
-  const canonical = `bazi-${birth.year}-${birth.month}-${birth.day}-${birth.hour}-${birth.minute}-${birth.gender}-${birth.calendar}${tst}`;
+  const leap = birth.calendar === 'lunar' && birth.isLeapMonth ? '-leap' : '';
+  const canonical = `bazi-${birth.year}-${birth.month}-${birth.day}-${birth.hour}-${birth.minute}-${birth.gender}-${birth.calendar}${tst}${leap}`;
   let h = 5381;
   for (let i = 0; i < canonical.length; i++) h = ((h << 5) + h + canonical.charCodeAt(i)) | 0;
   return `b_${(h >>> 0).toString(16)}_${birth.year}${birth.month}${birth.day}`;

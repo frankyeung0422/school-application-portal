@@ -49,6 +49,96 @@ export function seasonalState(dayElement: WuXing, monthBranch: EarthlyBranch): S
   return '死';
 }
 
+/**
+ * 調候用神表 (《窮通寶鑑》) — day master × month branch → climate-adjustment
+ * stems, primary first. This is the canonical 10×12 lookup widely reproduced
+ * in practitioner literature (and encoded in e.g. china-testing/bazi); the
+ * primary stem's element overrides/modulates the strength-derived 用神 in
+ * extreme-climate charts.
+ */
+export const TIAOHOU: Record<HeavenlyStem, Record<EarthlyBranch, { primary: HeavenlyStem; secondary: HeavenlyStem[] }>> = {
+  甲: {
+    寅: { primary: '丙', secondary: ['癸'] }, 卯: { primary: '庚', secondary: ['戊', '己'] },
+    辰: { primary: '庚', secondary: ['丁', '壬'] }, 巳: { primary: '癸', secondary: ['庚', '丁'] },
+    午: { primary: '癸', secondary: ['庚', '丁'] }, 未: { primary: '癸', secondary: ['庚', '丁'] },
+    申: { primary: '庚', secondary: ['丁', '壬'] }, 酉: { primary: '庚', secondary: ['丁', '丙'] },
+    戌: { primary: '庚', secondary: ['甲', '丁', '壬', '癸'] }, 亥: { primary: '庚', secondary: ['丁', '戊', '丙'] },
+    子: { primary: '丁', secondary: ['庚', '丙'] }, 丑: { primary: '丁', secondary: ['庚', '丙'] },
+  },
+  乙: {
+    寅: { primary: '丙', secondary: ['癸'] }, 卯: { primary: '丙', secondary: ['癸'] },
+    辰: { primary: '癸', secondary: ['丙', '戊'] }, 巳: { primary: '癸', secondary: [] },
+    午: { primary: '癸', secondary: ['丙'] }, 未: { primary: '癸', secondary: ['丙'] },
+    申: { primary: '丙', secondary: ['癸', '己'] }, 酉: { primary: '癸', secondary: ['丙', '丁'] },
+    戌: { primary: '癸', secondary: ['辛'] }, 亥: { primary: '丙', secondary: ['戊'] },
+    子: { primary: '丙', secondary: [] }, 丑: { primary: '丙', secondary: [] },
+  },
+  丙: {
+    寅: { primary: '壬', secondary: ['庚'] }, 卯: { primary: '壬', secondary: ['己'] },
+    辰: { primary: '壬', secondary: ['甲'] }, 巳: { primary: '壬', secondary: ['庚', '癸'] },
+    午: { primary: '壬', secondary: ['庚'] }, 未: { primary: '壬', secondary: ['庚'] },
+    申: { primary: '壬', secondary: ['戊'] }, 酉: { primary: '壬', secondary: ['癸'] },
+    戌: { primary: '甲', secondary: ['壬'] }, 亥: { primary: '甲', secondary: ['戊', '庚', '壬'] },
+    子: { primary: '壬', secondary: ['戊', '己'] }, 丑: { primary: '壬', secondary: ['甲'] },
+  },
+  丁: {
+    寅: { primary: '甲', secondary: ['庚'] }, 卯: { primary: '庚', secondary: ['甲'] },
+    辰: { primary: '甲', secondary: ['庚'] }, 巳: { primary: '甲', secondary: ['庚'] },
+    午: { primary: '壬', secondary: ['庚', '癸'] }, 未: { primary: '甲', secondary: ['壬', '庚'] },
+    申: { primary: '甲', secondary: ['庚', '丙', '戊'] }, 酉: { primary: '甲', secondary: ['庚', '丙', '戊'] },
+    戌: { primary: '甲', secondary: ['庚', '戊'] }, 亥: { primary: '甲', secondary: ['庚'] },
+    子: { primary: '甲', secondary: ['庚'] }, 丑: { primary: '甲', secondary: ['庚'] },
+  },
+  戊: {
+    寅: { primary: '丙', secondary: ['甲', '癸'] }, 卯: { primary: '丙', secondary: ['甲', '癸'] },
+    辰: { primary: '甲', secondary: ['丙', '癸'] }, 巳: { primary: '甲', secondary: ['丙', '癸'] },
+    午: { primary: '壬', secondary: ['甲', '丙'] }, 未: { primary: '癸', secondary: ['丙', '甲'] },
+    申: { primary: '丙', secondary: ['癸', '甲'] }, 酉: { primary: '丙', secondary: ['癸'] },
+    戌: { primary: '甲', secondary: ['丙', '癸'] }, 亥: { primary: '甲', secondary: ['丙'] },
+    子: { primary: '丙', secondary: ['甲'] }, 丑: { primary: '丙', secondary: ['甲'] },
+  },
+  己: {
+    寅: { primary: '丙', secondary: ['庚', '甲'] }, 卯: { primary: '甲', secondary: ['癸', '丙'] },
+    辰: { primary: '丙', secondary: ['癸', '甲'] }, 巳: { primary: '癸', secondary: ['丙'] },
+    午: { primary: '癸', secondary: ['丙'] }, 未: { primary: '癸', secondary: ['丙'] },
+    申: { primary: '丙', secondary: ['癸'] }, 酉: { primary: '丙', secondary: ['癸'] },
+    戌: { primary: '甲', secondary: ['丙', '癸'] }, 亥: { primary: '丙', secondary: ['甲', '戊'] },
+    子: { primary: '丙', secondary: ['甲', '戊'] }, 丑: { primary: '丙', secondary: ['甲', '戊'] },
+  },
+  庚: {
+    寅: { primary: '戊', secondary: ['甲', '壬', '丙', '丁'] }, 卯: { primary: '丁', secondary: ['甲', '庚', '丙'] },
+    辰: { primary: '甲', secondary: ['丁', '壬', '癸'] }, 巳: { primary: '壬', secondary: ['戊', '丙', '丁'] },
+    午: { primary: '壬', secondary: ['癸'] }, 未: { primary: '丁', secondary: ['甲'] },
+    申: { primary: '丁', secondary: ['甲'] }, 酉: { primary: '丁', secondary: ['甲', '丙'] },
+    戌: { primary: '甲', secondary: ['壬'] }, 亥: { primary: '丁', secondary: ['丙'] },
+    子: { primary: '丁', secondary: ['甲', '丙'] }, 丑: { primary: '丙', secondary: ['丁', '甲'] },
+  },
+  辛: {
+    寅: { primary: '己', secondary: ['壬', '庚'] }, 卯: { primary: '壬', secondary: ['甲'] },
+    辰: { primary: '壬', secondary: ['甲'] }, 巳: { primary: '壬', secondary: ['甲', '癸'] },
+    午: { primary: '壬', secondary: ['己', '癸'] }, 未: { primary: '壬', secondary: ['庚', '甲'] },
+    申: { primary: '壬', secondary: ['甲', '戊'] }, 酉: { primary: '壬', secondary: ['甲'] },
+    戌: { primary: '壬', secondary: ['甲'] }, 亥: { primary: '壬', secondary: ['丙'] },
+    子: { primary: '丙', secondary: ['戊', '壬', '甲'] }, 丑: { primary: '丙', secondary: ['壬', '戊', '己'] },
+  },
+  壬: {
+    寅: { primary: '庚', secondary: ['丙', '戊'] }, 卯: { primary: '戊', secondary: ['辛', '庚'] },
+    辰: { primary: '甲', secondary: ['庚'] }, 巳: { primary: '壬', secondary: ['辛', '庚', '癸'] },
+    午: { primary: '癸', secondary: ['庚', '辛'] }, 未: { primary: '辛', secondary: ['甲'] },
+    申: { primary: '戊', secondary: ['丁'] }, 酉: { primary: '甲', secondary: ['庚'] },
+    戌: { primary: '甲', secondary: ['丙'] }, 亥: { primary: '戊', secondary: ['丙', '庚'] },
+    子: { primary: '戊', secondary: ['丙'] }, 丑: { primary: '丙', secondary: ['丁', '甲'] },
+  },
+  癸: {
+    寅: { primary: '辛', secondary: ['丙'] }, 卯: { primary: '庚', secondary: ['辛'] },
+    辰: { primary: '丙', secondary: ['辛', '甲'] }, 巳: { primary: '辛', secondary: [] },
+    午: { primary: '庚', secondary: ['辛', '壬', '癸'] }, 未: { primary: '庚', secondary: ['辛', '壬', '癸'] },
+    申: { primary: '丁', secondary: [] }, 酉: { primary: '辛', secondary: ['丙'] },
+    戌: { primary: '辛', secondary: ['甲', '壬', '癸'] }, 亥: { primary: '庚', secondary: ['辛', '戊', '丁'] },
+    子: { primary: '丙', secondary: ['辛'] }, 丑: { primary: '丙', secondary: ['丁'] },
+  },
+};
+
 export type StrengthVerdict = '強' | '偏強' | '中和' | '偏弱' | '弱';
 
 export interface BaziStrength {
@@ -69,8 +159,8 @@ export interface BaziStrength {
   favorableElements: WuXing[];
   /** 忌神 — elements that harm. */
   unfavorableElements: WuXing[];
-  /** 調候 hint for extreme-season charts (simplified 窮通寶鑑 climate rule). */
-  climateAdjustment: { element: WuXing; reason: string } | null;
+  /** 調候用神 from the full 窮通寶鑑 table (primary stem + element + backups). */
+  climateAdjustment: { element: WuXing; reason: string; primaryStem?: HeavenlyStem; secondaryStems?: HeavenlyStem[] } | null;
   /** 空亡 — the two void branches of the day pillar's 旬. */
   voidBranches: [EarthlyBranch, EarthlyBranch];
   /** Which natal pillars sit on a void branch. */
@@ -177,13 +267,15 @@ export function analyzeBaziStrength(chart: BaziChart): BaziStrength {
     unfavorable = [controlledBy];
   }
 
-  // Simplified 調候: deep winter wants 火, high summer wants 水 — regardless of strength.
-  let climateAdjustment: BaziStrength['climateAdjustment'] = null;
-  if (['亥', '子', '丑'].includes(month.branch)) {
-    climateAdjustment = { element: '火', reason: '生於冬月，寒氣當令，先取火調候暖局' };
-  } else if (['巳', '午', '未'].includes(month.branch)) {
-    climateAdjustment = { element: '水', reason: '生於夏月，火炎土燥，先取水調候潤局' };
-  }
+  // 調候 — full 窮通寶鑑 table lookup (day master × month branch).
+  // (Previously a simplified winter→火 / summer→水 rule.)
+  const th = TIAOHOU[day.stem][month.branch];
+  const climateAdjustment: BaziStrength['climateAdjustment'] = {
+    element: STEM_TO_ELEMENT[th.primary],
+    primaryStem: th.primary,
+    secondaryStems: th.secondary,
+    reason: `窮通寶鑑調候: ${day.stem}日主生於${month.branch}月，先取${th.primary}${th.secondary.length ? `，次取${th.secondary.join('、')}` : ''}`,
+  };
 
   const voidBranches = voidBranchesOfDayPillar(day.stem, day.branch);
   const voidPillars: BaziStrength['voidPillars'] = [];

@@ -7,6 +7,9 @@
 import type { Chart, Palace, PlacedStar } from './types';
 import { EARTHLY_BRANCHES } from './types';
 import { CLASH_PAIRS, PUNISHMENT_GROUPS, HARM_PAIRS } from './branch-relations';
+import { detectPatterns } from './patterns';
+import { decadeAtYear } from './decade-luck';
+import { minorLimitAtYear } from './minor-limit';
 
 export type AlertType = 'health' | 'accident' | 'financial' | 'relationship' | 'career' | 'legal';
 
@@ -323,6 +326,39 @@ export function analyzeZiweiAlerts(chart: Chart, birthYear: number): ZiweiAlert[
     }
   }
 
+  // ── 凶格 from the pattern engine (羊陀夾忌 / 火鈴夾命 / 空劫夾命 …) ──
+  const XIONG_PATTERN_TYPE: Record<string, AlertType> = {
+    'yangtuo-jiaji': 'financial',
+    'huoling-jiaming': 'accident',
+    'kongjie-jiaming': 'financial',
+    'riyue-fanbei': 'career',
+  };
+  for (const pat of detectPatterns(chart)) {
+    if (pat.kind !== '凶') continue;
+    const type = XIONG_PATTERN_TYPE[pat.id] ?? 'health';
+    add(type, pat.weight as 1|2|3|4|5, `${pat.name} — 本命凶格`,
+      `${pat.description} 依據: ${pat.evidence.join('；')}。此為本命結構性格局，宜長期以對應策略化解，而非單一年份之憂。`,
+      '命宮', [pat.name]);
+  }
+
+  // ── 大限忌 — the active decade's 限忌 star landing in a sensitive natal palace ──
+  if (chart.decades?.length) {
+    const decade = decadeAtYear(chart.decades, birthYear, currentYear);
+    if (decade) {
+      const jiStar = decade.transformations.忌;
+      const hostPalace = chart.palaces.find((p) => p.stars.some((s) => s.name === jiStar));
+      const DECADE_JI_TYPE: Record<string, AlertType> = {
+        疾厄: 'health', 命宮: 'health', 財帛: 'financial', 夫妻: 'relationship', 官祿: 'career', 遷移: 'accident',
+      };
+      const type = hostPalace ? DECADE_JI_TYPE[hostPalace.name] : undefined;
+      if (hostPalace && type) {
+        add(type, 3, `大限忌入${hostPalace.name} — ${decade.startAge}-${decade.endAge}歲大限`,
+          `現行大限（${decade.startAge}-${decade.endAge}歲，行${decade.palaceName}宮）限忌為${jiStar}，落於本命${hostPalace.name}。這十年間${hostPalace.name}所主之事多有阻滯反覆，宜以十年為期布局化解，不宜急進。`,
+          hostPalace.name, [`限忌${jiStar}`]);
+      }
+    }
+  }
+
   // ── Tai Sui clash for the current civil year ────────────────────
   const t = checkTaiSui(birthYear, currentYear);
   if (t.type && t.description) {
@@ -445,6 +481,18 @@ export function analyzeAlerts(input: AnalyzeAlertsInput): ScopedAlert[] {
         `流忌入${ts.palace} — ${period}`,
         `本期流${ts.star}化忌沖入${ts.palace}宮，主該領域易生波折阻滯。宜謹慎守成，避免在此期間做重大決定。`,
         ts.palace, [`${ts.star}化忌`]);
+    }
+  }
+
+  // ── 歲限並臨 — 流年 and 小限 land on the same palace (year scope only) ──
+  if (scope === 'year' && 'age' in zf && zf.hostPalace) {
+    const minor = minorLimitAtYear(input.ziwei, zf.year);
+    if (minor && minor.branch === zf.branch) {
+      const palaceType = PALACE_ALERT_TYPE[zf.hostPalace.name] ?? 'career';
+      push('ziwei', palaceType, 4,
+        `歲限並臨${zf.hostPalace.name} — ${period}`,
+        `本年流年與小限同入「${zf.hostPalace.name}」（${zf.branch}宮），歲限並臨，該宮所主之事吉凶俱顯、力量加倍。若該宮見煞忌，務必謹慎守成；見吉星則可放手把握。`,
+        zf.hostPalace.name, ['歲限並臨']);
     }
   }
 

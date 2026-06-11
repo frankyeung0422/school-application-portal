@@ -7,7 +7,7 @@
  * [VERIFY] items to confirm against an authoritative 排盤 before production.
  */
 
-export const QIZHENG_ENGINE_VERSION = '0.1.0' as const;
+export const QIZHENG_ENGINE_VERSION = '0.2.0' as const;
 
 export const QIZHENG_CONFIG = {
   /**

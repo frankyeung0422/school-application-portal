@@ -25,6 +25,7 @@ import {
   computeBazi,
   detectPatterns,
   computeSelfTransformations,
+  traceJiChains,
   type BirthInfo,
   type Chart,
   type BaziChart,
@@ -40,7 +41,7 @@ const flag = (name: string): string | undefined => {
 };
 const has = (name: string) => args.includes(`--${name}`);
 
-const MODE = (flag('mode') ?? 'engine') as 'none' | 'engine';
+const MODE = (flag('mode') ?? 'engine') as 'none' | 'engine' | 'engine+';
 const MODEL = flag('model') ?? 'claude-haiku-4-5-20251001';
 const LIMIT = flag('limit') ? Number(flag('limit')) : Infinity;
 const CATEGORY = flag('category');
@@ -102,6 +103,12 @@ function ziweiBlock(chart: Chart): string {
   if (pats.length) lines.push('格局: ' + pats.map((p) => `${p.name}(${p.kind})`).join('、'));
   const self = computeSelfTransformations(chart);
   if (self.length) lines.push('自化: ' + self.map((s) => `${s.palace}${s.kind}化${s.hua}`).join('、'));
+  if (MODE === 'engine+') {
+    if (chart.mingLord) lines.push(`命主${chart.mingLord} 身主${chart.shenLord}`);
+    const keyStarts = new Set(['命宮', '夫妻', '財帛', '疾厄', '官祿']);
+    const chains = traceJiChains(chart).filter((c) => keyStarts.has(c.start));
+    if (chains.length) lines.push('化忌連環: ' + chains.map((c) => c.text).join('；'));
+  }
   return lines.join('\n');
 }
 
@@ -116,6 +123,14 @@ function baziBlock(chart: BaziChart): string {
   if (s) {
     lines.push(`日主強弱: ${s.verdict}(月令${s.seasonalState}${s.deLing ? '得令' : '失令'}, 根${s.roots})　喜用: ${s.favorableElements.join('、')}　忌: ${s.unfavorableElements.join('、')}　空亡: ${s.voidBranches.join('、')}`);
   }
+  if (MODE === 'engine+') {
+    if (s?.climateAdjustment) lines.push(`調候: ${s.climateAdjustment.reason}`);
+    if (chart.shenSha?.length) {
+      const cn = { year: '年', month: '月', day: '日', hour: '時' } as const;
+      lines.push('神煞: ' + chart.shenSha.map((h) => `${h.name}(${cn[h.pillar]})`).join('、'));
+    }
+    if (chart.taiYuan) lines.push(`胎元${chart.taiYuan} 命宮${chart.mingGong ?? ''}`);
+  }
   return lines.join('\n');
 }
 
@@ -126,7 +141,7 @@ function buildPrompt(q: BenchQuestion): { system: string; user: string } {
   ].join('\n');
 
   const parts = [`命主: ${q.birth_info.raw}`];
-  if (MODE === 'engine') {
+  if (MODE === 'engine' || MODE === 'engine+') {
     const birth = toBirth(q.birth_info);
     try {
       parts.push('', '【紫微斗數盤（引擎排定）】', ziweiBlock(computeChart(birth)));

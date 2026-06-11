@@ -11,6 +11,7 @@
  *  7. dignities (廟旺落陷) + 命主星 / 身主星 (dignities.ts / signs.ts)
  */
 import type { BirthInfo } from '../types';
+import { resolveSolarBirth } from '../solar-to-lunar';
 import { toSidereal, norm360, ayanamsa } from './ayanamsa';
 import { QIZHENG_CONFIG, QIZHENG_ENGINE_VERSION, DEFAULT_LATITUDE, DEFAULT_LONGITUDE } from './config';
 import { dignityOf } from './data/dignities';
@@ -39,7 +40,9 @@ export { MANSION_BOUNDARIES } from './mansions';
 
 const FOUR_REMAINDER_SET = new Set<string>(FOUR_REMAINDERS);
 
-export function computeQizhengChart(birth: BirthInfo): QizhengChart {
+export function computeQizhengChart(birthInput: BirthInfo): QizhengChart {
+  // Lunar input → solar equivalent (incl. 閏月) before any time math.
+  const birth = resolveSolarBirth(birthInput);
   const t = birthToAstroTime(birth);
   const jd = julianDayTT(t);
   const T = julianCenturiesTT(t);
@@ -106,7 +109,7 @@ export function computeQizhengChart(birth: BirthInfo): QizhengChart {
   return {
     kind: 'qizheng',
     engineVersion: QIZHENG_ENGINE_VERSION,
-    birthInfo: birth,
+    birthInfo: birthInput,
     julianDay: jd,
     ayanamsa: ayan,
     config: {
@@ -134,7 +137,8 @@ export function computeQizhengChart(birth: BirthInfo): QizhengChart {
 export function qizhengHash(birth: BirthInfo): string {
   const lat = birth.latitude ?? DEFAULT_LATITUDE;
   const lon = birth.longitude ?? DEFAULT_LONGITUDE;
-  const canonical = `qz-${birth.year}-${birth.month}-${birth.day}-${birth.hour}-${birth.minute}-${birth.gender}-${birth.calendar}-${lat}-${lon}`;
+  const leap = birth.calendar === 'lunar' && birth.isLeapMonth ? '-leap' : '';
+  const canonical = `qz-${birth.year}-${birth.month}-${birth.day}-${birth.hour}-${birth.minute}-${birth.gender}-${birth.calendar}${leap}-${lat}-${lon}`;
   let h = 5381;
   for (let i = 0; i < canonical.length; i++) h = ((h << 5) + h + canonical.charCodeAt(i)) | 0;
   return `q_${(h >>> 0).toString(16)}_${birth.year}${birth.month}${birth.day}`;

@@ -145,6 +145,13 @@ function uniq<T>(arr: T[]): T[] {
   return [...new Set(arr)];
 }
 
+/**
+ * v2: when the chart carries 大限 decades (engine ≥0.4), bands follow the
+ * actual 大限 ladder — each decade's severity reflects the malefics/化忌
+ * sitting in its 大限宮 plus the 限忌 star's health domain, on top of the
+ * natal 疾厄/命宮 baseline. Charts without decades fall back to the fixed
+ * 10-year stages.
+ */
 export function analyzeHealthTimeline(chart: Chart, birthYear: number): HealthDecade[] {
   const ji: Palace | undefined = chart.palaces.find((p) => p.name === '疾厄');
   const ming: Palace | undefined = chart.palaces.find((p) => p.name === '命宮');
@@ -186,6 +193,48 @@ export function analyzeHealthTimeline(chart: Chart, birthYear: number): HealthDe
   const baseFocusAreas = [...focusAreasSet];
   const baseRationale = uniq(rationaleLines);
 
+  // ── v2 path: bands from the actual 大限 ladder ─────────────────────
+  if (chart.decades?.length) {
+    const byBranch = new Map(chart.palaces.map((p) => [p.branch, p]));
+    return chart.decades.map((d, i) => {
+      const decadePalace = byBranch.get(d.branch);
+      const dCtx = decadePalace ? scoreStars(decadePalace.stars) : { malefics: 0, huaJi: 0, huaJiStars: [], starsPresent: new Set<StarName>() };
+      const jiStar = d.transformations.忌 as StarName;
+      const jiAreas = STAR_TO_HEALTH[jiStar] ?? [];
+      // 限忌 star sitting in natal 疾厄 (or the decade palace itself) is the
+      // classical "this decade presses on health" signature.
+      const jiInJiE = !!ji?.stars.some((s) => s.name === jiStar);
+      const ageWeight = 1 + i * 0.12; // chronic bias still rises with age
+      const rawScore = ageWeight + natalBurden * 0.5 + dCtx.malefics * 0.7 + dCtx.huaJi * 0.6 + (jiInJiE ? 0.8 : 0);
+      const severity = (Math.max(1, Math.min(5, Math.round(rawScore)))) as 1|2|3|4|5;
+
+      const focusAreas = uniq([...baseFocusAreas, ...(severity >= 3 ? jiAreas : [])]);
+      const rationale = uniq([
+        ...baseRationale,
+        `${d.startAge}-${d.endAge}歲行${d.palaceName}宮(${d.stem}${d.branch})，限忌${jiStar}${jiInJiE ? '，且限忌星正坐本命疾厄' : ''}`,
+        ...(dCtx.malefics ? [`大限宮中見煞星${dCtx.malefics}顆`] : []),
+      ]);
+      const stageRecs = GENERIC_RECS[severity] ?? GENERIC_RECS[3];
+      const recommendations = uniq([...recsByAreas(focusAreas), ...stageRecs]).slice(0, 6);
+      const headline = severity >= 4
+        ? `行${d.palaceName}限 — 健康壓力偏高，留意${(jiAreas[0] ?? focusAreas[0]) ?? '整體狀態'}`
+        : `行${d.palaceName}限 — ${severity >= 3 ? '按年體檢、重點追蹤' : '平穩期，維持良好習慣'}`;
+
+      return {
+        ageStart: Math.max(0, d.startAge - 1), // 虛歲 → 實歲 approximation
+        ageEnd: d.endAge - 1,
+        yearStart: birthYear + d.startAge - 1,
+        yearEnd: birthYear + d.endAge - 1,
+        severity,
+        headline,
+        focusAreas,
+        rationale,
+        recommendations,
+      };
+    });
+  }
+
+  // ── legacy fallback: fixed 10-year stages (pre-0.4 cached charts) ──
   const decades: HealthDecade[] = STAGES.map((stage) => {
     // Severity: stage weight × natal burden, clamped to 1-5.
     const rawScore = stage.stageWeight + natalBurden * 0.6;

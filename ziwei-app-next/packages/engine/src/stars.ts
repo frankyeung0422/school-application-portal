@@ -9,8 +9,8 @@ import {
  *
  * Algorithm:
  *  1. 紫微 located by (lunar day, 五行局) via the bureau-N table
- *  2. 紫微系 (6 stars): 紫微 → 天機(逆1) → [skip 2] 太陽(逆3) → 武曲(逆1) → 天同(逆1) → [skip 2] 廉貞(逆3)
- *     Effective offsets from 紫微 counter-clockwise: 紫微=0, 天機=-1, 太陽=-4, 武曲=-5, 天同=-6, 廉貞=-9
+ *  2. 紫微系 (6 stars): 紫微 → 天機(逆1) → [skip 1] 太陽(逆2) → 武曲(逆1) → 天同(逆1) → [skip 2] 廉貞(逆3)
+ *     Effective offsets from 紫微 counter-clockwise: 紫微=0, 天機=-1, 太陽=-3, 武曲=-4, 天同=-5, 廉貞=-8
  *  3. 天府 placed at the branch that is the "mirror" of 紫微 about the 寅申 axis
  *  4. 天府系 (8 stars): 天府 → 太陰(順1) → 貪狼(順1) → 巨門(順1) → 天相(順1) → 天梁(順1) → 七殺(順1) → [skip 2] 破軍(順3)
  *     Effective offsets from 天府 clockwise: 天府=0, 太陰=+1, 貪狼=+2, 巨門=+3, 天相=+4, 天梁=+5, 七殺=+6, 破軍=+10
@@ -19,43 +19,31 @@ import {
 /**
  * Place 紫微 by 五行局數 (2-6) and lunar day (1-30).
  *
- * The rule: compute quotient/remainder of (day / bureauNum) then adjust by remainder
- * to land at the correct branch starting from a base point.
+ * Canonical 安紫微訣: divide the lunar day d by the bureau number n, borrowing
+ * up to the next multiple when it doesn't divide evenly:
+ *   q = ceil(d / n)        — the quotient after borrowing
+ *   x = q·n − d            — the borrowed amount (借數, 0 when even division)
+ * Count (q − 1) palaces forward from 寅, then move x further forward if x is
+ * EVEN, or x backward if x is ODD.
  *
- * Concrete implementation — the standard "紫微定位歌訣":
- *   - Take lunar day d
- *   - Divide by bureauNum n → quotient q, remainder r
- *   - If r==0, use q as the count
- *   - If r>0, add (n-r) to d (call it d'), then d'/n = q'  // q' is integer
- *   - 紫微 starts at 寅 (index 2 in EARTHLY_BRANCHES) and steps backward by q' positions
- *     IF (n-r) is even, otherwise step forward by q' positions
+ * Verified against the classical per-bureau tables: 水二局初一→丑, 初二→寅;
+ * 木三局初一→辰; 金四局初一→亥; 土五局初一→午; 火六局初一→酉 — and
+ * cross-validated against iztro on 200 random births (see
+ * __tests__/iztro-crosscheck.test.ts).
  *
- * NOTE: There are several formulations of this rule in the literature; this is
- * the most common 紫雲派 form. The corpus tests in P3.5 will verify against
- * known textbook examples.
+ * HISTORY: engine ≤0.4 used a mis-derived form of this rule (ignored x in the
+ * offset and inverted the parity direction), mis-placing 紫微 — and therefore
+ * all 14 main stars — in ~90% of charts. Caught by the iztro cross-check.
  */
 export function placeZiWei(lunarDay: number, bureauNum: number): EarthlyBranch {
   if (lunarDay < 1 || lunarDay > 30) throw new Error(`lunarDay must be 1-30, got ${lunarDay}`);
   if (![2, 3, 4, 5, 6].includes(bureauNum)) throw new Error(`bureauNum must be 2-6, got ${bureauNum}`);
 
   const n = bureauNum;
-  let quotient: number;
-  let stepForward: boolean;
-
-  const remainder = lunarDay % n;
-  if (remainder === 0) {
-    quotient = lunarDay / n;
-    stepForward = false; // r==0 → backward
-  } else {
-    const adjustment = n - remainder;
-    quotient = (lunarDay + adjustment) / n;
-    stepForward = adjustment % 2 === 1; // odd adjustment → forward
-  }
-
-  // Start at 寅 (index 2) and step
-  const startIdx = 2; // 寅
-  const offset = stepForward ? quotient - 1 : -(quotient - 1);
-  const idx = ((startIdx + offset) % 12 + 12) % 12;
+  const q = Math.ceil(lunarDay / n);
+  const x = q * n - lunarDay;
+  const offset = (q - 1) + (x % 2 === 0 ? x : -x);
+  const idx = ((2 + offset) % 12 + 12) % 12; // 寅 = index 2
   return EARTHLY_BRANCHES[idx];
 }
 
@@ -69,15 +57,18 @@ export function placeZiWei(lunarDay: number, bureauNum: number): EarthlyBranch {
 export function placeMainStars(ziWeiBranch: EarthlyBranch): Map<MainStar, EarthlyBranch> {
   const z = EARTHLY_BRANCHES.indexOf(ziWeiBranch);
 
-  // 紫微系 — offsets from 紫微 (counter-clockwise = negative index delta)
-  // 紫微 0 | 天機 -1 | 太陽 -4 | 武曲 -5 | 天同 -6 | 廉貞 -9
+  // 紫微系 — offsets from 紫微 (counter-clockwise = negative index delta).
+  // 訣: 紫微逆去天機星，隔一(skip ONE)陽武天同當，又隔二位(skip TWO)廉貞地.
+  // 紫微 0 | 天機 -1 | (空-2) | 太陽 -3 | 武曲 -4 | 天同 -5 | (空-6,-7) | 廉貞 -8
+  // HISTORY: engine ≤0.4 used -4/-5/-6/-9 (read 隔一 as skip two), shifting
+  // 太陽/武曲/天同/廉貞 one palace in every chart. Caught by iztro cross-check.
   const ziWeiSystem: Array<[MainStar, number]> = [
     ['紫微', 0],
     ['天機', -1],
-    ['太陽', -4],
-    ['武曲', -5],
-    ['天同', -6],
-    ['廉貞', -9],
+    ['太陽', -3],
+    ['武曲', -4],
+    ['天同', -5],
+    ['廉貞', -8],
   ];
 
   // 天府 sits opposite 紫微 across the 寅—申 axis.

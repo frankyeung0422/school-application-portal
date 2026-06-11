@@ -11,6 +11,9 @@ export * from './solar-time';
 export * from './bazi-strength';
 export * from './patterns';
 export * from './cross-system';
+export * from './lords';
+export * from './minor-limit';
+export * from './bazi-shensha';
 export * from './iron-plate';
 export * from './bazi';
 export * from './bazi-mangpai';
@@ -38,10 +41,11 @@ import { placeMinorStars } from './minor-stars';
 import { computeDecadeLuck } from './decade-luck';
 import { bureauFromMingong } from './bureau';
 import { transformationsForYearStem } from './transformations';
-import { solarToLunar, parseGanzhi } from './solar-to-lunar';
+import { solarToLunar, parseGanzhi, resolveSolarBirth } from './solar-to-lunar';
+import { mingLordOf, shenLordOf } from './lords';
 import { effectiveBirthMoment } from './solar-time';
 
-export const ENGINE_VERSION = '0.4.0' as const;
+export const ENGINE_VERSION = '0.5.0' as const;
 
 /**
  * Compute a full ziwei chart from birth info.
@@ -57,37 +61,31 @@ export const ENGINE_VERSION = '0.4.0' as const;
  *  8. assemble palaces with brightness + transformation badges
  */
 export function computeChart(birth: BirthInfo): Chart {
+  // Step 0: lunar input → solar equivalent (incl. 閏月), then one solar pipeline.
+  const solarBirth = resolveSolarBirth(birth);
+
+  // 真太陽時 correction (opt-in) on the solar moment.
+  const eff = effectiveBirthMoment(solarBirth);
+
   // Step 1: solar → lunar
-  let lunar: { year: number; month: number; day: number; isLeap: boolean };
-  let yearGanzhi: `${HeavenlyStem}${EarthlyBranch}`;
+  const { lunar, ganzhi } = solarToLunar(eff.year, eff.month, eff.day, eff.hour, eff.minute);
+  const yearGanzhi: `${HeavenlyStem}${EarthlyBranch}` = ganzhi.yearGanzhi;
 
-  // 真太陽時 — only meaningful for solar input (a lunar date can't be shifted by minutes).
-  const eff = birth.calendar === 'solar'
-    ? effectiveBirthMoment(birth)
-    : { year: birth.year, month: birth.month, day: birth.day, hour: birth.hour, minute: birth.minute, correctionMinutes: 0 };
-
-  if (birth.calendar === 'lunar') {
-    // For now, treat input as already-lunar. Production should reverse-convert.
-    lunar = { year: birth.year, month: birth.month, day: birth.day, isLeap: false };
-    // Year ganzhi computation requires solar conversion; lazily synthesize.
-    const synthSolar = solarToLunar(birth.year, birth.month, birth.day, birth.hour, birth.minute);
-    yearGanzhi = synthSolar.ganzhi.yearGanzhi;
-  } else {
-    const { lunar: l, ganzhi } = solarToLunar(eff.year, eff.month, eff.day, eff.hour, eff.minute);
-    lunar = l;
-    yearGanzhi = ganzhi.yearGanzhi;
-  }
+  // 閏月過半作下月 — mainstream convention (matches iztro fixLeap): a birth in
+  // the second half of a leap month counts as the next month for all
+  // month-keyed placements (命宮/身宮/左輔/右弼).
+  const effectiveMonth = lunar.isLeap && lunar.day > 15 ? lunar.month + 1 : lunar.month;
 
   const { stem: yearStem, branch: yearBranch } = parseGanzhi(yearGanzhi);
 
   // Step 2: 命宮 branch
-  const mingongBranch = locateMingongBranch(lunar.month, eff.hour);
+  const mingongBranch = locateMingongBranch(effectiveMonth, eff.hour);
 
   // 身宮 = 命宮 + 生月 + 生時 (both forward, clockwise).
   // Equivalent: from 寅, advance (lunar.month - 1) + hourBranchIndex.
   // Source: 紫雲《紫微斗數導讀》ch.3 page 42.
   const hourBranchIndex = Math.floor(((eff.hour + 1) % 24) / 2);
-  const shenGongIdx = (2 + (lunar.month - 1) + hourBranchIndex) % 12;
+  const shenGongIdx = (2 + (effectiveMonth - 1) + hourBranchIndex) % 12;
   const shenGongBranch = EARTHLY_BRANCHES[shenGongIdx];
 
   // Step 3: palace stems
@@ -113,7 +111,7 @@ export function computeChart(birth: BirthInfo): Chart {
   const minorPlacements = placeMinorStars({
     yearStem,
     yearBranch,
-    lunarMonth: lunar.month,
+    lunarMonth: effectiveMonth,
     hourBranchIndex,
   });
 
@@ -160,21 +158,24 @@ export function computeChart(birth: BirthInfo): Chart {
     engineVersion: ENGINE_VERSION,
     birthInfo: birth,
     solarDate: {
-      year: birth.year, month: birth.month, day: birth.day,
-      hour: birth.hour, minute: birth.minute,
+      year: solarBirth.year, month: solarBirth.month, day: solarBirth.day,
+      hour: solarBirth.hour, minute: solarBirth.minute,
     },
     lunarDate: lunar,
     yearGanzhi,
     bureau,
     palaces,
     decades,
+    mingLord: mingLordOf(mingongBranch),
+    shenLord: shenLordOf(yearBranch),
   };
 }
 
 /** Stable hash for cache lookup. */
 export function chartHash(birth: BirthInfo): string {
   const tst = birth.trueSolarTime ? '-tst' : '';
-  const canonical = `${birth.year}-${birth.month}-${birth.day}-${birth.hour}-${birth.minute}-${birth.gender}-${birth.calendar}${tst}`;
+  const leap = birth.calendar === 'lunar' && birth.isLeapMonth ? '-leap' : '';
+  const canonical = `${birth.year}-${birth.month}-${birth.day}-${birth.hour}-${birth.minute}-${birth.gender}-${birth.calendar}${tst}${leap}`;
   // Lightweight non-crypto fingerprint; consumers can layer SHA-256 on top if needed.
   let h = 5381;
   for (let i = 0; i < canonical.length; i++) h = ((h << 5) + h + canonical.charCodeAt(i)) | 0;

@@ -6,6 +6,9 @@ import {
   detectPatterns,
   dongweiLimits,
   analyzeCrossSystem,
+  traceJiChains,
+  decadeOverlay,
+  decadeAtYear,
 } from '@ziwei/engine';
 import { deriveArchetype, mingongStarsLine } from './archetype';
 
@@ -40,6 +43,7 @@ export function ziweiContext(chart: Chart): string {
     `五行局: ${chart.bureau.bureau}`,
     `年柱: ${chart.yearGanzhi}`,
     `本命主星: ${mingongStarsLine(chart)}`,
+    ...(chart.mingLord ? [`命主: ${chart.mingLord}　身主: ${chart.shenLord}`] : []),
     `命格: ${archetype.label} — ${archetype.tagline}`,
     `十二宮:`,
     palaces,
@@ -72,6 +76,25 @@ export function ziweiContext(chart: Chart): string {
   const jiFlights = computeFlyingStars(chart).filter((f) => f.hua === '忌' && f.toPalace);
   if (jiFlights.length) {
     lines.push(`各宮化忌飛向: ${jiFlights.map((f) => `${f.fromPalace}忌入${f.toPalace}(${f.star})`).join('、')}`);
+  }
+
+  // 化忌鏈 — key palaces only (most chains cycle, so filter by origin to stay compact).
+  const KEY_CHAIN_STARTS = new Set(['命宮', '夫妻', '財帛', '疾厄', '官祿']);
+  const chains = traceJiChains(chart).filter((c) => KEY_CHAIN_STARTS.has(c.start));
+  if (chains.length) {
+    lines.push(`化忌連環: ${chains.map((c) => c.text).join('；')}`);
+  }
+
+  // 現行大限疊宮 — how this decade's palaces stack on the natal chart.
+  if (chart.decades?.length) {
+    const active = decadeAtYear(chart.decades, chart.birthInfo.year, new Date().getFullYear());
+    if (active) {
+      const overlay = decadeOverlay(chart, active)
+        .filter((o) => ['命宮', '夫妻', '財帛', '官祿', '疾厄'].includes(o.decadePalace))
+        .map((o) => `限${o.decadePalace}疊本命${o.natalPalace}`)
+        .join('、');
+      lines.push(`現行大限 (${active.startAge}-${active.endAge}歲) 疊宮: ${overlay}`);
+    }
   }
 
   return lines.join('\n');
@@ -111,6 +134,15 @@ export function baziContext(chart: BaziChart): string {
       ? ` (${s.voidPillars.map((p) => (p === 'year' ? '年' : p === 'month' ? '月' : '時')).join('、')}支落空亡)`
       : '';
     lines.push(`空亡: ${s.voidBranches.join('、')}${voidNote}`);
+  }
+
+  // 神煞 + 胎元/命宮 — engine ≥0.3 bazi charts.
+  if (chart.shenSha?.length) {
+    const PILLAR_CN = { year: '年', month: '月', day: '日', hour: '時' } as const;
+    lines.push(`神煞: ${chart.shenSha.map((h) => `${h.name}(${PILLAR_CN[h.pillar]}柱)`).join('、')}`);
+  }
+  if (chart.taiYuan || chart.mingGong) {
+    lines.push(`胎元: ${chart.taiYuan ?? '—'}　命宮: ${chart.mingGong ?? '—'}`);
   }
 
   return lines.join('\n');
