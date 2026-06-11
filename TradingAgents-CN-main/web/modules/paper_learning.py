@@ -568,6 +568,14 @@ def ensure_bandit_table(conn: sqlite3.Connection) -> None:
             PRIMARY KEY (account_id, strategy)
         );
     ''')
+    # T11 Kelly extension: track running average win / loss magnitude so the
+    # sizing layer can compute the Kelly fraction f = (p*b − (1−p)) / b.
+    # Backwards compat — ALTER IF NOT EXISTS pattern.
+    cols = {row[1] for row in conn.execute('PRAGMA table_info(bandit_state)').fetchall()}
+    if 'avg_win_pct' not in cols:
+        conn.execute('ALTER TABLE bandit_state ADD COLUMN avg_win_pct REAL DEFAULT 0')
+    if 'avg_loss_pct' not in cols:
+        conn.execute('ALTER TABLE bandit_state ADD COLUMN avg_loss_pct REAL DEFAULT 0')
     conn.commit()
 
 
@@ -587,31 +595,57 @@ def _ensure_bandit_rows(account_id: int, strategies: List[str], conn_factory) ->
 
 
 def record_bandit_reward(account_id: int, strategy: str, won: bool,
-                          conn_factory) -> Dict[str, Any]:
+                          conn_factory,
+                          pnl_pct: Optional[float] = None) -> Dict[str, Any]:
     """Called when a position closes. Bumps α (won) or β (lost).
 
-    Returns the new (alpha, beta) so callers / tests can assert behaviour.
+    T11 extension — when ``pnl_pct`` is supplied, also update the running
+    average win / loss magnitude on the bandit row so Kelly-sizing has the
+    payoff ratio (b = avg_win_pct / avg_loss_pct).
+
+    Returns the new (alpha, beta, wins, losses, avg_win_pct, avg_loss_pct).
     """
     if not strategy:
         return {}
     _ensure_bandit_rows(account_id, [strategy], conn_factory)
     now = datetime.now().isoformat()
     with conn_factory() as c:
-        if won:
-            c.execute(
-                'UPDATE bandit_state SET alpha = alpha + 1, wins = wins + 1, '
-                'last_updated=? WHERE account_id=? AND strategy=?',
-                (now, account_id, strategy))
-        else:
-            c.execute(
-                'UPDATE bandit_state SET beta = beta + 1, losses = losses + 1, '
-                'last_updated=? WHERE account_id=? AND strategy=?',
-                (now, account_id, strategy))
-        c.commit()
         c.row_factory = sqlite3.Row
+        existing = c.execute(
+            '''SELECT wins, losses,
+                      COALESCE(avg_win_pct, 0)  AS avg_win_pct,
+                      COALESCE(avg_loss_pct, 0) AS avg_loss_pct
+               FROM bandit_state WHERE account_id=? AND strategy=?''',
+            (account_id, strategy)).fetchone()
+        prev_wins = int(existing['wins']) if existing else 0
+        prev_losses = int(existing['losses']) if existing else 0
+        prev_avg_win = float(existing['avg_win_pct'] or 0) if existing else 0.0
+        prev_avg_loss = float(existing['avg_loss_pct'] or 0) if existing else 0.0
+        # Running mean: new_avg = (n*old + x) / (n+1)
+        if won:
+            new_avg_win = prev_avg_win
+            if pnl_pct is not None:
+                new_avg_win = (prev_avg_win * prev_wins + abs(float(pnl_pct))) / (prev_wins + 1)
+            c.execute(
+                '''UPDATE bandit_state
+                   SET alpha = alpha + 1, wins = wins + 1, last_updated=?,
+                       avg_win_pct=?
+                   WHERE account_id=? AND strategy=?''',
+                (now, new_avg_win, account_id, strategy))
+        else:
+            new_avg_loss = prev_avg_loss
+            if pnl_pct is not None:
+                new_avg_loss = (prev_avg_loss * prev_losses + abs(float(pnl_pct))) / (prev_losses + 1)
+            c.execute(
+                '''UPDATE bandit_state
+                   SET beta = beta + 1, losses = losses + 1, last_updated=?,
+                       avg_loss_pct=?
+                   WHERE account_id=? AND strategy=?''',
+                (now, new_avg_loss, account_id, strategy))
+        c.commit()
         row = c.execute(
-            'SELECT alpha, beta, wins, losses FROM bandit_state '
-            'WHERE account_id=? AND strategy=?',
+            '''SELECT alpha, beta, wins, losses, avg_win_pct, avg_loss_pct
+               FROM bandit_state WHERE account_id=? AND strategy=?''',
             (account_id, strategy)).fetchone()
     return dict(row) if row else {}
 
@@ -666,6 +700,46 @@ def get_bandit_state(account_id: int, conn_factory) -> List[Dict[str, Any]]:
             'ORDER BY (CAST(wins AS REAL)/(wins+losses+0.0001)) DESC',
             (account_id,)).fetchall()
     return [dict(r) for r in rows]
+
+
+def pooled_strategy_stats(strategy: str, conn_factory,
+                          exclude_account_id: Optional[int] = None) -> Dict[str, Any]:
+    """Aggregate a strategy's bandit record across ALL accounts.
+
+    Per-account Kelly sizing needs ~20 closed trades for ONE strategy on ONE
+    account — at a couple of trades a month that's years away, so Kelly never
+    engages and sizing falls back to fixed forever. Pooling the same strategy's
+    outcomes across every account gives the sizing layer a usable sample far
+    sooner (a strategy behaves similarly across names — the per-account row is
+    a refinement, not a prerequisite).
+
+    Returns {wins, losses, avg_win_pct, avg_loss_pct} with the averages
+    re-weighted by each account's win/loss counts. ``exclude_account_id`` omits
+    one account (e.g. to blend its own row separately).
+    """
+    where = 'WHERE strategy=?'
+    params: List[Any] = [strategy]
+    if exclude_account_id is not None:
+        where += ' AND account_id<>?'
+        params.append(exclude_account_id)
+    with conn_factory() as c:
+        c.row_factory = sqlite3.Row
+        rows = c.execute(
+            f'''SELECT wins, losses,
+                       COALESCE(avg_win_pct, 0)  AS avg_win_pct,
+                       COALESCE(avg_loss_pct, 0) AS avg_loss_pct
+                FROM bandit_state {where}''', params).fetchall()
+    tot_wins = sum(int(r['wins']) for r in rows)
+    tot_losses = sum(int(r['losses']) for r in rows)
+    # Count-weighted average magnitude across accounts.
+    win_num = sum(float(r['avg_win_pct']) * int(r['wins']) for r in rows)
+    loss_num = sum(float(r['avg_loss_pct']) * int(r['losses']) for r in rows)
+    return {
+        'wins': tot_wins,
+        'losses': tot_losses,
+        'avg_win_pct': (win_num / tot_wins) if tot_wins else 0.0,
+        'avg_loss_pct': (loss_num / tot_losses) if tot_losses else 0.0,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -759,6 +833,22 @@ def evolution_guardrails(
         blocks.append(
             f'param_change_{int(pcr*100)}%_exceeds_{int(_GR_PARAM_CHANGE_THRESHOLD*100)}%'
         )
+
+    # GR4 (P4): forward-validation registry. Every proposed plan is
+    # registered (idempotent — known configs return their existing row), and
+    # a config whose registry status is 'killed' (it already died forward
+    # under its pre-registered criterion) can never be re-promoted. Without
+    # this, the mutation/GA sources can resurrect dead configs indefinitely.
+    try:
+        try:
+            from . import strategy_registry as _sr
+        except ImportError:
+            from web.modules import strategy_registry as _sr  # type: ignore
+        reg_row = _sr.register(after_plan, kind='equity_plan')
+        if (reg_row or {}).get('status') == 'killed':
+            blocks.append('registry_killed_config')
+    except Exception:
+        pass  # registry is additive — its failure must not block evolution
 
     return {'passed': len(blocks) == 0, 'blocks': blocks,
             'param_change_ratio': pcr}

@@ -92,6 +92,40 @@ def _build_exit_signals(strategies: List[str], entry_combine_mode: str,
     return [1 - v for v in raw]  # 1 = exit, 0 = hold
 
 
+def _select_exit(price: float, bar_high: float, bar_low: float, *,
+                 sl_level: Optional[float], atr_sl_level: Optional[float],
+                 trail_level: Optional[float], tp_level: Optional[float],
+                 exit_signal_now: bool):
+    """Gap-aware exit selection — the single source of truth shared by the
+    live tick (`_run_account_tick_impl`) and the optimizer backtest
+    (`autotrade_sim._simulate_symbol`), so both price stops/targets identically
+    and can never drift apart.
+
+    Loss-side has priority: if both a stop and the TP would have triggered on
+    the same gap day, we assume the worse-case stop fill. Fill model:
+      - threshold inside [bar_low, bar_high] → fill exactly at the threshold
+        (limit/stop-order semantics)
+      - bar gapped entirely through the threshold → fill at the worse extreme
+        (bar_low for a stop). TP never fills better than its level (we don't
+        model favorable gap-ups, which would overstate P&L).
+
+    Pass a level as None to disable it. `exit_signal_now` is the pre-computed
+    soft-exit decision (exit_signals[i]==1 or a 1→0 signal cross). Returns
+    (exit_reason, exit_price); exit_reason is None when nothing triggers.
+    """
+    if sl_level is not None and bar_low <= sl_level:
+        return 'SL', (sl_level if bar_high >= sl_level else bar_low)
+    if atr_sl_level is not None and bar_low <= atr_sl_level:
+        return 'ATR_SL', (atr_sl_level if bar_high >= atr_sl_level else bar_low)
+    if trail_level is not None and bar_low <= trail_level:
+        return 'TRAIL_SL', (trail_level if bar_high >= trail_level else bar_low)
+    if tp_level is not None and bar_high >= tp_level:
+        return 'TP', tp_level
+    if exit_signal_now:
+        return 'signal', price
+    return None, price
+
+
 _DB = Path(__file__).resolve().parents[1] / 'trading_agents.db'
 _PROD_DB_PATH = Path(__file__).resolve().parents[1] / 'trading_agents.db'
 # T7-bugfix: when _DB has been monkeypatched away from the prod path (e.g.
@@ -117,9 +151,10 @@ FEE_BPS = 5.0 / 10000.0
 #
 # Each entry = (buy_bps, sell_bps). Add new venues here as needed.
 _FEE_TABLE = {
-    'US': (1.0 / 10000.0, 1.0 / 10000.0),                 # 1 bp each side
-    'HK': (3.0 / 10000.0, 13.0 / 10000.0),                # 3 bp buy, 3 bp comm + 10 bp stamp + slippage on sell
-    'DEFAULT': (5.0 / 10000.0, 5.0 / 10000.0),
+    'US':     (1.0 / 10000.0, 1.0 / 10000.0),    # 1 bp each side
+    'HK':     (3.0 / 10000.0, 13.0 / 10000.0),   # comm + stamp + slippage
+    'CRYPTO': (25.0 / 10000.0, 25.0 / 10000.0),  # 25 bp ≈ Binance/Coinbase taker
+    'DEFAULT':(5.0 / 10000.0, 5.0 / 10000.0),
 }
 
 
@@ -129,6 +164,9 @@ def _venue_for(symbol: str) -> str:
         return 'HK'
     if s.endswith('.SS') or s.endswith('.SZ'):
         return 'CN'
+    if s.endswith('-USD'):
+        # Crypto: typical retail-broker maker/taker = 25-50 bp each side.
+        return 'CRYPTO'
     return 'US'
 
 
@@ -137,6 +175,81 @@ def _fee_bps(symbol: str, side: str) -> float:
     venue = _venue_for(symbol)
     buy_bps, sell_bps = _FEE_TABLE.get(venue, _FEE_TABLE['DEFAULT'])
     return buy_bps if side == 'buy' else sell_bps
+
+
+# T15 spread tiers — half-spread paid on entry + exit on TOP of fees.
+# Mega-cap = SPY/AAPL/MSFT class; mid-cap = $5-50B; small-cap = <$5B.
+# Source: empirical median spread on NMS/NASDAQ at 10:00-15:00 ET 2025.
+# Cheap-to-trade names live in MEGA bucket; the long tail in SMALL.
+_SPREAD_BPS = {
+    'MEGA':  0.5,   # 0.5 bp = 0.005% of mid (half-spread)
+    'LARGE': 1.5,
+    'MID':   4.0,
+    'SMALL': 12.0,
+    'MICRO': 30.0,
+}
+
+# Curated tier list. Anything not listed falls back to MID (a conservative
+# guess for unknown names).
+_SPREAD_TIER_MEGA = {
+    'SPY', 'QQQ', 'IWM', 'DIA', 'AAPL', 'MSFT', 'NVDA', 'AMZN', 'GOOGL',
+    'GOOG', 'META', 'TSLA', 'BRK.B', 'AVGO', 'TSM', 'COST', 'WMT', 'JPM',
+}
+_SPREAD_TIER_LARGE = {
+    'AMD', 'NFLX', 'CRM', 'ORCL', 'BAC', 'XOM', 'CVX', 'JNJ', 'UNH',
+    'LLY', 'PG', 'HD', 'V', 'MA', 'PEP', 'KO', 'DIS', 'INTC', 'CSCO',
+    'ABBV', 'PFE', 'MRK', 'TMO', 'ABT', 'AMAT', 'LRCX', 'ADBE', 'NOW',
+}
+
+
+def _spread_tier(symbol: str) -> str:
+    s = (symbol or '').upper()
+    if s in _SPREAD_TIER_MEGA:
+        return 'MEGA'
+    if s in _SPREAD_TIER_LARGE:
+        return 'LARGE'
+    if s.endswith('-USD'):
+        # Crypto spreads on retail venues: BTC/ETH ~5 bp, mid-caps ~15 bp.
+        return 'LARGE' if s in ('BTC-USD', 'ETH-USD') else 'MID'
+    if s.endswith('.HK'):
+        return 'MID'
+    return 'MID'
+
+
+def _half_spread_bps(symbol: str) -> float:
+    """Half-spread in DECIMAL (e.g. 0.0001 = 1 bp). Applied per side on
+    top of fees in the entry/exit cost model."""
+    tier = _spread_tier(symbol)
+    return _SPREAD_BPS.get(tier, _SPREAD_BPS['MID']) / 10000.0
+
+
+def _slippage_bps(symbol: str, order_dollars: float,
+                  adv_dollars: float = 0.0) -> float:
+    """Volume-aware slippage in decimal. Quadratic above 1% of ADV — large
+    orders eat increasingly more of the book.
+
+    ``adv_dollars`` is dollar-volume average. When unknown (0), we assume a
+    conservative $50M ADV — corresponds to median liquid US mid-cap.
+    """
+    adv = adv_dollars if adv_dollars > 0 else 50_000_000.0
+    if order_dollars <= 0 or adv <= 0:
+        return 0.0
+    ratio = order_dollars / adv
+    if ratio <= 0.01:
+        return 0.0
+    # k × (ratio − 0.01)² in bps, scaled so 5% of ADV ≈ 8 bp impact.
+    impact_bp = 35.0 * (ratio - 0.01) ** 2
+    return impact_bp / 10000.0
+
+
+def total_transaction_cost_bps(symbol: str, side: str, order_dollars: float,
+                                adv_dollars: float = 0.0) -> float:
+    """All-in transaction cost = fee + half-spread + size slippage. Decimal
+    (e.g. 0.0008 = 8 bps). Used as a multiplier on trade_value when
+    computing total cash effect."""
+    return (_fee_bps(symbol, side)
+            + _half_spread_bps(symbol)
+            + _slippage_bps(symbol, order_dollars, adv_dollars))
 
 
 # Anti-churn cooldown: minimum bars between a sell and a re-entry on the
@@ -153,6 +266,88 @@ _VOL_TARGET_SIGMA_FLOOR = 0.05
 # Min trade value (account-currency) — prevents the engine from placing
 # odd-lot $5 orders when the strategy allocates a sliver of cash.
 _DEFAULT_MIN_TRADE_VALUE = 100.0
+
+# T11 Kelly sizing knobs.
+# Sample-size floor: below this many closed positions per strategy, the
+# Kelly fraction is too noisy to trust — we fall back to vol-target or
+# fixed sizing. Empirically 20 trades gives ~±15% std error on win rate.
+_KELLY_MIN_SAMPLES = 20
+# Safety multiplier on raw Kelly. Full Kelly (1.0) is theoretically optimal
+# for log-wealth but has brutal drawdowns from estimation error; 0.25
+# ("quarter Kelly") is the retail standard.
+_KELLY_DEFAULT_SAFETY = 0.25
+# Hard caps so Kelly can't go past sane bounds even on a hot streak.
+_KELLY_HARD_FLOOR = 0.01
+_KELLY_HARD_CEIL = 0.50
+
+
+def _sigma_for_sizing(symbol: str, closes_so_far: List[float],
+                      plan: Dict[str, Any]) -> float:
+    """T18A — vol estimate consumed by vol-target sizing.
+
+    Uses GARCH(1,1) forecast when ``plan.use_garch=True`` AND a cached model
+    exists; falls back to ``_realized_vol_annual(closes, 30)`` otherwise.
+    Always floored at _VOL_TARGET_SIGMA_FLOOR.
+    """
+    use_garch = bool(plan.get('use_garch', True))
+    sigma: Optional[float] = None
+    if use_garch:
+        try:
+            try:
+                from .garch import forecast_vol  # type: ignore
+            except ImportError:
+                from web.modules.garch import forecast_vol  # type: ignore
+            sigma = forecast_vol(symbol, horizon=5, auto_fit=False)
+        except Exception:
+            sigma = None
+    if sigma is None or sigma <= 0:
+        sigma = _realized_vol_annual(closes_so_far, 30)
+    return max(sigma, _VOL_TARGET_SIGMA_FLOOR)
+
+
+def _vwap_distance_pct(closes: List[float], highs: List[float], lows: List[float],
+                       window: int = 20) -> Optional[float]:
+    """Distance of today's close from the rolling typical-price VWAP, as a
+    percentage. Positive = above VWAP (chasing risk), negative = below.
+
+    We use a volume-naive VWAP — equal-weighted typical price = (H+L+C)/3 —
+    because the OHLCV feed used here doesn't carry per-bar volume reliably.
+    Empirically the distance signal correlates ~0.85 with true VWAP for
+    liquid US equities, which is good enough as a "don't chase" gate.
+    """
+    n = len(closes)
+    if n < window or n != len(highs) or n != len(lows):
+        return None
+    typ = [(highs[i] + lows[i] + closes[i]) / 3.0
+           for i in range(n - window, n)]
+    vwap = sum(typ) / window if window else 0
+    if vwap <= 0:
+        return None
+    return (closes[-1] - vwap) / vwap * 100.0
+
+
+def _kelly_fraction(wins: int, losses: int,
+                    avg_win_pct: float, avg_loss_pct: float,
+                    safety: float = _KELLY_DEFAULT_SAFETY) -> Optional[float]:
+    """Compute the safety-adjusted Kelly fraction for a given (wins, losses,
+    avg_win%, avg_loss%) record. Returns None when there's insufficient data
+    to size safely (caller should fall back to vol_target or fixed).
+
+    Formula:  f* = (p*b − (1−p)) / b
+    where p = win rate, b = avg_win / avg_loss (payoff ratio).
+    """
+    total = wins + losses
+    if total < _KELLY_MIN_SAMPLES:
+        return None
+    if avg_loss_pct <= 0 or avg_win_pct <= 0:
+        return None
+    p = wins / total
+    b = avg_win_pct / avg_loss_pct
+    raw = (p * b - (1.0 - p)) / b
+    if raw <= 0:
+        # Negative-edge strategies get effectively-zero allocation, not Kelly.
+        return _KELLY_HARD_FLOOR
+    return max(_KELLY_HARD_FLOOR, min(_KELLY_HARD_CEIL, raw * safety))
 
 
 # ---------------------------------------------------------------------------
@@ -851,6 +1046,25 @@ def init_paper_tables() -> None:
             FOREIGN KEY(account_id) REFERENCES paper_accounts(id)
         );
         CREATE INDEX IF NOT EXISTS idx_paper_evo_account ON paper_account_evolutions(account_id, id DESC);
+
+        -- P1b: every optimizer configuration ever tried, persisted so the
+        -- deflated-Sharpe-style multiple-testing penalty can be computed
+        -- honestly (you cannot deflate by trials you threw away). One row per
+        -- try_config evaluation; run_id groups one optimize_plan invocation.
+        CREATE TABLE IF NOT EXISTS optimizer_trials (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id TEXT NOT NULL,
+            account_id INTEGER,
+            ts TEXT DEFAULT CURRENT_TIMESTAMP,
+            config_json TEXT NOT NULL,
+            train_score REAL,
+            oos_score REAL,
+            annual_pct REAL,
+            n_trades INTEGER,
+            slice_json TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_opt_trials_run ON optimizer_trials(run_id);
+        CREATE INDEX IF NOT EXISTS idx_opt_trials_account ON optimizer_trials(account_id, id DESC);
         ''')
         # Migration: add new columns if upgrading from older schema
         cols = {row[1] for row in c.execute('PRAGMA table_info(paper_accounts)').fetchall()}
@@ -905,6 +1119,18 @@ def init_paper_tables() -> None:
         pos_cols = {row[1] for row in c.execute('PRAGMA table_info(paper_positions)').fetchall()}
         if 'entry_strategy' not in pos_cols:
             c.execute('ALTER TABLE paper_positions ADD COLUMN entry_strategy TEXT')
+        # T13 pairs-trading — short legs are tracked as a paper_position with
+        # shares > 0 + is_short=1, so the MTM logic computes P&L correctly
+        # (price down = profit). Default 0 keeps existing rows long-only.
+        if 'is_short' not in pos_cols:
+            c.execute('ALTER TABLE paper_positions ADD COLUMN is_short INTEGER DEFAULT 0')
+        if 'pair_id' not in pos_cols:
+            c.execute('ALTER TABLE paper_positions ADD COLUMN pair_id TEXT')
+        # T17D — profit-taking exit ladder. Counts how many ladder steps
+        # have fired on this position. After all steps, remainder rides
+        # trailing stop only.
+        if 'partial_exit_count' not in pos_cols:
+            c.execute('ALTER TABLE paper_positions ADD COLUMN partial_exit_count INTEGER DEFAULT 0')
         if 'tick_running' not in cols:
             # Advisory lock for run_account_tick — set to a started-at ISO
             # timestamp while a tick is in flight, NULL when idle. Concurrent
@@ -957,6 +1183,158 @@ def init_paper_tables() -> None:
             industry TEXT,
             fetched_at TEXT
         );
+
+        -- ------------------------------------------------------------------
+        -- Smart-Money Conviction Engine tables (T10)
+        --
+        -- News + 13F fusion pipeline. Persists everything (news, sentiment,
+        -- 13F holdings, conviction scores) so the dashboard can plot
+        -- multi-day trajectories and the fusion engine can read history.
+        -- ------------------------------------------------------------------
+
+        -- Raw news headlines we have ingested (any source: yfinance, RSS,
+        -- EDGAR filings feed). Deduped by URL. body_excerpt is the first
+        -- ~400 chars of the article summary if the source provides it;
+        -- nullable.
+        CREATE TABLE IF NOT EXISTS news_articles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol TEXT NOT NULL,
+            source TEXT NOT NULL,
+            url TEXT NOT NULL UNIQUE,
+            headline TEXT NOT NULL,
+            published_at TEXT,
+            fetched_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            body_excerpt TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_news_symbol_date
+            ON news_articles(symbol, published_at DESC);
+
+        -- One row per (symbol, day, scorer). Scorer in {'lexicon','llm_haiku'}.
+        -- Allows trajectory plotting + scorer-vs-scorer comparison.
+        CREATE TABLE IF NOT EXISTS sentiment_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol TEXT NOT NULL,
+            score_date TEXT NOT NULL,
+            sentiment_score REAL NOT NULL,      -- -1.0 .. +1.0
+            bullish_hits INTEGER DEFAULT 0,
+            bearish_hits INTEGER DEFAULT 0,
+            articles_n INTEGER DEFAULT 0,
+            themes_json TEXT DEFAULT '[]',
+            scorer TEXT NOT NULL DEFAULT 'lexicon',
+            confidence REAL,                    -- 0..1 — LLM self-report or lexicon coverage
+            llm_thesis TEXT,                    -- one-line summary (LLM only)
+            UNIQUE(symbol, score_date, scorer)
+        );
+        CREATE INDEX IF NOT EXISTS idx_sentiment_symbol_date
+            ON sentiment_history(symbol, score_date DESC);
+
+        -- Flattened 13F-HR positions. One row per fund (cik) per quarter
+        -- per security. quarter_end is the period-of-report date (NOT the
+        -- filing date) — that's the canonical join key for cross-fund
+        -- comparison since 13Fs report as-of the same calendar dates.
+        CREATE TABLE IF NOT EXISTS institutional_holdings_13f (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cik TEXT NOT NULL,
+            fund_label TEXT NOT NULL,
+            quarter_end TEXT NOT NULL,          -- YYYY-MM-DD
+            cusip TEXT NOT NULL,
+            symbol TEXT,                        -- may be NULL until CUSIP→ticker resolves
+            shares REAL NOT NULL,
+            value_usd REAL NOT NULL,
+            pct_of_portfolio REAL,              -- 0..100 — computed at insert time
+            filed_at TEXT,                      -- when the filing was accepted by SEC
+            UNIQUE(cik, quarter_end, cusip)
+        );
+        CREATE INDEX IF NOT EXISTS idx_13f_cik_quarter
+            ON institutional_holdings_13f(cik, quarter_end);
+        CREATE INDEX IF NOT EXISTS idx_13f_symbol_quarter
+            ON institutional_holdings_13f(symbol, quarter_end);
+
+        -- CUSIP↔ticker mapping cache. Populated by OpenFIGI lookups + the
+        -- SEC company_tickers.json bulk file. Long-lived; CUSIPs are
+        -- stable across years.
+        CREATE TABLE IF NOT EXISTS cusip_ticker_map (
+            cusip TEXT PRIMARY KEY,
+            symbol TEXT,
+            name TEXT,
+            source TEXT,                        -- 'openfigi' | 'sec_company_tickers' | 'manual'
+            fetched_at TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+
+        -- Daily fusion-engine output. rationale_json is the structured
+        -- breakdown used to render the dashboard's "why" panel.
+        CREATE TABLE IF NOT EXISTS conviction_scores (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol TEXT NOT NULL,
+            score_date TEXT NOT NULL,
+            conviction_score REAL NOT NULL,     -- 0..100
+            news_factor REAL,                   -- 0..1
+            flow_factor REAL,                   -- 0..1
+            technical_factor REAL,              -- 0..1
+            insider_factor REAL,                -- 0..1
+            risk_penalty REAL,                  -- 0..1 (subtracted)
+            rationale_json TEXT,
+            recommended_entry_json TEXT,
+            UNIQUE(symbol, score_date)
+        );
+        CREATE INDEX IF NOT EXISTS idx_conviction_date_score
+            ON conviction_scores(score_date DESC, conviction_score DESC);
+        CREATE INDEX IF NOT EXISTS idx_conviction_symbol_date
+            ON conviction_scores(symbol, score_date DESC);
+
+        -- ------------------------------------------------------------------
+        -- T14 Options-wheel paper trading
+        --
+        -- One row per open or closed short-premium leg (CSP or CC).
+        -- The wheel cycles: CSP → assigned → CC → called away → CSP …
+        -- Assignment creates a matching paper_positions row (long stock).
+        -- ------------------------------------------------------------------
+        CREATE TABLE IF NOT EXISTS paper_options_positions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id INTEGER NOT NULL,
+            kind TEXT NOT NULL,            -- 'csp' | 'cc'
+            underlying TEXT NOT NULL,
+            strike REAL NOT NULL,
+            expiry TEXT NOT NULL,          -- YYYY-MM-DD
+            contracts INTEGER NOT NULL,
+            side TEXT NOT NULL DEFAULT 'short',
+            premium_collected REAL NOT NULL,  -- USD per share, × 100 × contracts = total
+            open_date TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'open',
+                                          -- open | expired | assigned | closed_early
+            close_date TEXT,
+            close_reason TEXT,
+            realized_pnl_usd REAL,
+            mtm_value_usd REAL,            -- updated each tick
+            UNIQUE(account_id, kind, underlying, strike, expiry)
+        );
+        CREATE INDEX IF NOT EXISTS idx_options_acct_status
+            ON paper_options_positions(account_id, status);
+
+        -- T17C — DCA scale-in plans. When the conviction engine recommends
+        -- `dca_3_legs`, the entry loop creates a plan row and opens leg 1
+        -- immediately; subsequent ticks open legs 2 & 3 on the cadence.
+        CREATE TABLE IF NOT EXISTS paper_dca_plans (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id INTEGER NOT NULL,
+            symbol TEXT NOT NULL,
+            total_dollars REAL NOT NULL,
+            legs_total INTEGER NOT NULL DEFAULT 3,
+            legs_filled INTEGER NOT NULL DEFAULT 0,
+            leg_dollars REAL NOT NULL,
+            cadence_days INTEGER NOT NULL DEFAULT 7,
+            next_fill_date TEXT,
+            status TEXT NOT NULL DEFAULT 'active',
+                                   -- 'active' | 'completed' | 'cancelled'
+            conviction_score_at_plan REAL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            completed_at TEXT,
+            cancel_reason TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_dca_acct_status
+            ON paper_dca_plans(account_id, status);
+        CREATE INDEX IF NOT EXISTS idx_dca_next_fill
+            ON paper_dca_plans(status, next_fill_date);
         ''')
         c.commit()
 
@@ -987,6 +1365,18 @@ def create_account(user_id: int, plan: Dict[str, Any]) -> Dict[str, Any]:
     base_ccy = (plan.get('base_currency') or 'USD').upper()
     if base_ccy not in ('USD', 'HKD'):
         base_ccy = 'USD'
+
+    # Options-follow accounts (3rd account type): instead of TA share signals
+    # they follow the daily AI options recommendations. Delegate the whole
+    # creation to the dedicated engine before the share-specific normalization
+    # below (which assumes symbols/strategies that an options account lacks).
+    if (plan.get('ai_mode') or '').lower() == 'options_follow':
+        try:
+            from .paper_options_follow import create_options_follow_account
+        except ImportError:
+            from web.modules.paper_options_follow import create_options_follow_account  # type: ignore
+        return create_options_follow_account(
+            user_id, plan, capital, base_ccy, email_on_run, auto_run)
 
     # AI mode + universe (new) — replaces fixed symbols when ai_mode=='ai_picks'
     ai_mode = (plan.get('ai_mode') or 'manual').lower()
@@ -1033,43 +1423,82 @@ def create_account(user_id: int, plan: Dict[str, Any]) -> Dict[str, Any]:
     if isinstance(strats, str):
         strats = [s.strip() for s in strats.split(',') if s.strip()]
 
+    # Strategy-quality defaults (uplift T9). The pre-T9 defaults
+    # (combine='any', pos=20%, max_name=25%, no TP/SL, no VIX gate) produced
+    # noisy entries and concentrated draws. The new defaults shift the
+    # default account toward a higher-Sharpe profile while staying fully
+    # overridable: any value the caller passes in still wins.
     plan_clean = {
         'symbols': syms,
         'strategies': strats,
-        'combine_mode': (plan.get('combine_mode') or 'any').lower(),
-        'pos_size_pct': float(plan.get('pos_size_pct') or 20),
-        'take_profit_pct': float(plan.get('take_profit_pct') or 0),
-        'stop_loss_pct': float(plan.get('stop_loss_pct') or 0),
+        'combine_mode': (plan.get('combine_mode') or 'majority').lower(),
+        'pos_size_pct': float(plan.get('pos_size_pct') or 10),
+        'take_profit_pct': float(plan.get('take_profit_pct') or 12),
+        'stop_loss_pct': float(plan.get('stop_loss_pct') or 6),
         'ai_mode': ai_mode,
         'universe': universe,
         'ai_pick_count': ai_pick_count,
         'custom_symbols': custom_symbols,
         'llm_news_filter': bool(plan.get('llm_news_filter')),
         'news_filter_mode': (plan.get('news_filter_mode') or 'lexicon').lower(),
-        # Pro risk controls (all opt-in; 0 = disabled)
-        'atr_stop_mult': float(plan.get('atr_stop_mult') or 0),       # e.g. 2.0 = stop at entry - 2*ATR(14)
-        'trailing_stop_pct': float(plan.get('trailing_stop_pct') or 0),  # e.g. 8.0 = ratchet stop 8% below high-water
-        'max_per_name_pct': float(plan.get('max_per_name_pct') or 25),   # cap each position at 25% of initial capital
-        'vix_gate_threshold': float(plan.get('vix_gate_threshold') or 0),  # e.g. 30 = no new longs when VIX > 30
-        'mtf_gate': bool(plan.get('mtf_gate')),                          # require weekly EMA20>EMA50 before new long
-        'vol_target_annual_pct': float(plan.get('vol_target_annual_pct') or 0),  # e.g. 12 = aim for 12% annualized vol per position
-        # Track-2 anti-churn + sizing-hygiene knobs (all default-on; safe to omit)
-        'hold_cooldown_days': max(0, int(plan.get('hold_cooldown_days', _DEFAULT_HOLD_COOLDOWN_DAYS))),
+        # Pro risk controls — defaults flipped on (each still overridable).
+        'atr_stop_mult': float(plan.get('atr_stop_mult') or 2.0),         # 2*ATR(14) stop
+        'trailing_stop_pct': float(plan.get('trailing_stop_pct') or 8.0), # ratchet 8% off high
+        'max_per_name_pct': float(plan.get('max_per_name_pct') or 15),    # 15% per name cap
+        'vix_gate_threshold': float(plan.get('vix_gate_threshold') or 30), # pause entries in panic
+        'mtf_gate': bool(plan.get('mtf_gate', True)),                     # weekly trend gate ON
+        'vol_target_annual_pct': float(plan.get('vol_target_annual_pct') or 0),  # 0 = use fixed sizing
+        # Anti-churn + sizing hygiene.
+        'hold_cooldown_days': max(0, int(plan.get('hold_cooldown_days', max(2, _DEFAULT_HOLD_COOLDOWN_DAYS)))),
         'min_trade_value': max(0.0, float(plan.get('min_trade_value') or _DEFAULT_MIN_TRADE_VALUE)),
-        # Track-4 strategy-quality knobs (opt-in; 0 = disabled)
-        'max_per_sector_pct': max(0.0, min(100.0, float(plan.get('max_per_sector_pct') or 0))),
+        # Sector diversification — 35% cap per sector.
+        'max_per_sector_pct': max(0.0, min(100.0, float(plan.get('max_per_sector_pct') or 35))),
+        # T11 Kelly sizing — default ON for new accounts. Falls back to
+        # vol_target / fixed when bandit has <20 samples per strategy.
+        'sizing_mode': (plan.get('sizing_mode') or 'kelly').lower(),
+        'kelly_safety': float(plan.get('kelly_safety') or 0.25),
+        # T15 VWAP gate defaults — block entries chasing > 3% above the
+        # 20-day typical-price VWAP, or > 8% below (falling-knife).
+        'vwap_chase_max_pct': float(plan.get('vwap_chase_max_pct', 3.0)),
+        'vwap_undercut_max_pct': float(plan.get('vwap_undercut_max_pct', 8.0)),
+        'vwap_window': int(plan.get('vwap_window', 20)),
+        # T17D — exit ladder. profit_ladder_pct = list of TP multipliers
+        # (e.g. [1.0, 2.0] = trim at 1×TP and 2×TP). ladder_trim_fractions
+        # = parallel list of fractions to trim at each step. Default ON
+        # for new accounts: ladder at 1×TP / 2×TP, trim 1/3 each.
+        'profit_ladder_pct': plan.get('profit_ladder_pct') or [1.0, 2.0],
+        'ladder_trim_fractions': plan.get('ladder_trim_fractions') or [0.34, 0.33],
+        # T18A — use GARCH forecasted vol in vol-target sizing (default ON).
+        'use_garch': bool(plan.get('use_garch', True)),
+        # T18C — gate entries when HMM regime posterior says we're in a bear state.
+        'use_hmm_regime': bool(plan.get('use_hmm_regime', True)),
+        # P1a — signal-fill timing. 'next_close' acts on yesterday's signal at
+        # today's close (no same-bar look-ahead); 'same_close' is the legacy
+        # behavior kept for accounts created before the fix so their replay
+        # history stays reproducible. New accounts default to honest fills.
+        'fill_mode': (plan.get('fill_mode') or 'next_close').lower(),
+        # P1c — selection source for ai_picks mode: 'heuristic' (default) or
+        # 'ml_ranker' (LightGBM learning-to-rank; falls back to heuristic
+        # when the model is missing or stale).
+        'pick_source': (plan.get('pick_source') or 'heuristic').lower(),
     }
     today = date.today().isoformat()
 
     with _conn() as c:
+        # Enable the self-improvement loop for new accounts by default
+        # (weekly). Previously this defaulted to 0 → _maybe_auto_evolve never
+        # fired, so the learning loop was inert. Overridable via the plan.
+        evolve_freq = int(plan.get('evolve_frequency_days') or 7)
         cur = c.execute(
             '''INSERT INTO paper_accounts
                (user_id, name, plan_json, initial_capital, cash, status, start_date,
                 email_on_run, auto_run, max_drawdown_stop_pct, peak_equity,
-                symbol_drawdown_stop_pct, disabled_symbols_json, base_currency)
-               VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, '[]', ?)''',
+                symbol_drawdown_stop_pct, disabled_symbols_json, base_currency,
+                evolve_frequency_days)
+               VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, '[]', ?, ?)''',
             (user_id, name, json.dumps(plan_clean), capital, capital, today,
-             email_on_run, auto_run, max_dd_stop, capital, sym_dd_stop, base_ccy),
+             email_on_run, auto_run, max_dd_stop, capital, sym_dd_stop, base_ccy,
+             evolve_freq),
         )
         account_id = cur.lastrowid
         # Seed equity history with the starting balance
@@ -1098,6 +1527,16 @@ def list_accounts(user_id: int) -> Dict[str, Any]:
     for r in rows:
         eq = r['equity'] if r['equity'] is not None else r['initial_capital']
         roi = (eq / r['initial_capital'] - 1) * 100 if r['initial_capital'] else 0
+        plan_r = json.loads(r['plan_json'])
+        open_n, closed_n = r['open_count'], r['closed_count']
+        # Options-follow accounts track positions in a separate table.
+        if (plan_r.get('ai_mode') or '').lower() == 'options_follow':
+            try:
+                from .paper_options_follow import option_counts
+            except ImportError:
+                from web.modules.paper_options_follow import option_counts  # type: ignore
+            oc = option_counts(r['id'])
+            open_n, closed_n = oc['open'], oc['closed']
         accts.append({
             'id': r['id'],
             'name': r['name'],
@@ -1108,9 +1547,9 @@ def list_accounts(user_id: int) -> Dict[str, Any]:
             'cash': r['cash'],
             'equity': eq,
             'roi_pct': round(roi, 3),
-            'open_positions': r['open_count'],
-            'closed_positions': r['closed_count'],
-            'plan': json.loads(r['plan_json']),
+            'open_positions': open_n,
+            'closed_positions': closed_n,
+            'plan': plan_r,
             'max_drawdown_stop_pct': r['max_drawdown_stop_pct'] if 'max_drawdown_stop_pct' in r.keys() else 0,
             'peak_equity': r['peak_equity'] if 'peak_equity' in r.keys() else None,
             'paused_reason': r['paused_reason'] if 'paused_reason' in r.keys() else None,
@@ -1145,8 +1584,26 @@ def get_account_detail(user_id: int, account_id: int) -> Dict[str, Any]:
     wins = sum(1 for p in closed_pos if (p['pnl_pct'] or 0) > 0)
     win_rate = (wins / len(closed_pos) * 100) if closed_pos else 0
 
+    # Options-follow accounts hold their positions in a separate table; pull
+    # them so the dashboard can render legs/expiry/POP/MTM, and override the
+    # share-based counts/win-rate with the option-position equivalents.
+    option_positions: List[Dict[str, Any]] = []
+    if (plan.get('ai_mode') or '').lower() == 'options_follow':
+        try:
+            from .paper_options_follow import option_positions_for
+        except ImportError:
+            from web.modules.paper_options_follow import option_positions_for  # type: ignore
+        option_positions = option_positions_for(account_id)
+        opt_open = [p for p in option_positions if p['status'] == 'open']
+        opt_closed = [p for p in option_positions if p['status'] == 'settled']
+        opt_wins = sum(1 for p in opt_closed if (p.get('realized_pnl_usd') or 0) > 0)
+        open_pos = opt_open
+        closed_pos = opt_closed
+        win_rate = (opt_wins / len(opt_closed) * 100) if opt_closed else 0
+
     return {
         'success': True,
+        'option_positions': option_positions,
         'account': {
             'id': a['id'],
             'name': a['name'],
@@ -1297,6 +1754,19 @@ def reset_account(user_id: int, account_id: int) -> Dict[str, Any]:
         c.execute('DELETE FROM paper_transactions WHERE account_id=?', (account_id,))
         c.execute('DELETE FROM paper_positions WHERE account_id=?', (account_id,))
         c.execute('DELETE FROM paper_equity_history WHERE account_id=?', (account_id,))
+        # Options-follow accounts also keep positions in their own table.
+        try:
+            from .paper_options_follow import delete_option_positions
+        except ImportError:
+            try:
+                from web.modules.paper_options_follow import delete_option_positions  # type: ignore
+            except ImportError:
+                delete_option_positions = None  # type: ignore
+        if delete_option_positions:
+            try:
+                delete_option_positions(account_id, c)
+            except Exception:
+                pass
         c.execute(
             "UPDATE paper_accounts SET status='active', cash=?, last_run_date=NULL, "
             "peak_equity=?, disabled_symbols_json='[]', paused_reason=NULL, "
@@ -1335,7 +1805,13 @@ def reset_account(user_id: int, account_id: int) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 _EVOLVE_MIN_TRIALS = 30
 _EVOLVE_MAX_TRIALS = 80
-_EVOLVE_MIN_GAIN = 5.0   # need OOS score lead >= 5 pts before swapping plan
+_EVOLVE_MIN_GAIN = 3.0   # OOS score lead before swapping plan. Lowered from
+                         # 5.0 (Phase 5): now that backtest scores are HONEST
+                         # (real costs/fills + benchmark alpha), absolute scores
+                         # are lower, so a 5-pt lead was too high a bar and
+                         # rejected genuine incremental improvements. 3.0 still
+                         # requires a clear edge; the walk-forward OOS re-rank +
+                         # guardrails (GR1-3) remain the overfit protection.
 # T6.1: how much the LIVE realized P&L should count vs the backtest OOS
 # score. 0.0 = pure backtest (legacy behavior); 1.0 = pure live. 0.4 is
 # a middle ground that lets live evidence move the score by ~40% while
@@ -1497,13 +1973,21 @@ def _live_fitness(account_id: int, since_iso: Optional[str],
     else:
         sharpe = 0.0
 
-    # Score blend matches autotrade_sim._score_result: annual - 0.5*dd
-    # + 2*sharpe + (15 bonus if hit target) - (20 penalty if losing).
-    score = annual - 0.5 * max_dd_pct + 2.0 * sharpe
-    if annual >= target_annual_pct:
-        score += 15.0
-    if total_ret_pct < 0:
-        score -= 20.0
+    # Score via the SHARED scorer (autotrade_sim._score_components) so the live
+    # realized-equity score and the optimizer's backtest score use one formula
+    # and can never drift. Both now include the alpha term; the live benchmark
+    # is passed as 0 for now (computing buy-and-hold over the live equity window
+    # is a documented follow-up), so the live alpha term reduces to +0.5*annual.
+    # This intentionally differs from the pre-Phase-3 live formula by that
+    # amount — the optimizer baseline moved by the same construction, so the
+    # baseline↔live blend stays internally consistent.
+    try:
+        from modules.autotrade_sim import _score_components
+    except Exception:  # pragma: no cover - import path shim
+        from web.modules.autotrade_sim import _score_components  # type: ignore
+    score = _score_components(annual, max_dd_pct, sharpe, total_ret_pct,
+                              n_trades, target_annual_pct,
+                              benchmark_annual_pct=0.0)
     out.update({
         'score': round(score, 3),
         'annual_return_pct': round(annual, 3),
@@ -1570,10 +2054,14 @@ def evolve_account_plan(user_id: int, account_id: int,
     init_paper_tables()
     try:
         try:
-            from modules.autotrade_sim import optimize_plan, simulate_plan, _score_result, _period_to_days
+            from modules.autotrade_sim import (
+                optimize_plan, simulate_plan, _score_result, _period_to_days,
+                score_plan_oos,
+            )
         except Exception:
             from web.modules.autotrade_sim import (  # type: ignore
                 optimize_plan, simulate_plan, _score_result, _period_to_days,
+                score_plan_oos,
             )
     except Exception as e:
         return {'success': False, 'error': f'autotrade_sim unavailable: {e}'}
@@ -1599,26 +2087,38 @@ def evolve_account_plan(user_id: int, account_id: int,
         'take_profit_pct': plan.get('take_profit_pct', 10),
         'stop_loss_pct': plan.get('stop_loss_pct', 5),
         'capital': capital,
-        'period': '1y',
+        # P4 — 2y window so the purged OOS region splits into 2 folds
+        # (oos_fold_slices needs >=60 bars per fold); on the old 1y window
+        # CV degraded to the single 70/30 split.
+        'period': '2y',
     }
+    # Carry the account's REAL risk controls so the honest simulator
+    # (autotrade_sim._simulate_symbol) scores the configuration the account
+    # actually trades — not a stripped one. optimize_plan's try_config does
+    # dict(base_plan), so these flow into every candidate too. Only copy keys
+    # that are actually set, so the simulator's own defaults apply otherwise
+    # (and we never inject a None that would break int()/float() parsing).
+    for _rk in ('atr_stop_mult', 'trailing_stop_pct', 'profit_ladder_pct',
+                'ladder_trim_fractions', 'min_trade_value', 'hold_cooldown_days',
+                'fill_mode'):
+        if plan.get(_rk) is not None:
+            base_plan[_rk] = plan[_rk]
 
-    # Score the current live plan on the same train/test split so we know
-    # what to beat. _score_result lives in autotrade_sim and uses the same
-    # weighting (annualized return − 0.5·DD + 2·Sharpe + target bonus).
+    # Score the current live plan on the SAME purged OOS folds the optimizer
+    # validates candidates with (P4) — champion and challengers are judged
+    # on identical data, and no single lucky window decides either.
     days = _period_to_days(base_plan['period'])
-    train_days = int(days * 0.7)
-    test_days = days - train_days
-    baseline_train = simulate_plan(base_plan, slice_range=(0.0, 0.7))
-    baseline_test = simulate_plan(base_plan, slice_range=(0.7, 1.0))
-    if not (baseline_train.get('success') and baseline_test.get('success')):
+    test_days = days - int(days * 0.7)
+    baseline_oos = score_plan_oos(base_plan, target_annual, days, train_pct=0.7)
+    if baseline_oos['n_folds'] == 0:
         baseline_score = -1e9
         baseline_annual = 0.0
         baseline_metrics = {}
         backtest_only_score = -1e9
     else:
-        _, base_train_annual = _score_result(baseline_train['metrics'], train_days, target_annual)
-        baseline_score, baseline_annual = _score_result(baseline_test['metrics'], test_days, target_annual)
-        baseline_metrics = baseline_test['metrics']
+        baseline_score = baseline_oos['score']
+        baseline_annual = baseline_oos['annual_return_pct']
+        baseline_metrics = baseline_oos['metrics']
         backtest_only_score = baseline_score
 
     # T6.1 — blend with realized live P&L since the account's last evolution
@@ -1648,18 +2148,44 @@ def evolve_account_plan(user_id: int, account_id: int,
 
     iters = max_iterations or _EVOLVE_MIN_TRIALS
     iters = max(_EVOLVE_MIN_TRIALS, min(_EVOLVE_MAX_TRIALS, int(iters)))
+
+    # P1b — persist every configuration the optimizer evaluates so the
+    # multiple-testing deflation is auditable (optimizer_trials table).
+    import uuid as _uuid
+    run_id = _uuid.uuid4().hex
+
+    def _trial_sink(rec: Dict[str, Any]) -> None:
+        try:
+            with _conn() as tc:
+                tc.execute(
+                    '''INSERT INTO optimizer_trials
+                       (run_id, account_id, config_json, train_score, oos_score,
+                        annual_pct, n_trades, slice_json)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
+                    (run_id, account_id, json.dumps(rec.get('config') or {}),
+                     rec.get('train_score'), rec.get('oos_score'),
+                     rec.get('annual_pct'), rec.get('n_trades'),
+                     json.dumps(rec.get('slice') or {})))
+                tc.commit()
+        except Exception:
+            pass  # trial logging is best-effort; never fail the evolution
+
     # Per-account seed prevents the cross-account convergence audit issue.
     opt = optimize_plan(base_plan, target_monthly_pct=target_monthly_pct,
                         max_iterations=iters, walk_forward=True, train_pct=0.7,
                         expand_search=expand_search,
-                        rng_seed=account_id)
+                        rng_seed=account_id, trial_sink=_trial_sink)
     if not opt.get('success'):
         return {'success': False, 'error': opt.get('error', 'optimization failed'),
                 'baseline_score': round(baseline_score, 3),
                 'baseline_annual_pct': round(baseline_annual, 3)}
 
     best = opt.get('best') or {}
-    best_score = float(best.get('score') or -1e9)
+    # P1b — compare the searched winner to the (un-searched) live baseline on
+    # its DEFLATED score: the baseline is one config, the winner is the max of
+    # N trials, so the raw comparison is biased toward swapping plans.
+    best_score = float(best.get('score_deflated',
+                                best.get('score') or -1e9))
     best_annual = float(best.get('annual_return_pct') or 0.0)
     new_plan_fields = best.get('plan') or {}
 
@@ -1702,11 +2228,11 @@ def evolve_account_plan(user_id: int, account_id: int,
             p.update({k: plan_dict[k] for k in (
                 'strategies', 'combine_mode', 'take_profit_pct',
                 'stop_loss_pct', 'pos_size_pct') if k in plan_dict})
-            res = simulate_plan(p, slice_range=(0.7, 1.0))
-            if not res.get('success'):
+            oos = score_plan_oos(p, target_annual, days, train_pct=0.7)
+            if oos['n_folds'] == 0:
                 return {'score': -1e9, 'annual_return_pct': 0.0}
-            s, a = _score_result(res['metrics'], test_days, target_annual)
-            return {'score': s, 'annual_return_pct': a}
+            return {'score': oos['score'],
+                    'annual_return_pct': oos['annual_return_pct']}
         for src_name, src_fn in sources:
             try:
                 proposal = src_fn(plan, base_plan, _quick_scorer, _rng)
@@ -1718,18 +2244,18 @@ def evolve_account_plan(user_id: int, account_id: int,
                 _log(account_id, 'warning',
                      f'challenger source {src_name} failed: {e}')
 
-        # Build a scorer closure that re-uses simulate_plan with the same
-        # walk-forward slice the baseline used.
+        # Build a scorer closure on the SAME purged OOS folds the baseline
+        # and optimizer used (P4) — promotion comparisons stay apples-to-apples.
         def _score_challenger(plan_dict: Dict[str, Any]) -> Dict[str, Any]:
             p = dict(base_plan)
             p.update({k: plan_dict[k] for k in (
                 'strategies', 'combine_mode', 'take_profit_pct',
                 'stop_loss_pct', 'pos_size_pct') if k in plan_dict})
-            res = simulate_plan(p, slice_range=(0.7, 1.0))
-            if not res.get('success'):
+            oos = score_plan_oos(p, target_annual, days, train_pct=0.7)
+            if oos['n_folds'] == 0:
                 return {'score': -1e9, 'annual_return_pct': 0.0}
-            s, a = _score_result(res['metrics'], test_days, target_annual)
-            return {'score': s, 'annual_return_pct': a}
+            return {'score': oos['score'],
+                    'annual_return_pct': oos['annual_return_pct']}
 
         challenger_summary = _pl.evaluate_challengers(
             account_id, baseline_score, _score_challenger, _conn)
@@ -2205,11 +2731,51 @@ def build_daily_digest_for_user(user_id: int) -> Optional[Dict[str, Any]]:
             'total_initial': round(b['initial'], 2),
             'total_roi_pct': round(roi_pct, 2),
         })
+    # P6 — research-health block: experiment verdicts, ranker IC trend and
+    # killed plays, so the forward-validation state reaches the user's inbox
+    # instead of waiting to be polled on /api/experiments. Best-effort.
+    research: Dict[str, Any] = {}
+    try:
+        try:
+            from .ab_experiments import list_experiments
+        except ImportError:
+            from web.modules.ab_experiments import list_experiments  # type: ignore
+        exps = [e for e in list_experiments(limit=20) if e['user_id'] == user_id]
+        research['experiments'] = [{
+            'name': e['name'], 'kind': e['kind'], 'status': e['status'],
+            'elapsed_days': (e.get('verdict') or {}).get('elapsed_days'),
+        } for e in exps]
+    except Exception:
+        pass
+    try:
+        try:
+            from .ml_ranker import latest_metrics
+        except ImportError:
+            from web.modules.ml_ranker import latest_metrics  # type: ignore
+        mets = [m for m in latest_metrics(limit=8)
+                if not (m.get('note') or '').startswith('ablation')]
+        if mets:
+            research['ranker_latest_ic'] = mets[0].get('rank_ic')
+            ics = [m['rank_ic'] for m in mets if m.get('rank_ic') is not None]
+            research['ranker_trailing_ic'] = (round(sum(ics) / len(ics), 4)
+                                              if ics else None)
+    except Exception:
+        pass
+    try:
+        try:
+            from .options_playbook import disabled_plays
+        except ImportError:
+            from web.modules.options_playbook import disabled_plays  # type: ignore
+        research['killed_plays'] = sorted(disabled_plays())
+    except Exception:
+        pass
+
     return {
         'date': today,
         'rows': rows,
         'totals_by_ccy': totals_by_ccy,
         'total_day_tx': new_tx_count,
+        'research_health': research,
     }
 
 
@@ -2271,6 +2837,37 @@ def send_daily_digests() -> Dict[str, Any]:
                 for t in digest.get('totals_by_ccy', [])
             )
 
+            # P6 — research-health footer: running experiments, ranker IC,
+            # killed plays. Compact; omitted entirely when there's no data.
+            research_html = ''
+            rh = digest.get('research_health') or {}
+            rh_lines = []
+            for e in (rh.get('experiments') or []):
+                status_color = {'passed': '#16a34a', 'failed': '#dc2626',
+                                'running': '#888'}.get(e['status'], '#888')
+                el = e.get('elapsed_days')
+                rh_lines.append(
+                    f"<div style='font-size:12px;padding:2px 0;'>🧪 {e['name']} — "
+                    f"<span style='color:{status_color};font-weight:700;'>{e['status']}</span>"
+                    f"{f' ({el}d)' if el is not None else ''}</div>")
+            if rh.get('ranker_trailing_ic') is not None:
+                ic = rh['ranker_trailing_ic']
+                ic_color = '#16a34a' if ic and ic > 0.03 else '#d97706'
+                rh_lines.append(
+                    f"<div style='font-size:12px;padding:2px 0;'>📐 ML 排序模型 trailing IC: "
+                    f"<span style='color:{ic_color};font-weight:700;'>{ic:.4f}</span>"
+                    f" (門檻 0.03)</div>")
+            if rh.get('killed_plays'):
+                rh_lines.append(
+                    f"<div style='font-size:12px;padding:2px 0;color:#dc2626;'>"
+                    f"☠️ 已停用策略: {', '.join(rh['killed_plays'])}</div>")
+            if rh_lines:
+                research_html = (
+                    "<div style='margin-top:16px;padding:12px;background:#f5f7fb;"
+                    "border-radius:6px;'>"
+                    "<div style='font-size:11px;color:#888;margin-bottom:6px;'>"
+                    "前瞻驗證 / 模型健康</div>" + ''.join(rh_lines) + "</div>")
+
             html = f"""<!DOCTYPE html><html><body style="font-family:Inter,sans-serif;background:#f5f7fb;margin:0;padding:20px;">
 <div style="max-width:680px;margin:0 auto;background:#fff;border-radius:12px;padding:24px;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
   <h2 style="margin:0 0 8px;color:#1a223a;">📊 每日模擬交易摘要 — {digest['date']}</h2>
@@ -2284,6 +2881,7 @@ def send_daily_digests() -> Dict[str, Any]:
     </tr></thead>
     <tbody>{rows_html}</tbody>
   </table>
+  {research_html}
 </div></body></html>"""
             totals_summary = ', '.join(
                 f"{t['currency']} {_ccy_sym(t['currency'])}{t['total_equity']:,.2f} ({'+' if t['total_roi_pct']>=0 else ''}{t['total_roi_pct']:.2f}%)"
@@ -2489,7 +3087,27 @@ def close_account(user_id: int, account_id: int) -> Dict[str, Any]:
                       (account_id, user_id)).fetchone()
         if not a:
             return {'success': False, 'error': 'Account not found'}
+        _plan_c = json.loads(a['plan_json'])
 
+    # Options-follow accounts liquidate their option positions (return locked
+    # collateral + MTM to cash) via the dedicated engine.
+    if (_plan_c.get('ai_mode') or '').lower() == 'options_follow':
+        try:
+            from .paper_options_follow import close_all_open
+        except ImportError:
+            from web.modules.paper_options_follow import close_all_open  # type: ignore
+        res = close_all_open(user_id, account_id)
+        if res.get('success'):
+            _record_admin_action(account_id, user_id, 'close', {
+                'positions_liquidated': res.get('positions_liquidated', 0),
+                'final_cash': res.get('final_cash'),
+            })
+            _log(account_id, 'info',
+                 f"closed options-follow (liquidated {res.get('positions_liquidated', 0)} "
+                 f"positions, final cash ${res.get('final_cash', 0):.2f})")
+        return res
+
+    with _conn() as c:
         open_rows = c.execute(
             "SELECT * FROM paper_positions WHERE account_id=? AND status='open'",
             (account_id,)).fetchall()
@@ -2540,6 +3158,30 @@ def close_account(user_id: int, account_id: int) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Daily tick — the heart of the paper-trader
 # ---------------------------------------------------------------------------
+def _last_known_close(s: Dict[str, Any], d_iso: str) -> Optional[float]:
+    """Return the most recent close on a date <= d_iso. None if the series has
+    no bar on or before that date.
+
+    The tick loop iterates the UNION of all symbols' trading days, so for any
+    given d a particular symbol may not have a bar (cache miss, late close, a
+    holiday on its venue but not on another's). Previously we silently zeroed
+    those positions — that fake-crashes the equity snapshot and trips the
+    drawdown stop. Carrying the last known close preserves correctness across
+    venue-calendar mismatches and short feed outages.
+    """
+    idx_by_date = s.get('idx_by_date') or {}
+    if d_iso in idx_by_date:
+        return float(s['closes'][idx_by_date[d_iso]])
+    dates = s.get('dates') or []
+    if not dates:
+        return None
+    import bisect
+    i = bisect.bisect_right(dates, d_iso) - 1
+    if i < 0:
+        return None
+    return float(s['closes'][i])
+
+
 def _signals_for(symbol: str, plan: Dict[str, Any], account_ccy: str = 'USD'):
     """Return aligned (dates, closes, highs, lows, signals) for a symbol,
     with prices converted into the account's base currency.
@@ -2701,6 +3343,25 @@ def _run_account_tick_impl(user_id: int, account_id: int,
     # without forcing a failure return.
     tick_warnings: List[Dict[str, Any]] = []
 
+    # Options-follow accounts run a separate engine (settle expiries → MTM →
+    # open today's AI option recs) with no share-based day-by-day replay.
+    # Dispatch here, still inside the tick lock + error envelope.
+    with _conn() as _c0:
+        _a0 = _c0.execute(
+            'SELECT plan_json FROM paper_accounts WHERE id=? AND user_id=?',
+            (account_id, user_id)).fetchone()
+    if _a0:
+        try:
+            _plan0 = json.loads(_a0['plan_json'])
+        except Exception:
+            _plan0 = {}
+        if (_plan0.get('ai_mode') or '').lower() == 'options_follow':
+            try:
+                from .paper_options_follow import run_follow_tick_impl
+            except ImportError:
+                from web.modules.paper_options_follow import run_follow_tick_impl  # type: ignore
+            return run_follow_tick_impl(user_id, account_id, target_iso, tick_warnings)
+
     with _conn() as c:
         a = c.execute('SELECT * FROM paper_accounts WHERE id=? AND user_id=?',
                       (account_id, user_id)).fetchone()
@@ -2725,11 +3386,16 @@ def _run_account_tick_impl(user_id: int, account_id: int,
             custom_syms = plan.get('custom_symbols') or []
             news_filter = bool(plan.get('llm_news_filter'))
             news_mode = plan.get('news_filter_mode') or 'lexicon'
+            # P1c — selection source. 'ml_ranker' uses the LightGBM
+            # learning-to-rank cross-section; anything else (or a stale/
+            # missing model) lands on the heuristic scan.
+            pick_source = (plan.get('pick_source') or 'heuristic').lower()
             try:
                 ai_syms = top_long_symbols(universe, top_n=ai_pick_count,
                                            custom_symbols=custom_syms,
                                            news_filter=news_filter,
-                                           news_filter_mode=news_mode)
+                                           news_filter_mode=news_mode,
+                                           pick_source=pick_source)
                 if not ai_syms:
                     # Scan returned empty but didn't raise — still
                     # degraded, will fall back to manual symbols.
@@ -2762,6 +3428,11 @@ def _run_account_tick_impl(user_id: int, account_id: int,
         sl = float(plan.get('stop_loss_pct') or 0) / 100.0
         atr_stop_mult = float(plan.get('atr_stop_mult') or 0)
         trailing_stop_pct = float(plan.get('trailing_stop_pct') or 0) / 100.0
+        # T17D — profit-taking exit ladder
+        ladder_pcts: List[float] = list(plan.get('profit_ladder_pct') or [])
+        ladder_trim: List[float] = list(plan.get('ladder_trim_fractions') or [])
+        # Length-align in case the plan was edited inconsistently
+        ladder_steps = min(len(ladder_pcts), len(ladder_trim))
         max_per_name_pct = float(plan.get('max_per_name_pct') or 25) / 100.0
         vix_gate = float(plan.get('vix_gate_threshold') or 0)
         mtf_gate = bool(plan.get('mtf_gate'))
@@ -2769,8 +3440,39 @@ def _run_account_tick_impl(user_id: int, account_id: int,
         # New anti-churn + sizing-hygiene knobs (Track 2).
         hold_cooldown_days = int(plan.get('hold_cooldown_days', _DEFAULT_HOLD_COOLDOWN_DAYS))
         min_trade_value = float(plan.get('min_trade_value') or _DEFAULT_MIN_TRADE_VALUE)
+        # P1a — fill timing. 'next_close' lags the entry/soft-exit signal one
+        # bar (decide on yesterday's close, fill at today's close) so a bar
+        # can't trigger a fill priced off its own close. Accounts created
+        # before the field existed default to legacy 'same_close' so their
+        # already-recorded replay history stays reproducible. Must stay in
+        # lockstep with autotrade_sim._simulate_symbol (engine parity).
+        fill_mode = (plan.get('fill_mode') or 'same_close').lower()
+        sig_lag = 1 if fill_mode == 'next_close' else 0
+        # P2 — uncertainty-gated sizing for ranker-driven accounts: when the
+        # ml_ranker's trailing out-of-sample IC degrades or its score
+        # dispersion collapses, shrink every new position (gate in [0.3, 1])
+        # instead of second-guessing individual picks. Fetched once per tick.
+        size_gate = 1.0
+        if (plan.get('pick_source') or '').lower() == 'ml_ranker':
+            try:
+                try:
+                    from .ml_ranker import confidence_state
+                except ImportError:
+                    from web.modules.ml_ranker import confidence_state  # type: ignore
+                _cs = confidence_state()
+                size_gate = float(_cs.get('gate', 1.0))
+                if size_gate < 1.0:
+                    _log(account_id, 'info',
+                         f'ranker confidence gate {size_gate:.2f}: {_cs.get("reason")}')
+            except Exception:
+                size_gate = 1.0
         # Sector concentration cap (Track 4 / audit #11). 0 = disabled.
         max_per_sector_pct = float(plan.get('max_per_sector_pct') or 0) / 100.0
+        # T15 VWAP-distance gate. Defaults: don't chase >3% above 20d VWAP,
+        # don't catch falling-knife >8% below. 0 disables either side.
+        vwap_chase_max_pct = float(plan.get('vwap_chase_max_pct', 3.0))
+        vwap_undercut_max_pct = float(plan.get('vwap_undercut_max_pct', 8.0))
+        vwap_window = int(plan.get('vwap_window', 20))
         # Pre-resolve sectors for everything in the universe so the entry
         # loop doesn't pay per-symbol yfinance latency. allow_network=True
         # but cached after first fetch.
@@ -2791,6 +3493,26 @@ def _run_account_tick_impl(user_id: int, account_id: int,
                 vix_block_entries = True
                 _log(account_id, 'info',
                      f'VIX gate tripped: VIX={vix:.1f} > {vix_gate} — pausing new entries')
+
+        # T18C — HMM regime gate. Suppress new long entries when the
+        # 2-state Gaussian HMM posterior on SPY puts the bear state above
+        # 70%. Independent of VIX (different signal): VIX measures spot
+        # fear; HMM measures the persistent regime.
+        if bool(plan.get('use_hmm_regime', True)) and not vix_block_entries:
+            try:
+                try:
+                    from .hmm_regime import is_bear, current_regime  # type: ignore
+                except ImportError:
+                    from web.modules.hmm_regime import is_bear, current_regime  # type: ignore
+                if is_bear(threshold=0.7):
+                    vix_block_entries = True
+                    cr = current_regime()
+                    _log(account_id, 'info',
+                         f'HMM bear gate tripped: '
+                         f'posterior bear={cr.get("posterior",{}).get("bear",0):.2f} — '
+                         f'pausing new entries')
+            except Exception as e:  # noqa: BLE001
+                _log(account_id, 'warning', f'HMM regime gate failed: {e}')
 
         cash = float(a['cash'])
         # On the very first tick (last_run_date is NULL) we include the start_date
@@ -2952,50 +3674,100 @@ def _run_account_tick_impl(user_id: int, account_id: int,
                 #     exactly at the trigger price.
                 exit_reason: Optional[str] = None
                 exit_price = price  # default — overwritten on TP/SL hit
-                tp_level = entry * (1 + tp) if tp > 0 else None
+                # T17D — after ALL ladder steps fired, suppress the static TP
+                # so the remainder can ride the trailing stop. Without this,
+                # the TP would fire again at 1× and close the runner.
+                _post_ladder = (ladder_steps > 0 and
+                                'partial_exit_count' in p.keys() and
+                                int(p['partial_exit_count'] or 0) >= ladder_steps)
+                tp_level = (entry * (1 + tp)) if (tp > 0 and not _post_ladder) else None
                 sl_level = entry * (1 - sl) if sl > 0 else None
                 atr_sl_level = (entry - atr_stop_mult * s['atr']) if (
                     atr_stop_mult > 0 and s.get('atr', 0) > 0) else None
                 trail_level = (peak_price.get(pid, 0) * (1 - trailing_stop_pct)) if (
                     trailing_stop_pct > 0 and peak_price.get(pid, 0) > 0) else None
 
-                # Evaluate stop-loss family first (loss-side has priority — if
-                # both TP and SL would have triggered on the same gap-day, the
-                # SL is the worse-case assumption).
-                if sl_level is not None and bar_low <= sl_level:
-                    exit_reason = 'SL'
-                    exit_price = sl_level if bar_high >= sl_level else bar_low
-                elif atr_sl_level is not None and bar_low <= atr_sl_level:
-                    exit_reason = 'ATR_SL'
-                    exit_price = atr_sl_level if bar_high >= atr_sl_level else bar_low
-                elif trail_level is not None and bar_low <= trail_level:
-                    exit_reason = 'TRAIL_SL'
-                    exit_price = trail_level if bar_high >= trail_level else bar_low
-                elif tp_level is not None and bar_high >= tp_level:
-                    exit_reason = 'TP'
-                    # If TP gap-up, we conservatively still fill at TP (limit
-                    # order would have triggered first); a market-on-stop
-                    # would gap-up favorably, which we DON'T model since it
-                    # would overstate P&L.
-                    exit_price = tp_level if bar_low <= tp_level else tp_level
-                else:
-                    # Exit policy: prefer the explicit exit_signals array
-                    # (computed at a softer combine-mode than entry — see
-                    # _build_exit_signals).
-                    exit_arr = s.get('exit_signals')
-                    if exit_arr is not None and exit_arr[i] == 1:
-                        exit_reason = 'signal'
-                    else:
-                        sig = s['signals'][i]
-                        prev_sig = s['signals'][i - 1] if i > 0 else 0
-                        if sig == 0 and prev_sig == 1:
-                            exit_reason = 'signal'
-                    # Signal exit fills at close — no gap modeling, since we
-                    # had no pending limit/stop order.
-                    exit_price = price
+                # T17D — Profit-taking ladder. Fire BEFORE the regular TP check
+                # so that a position at +20% with ladder=[1.0, 2.0] does a
+                # partial trim rather than a full TP close.
+                # We loop one step per tick — even if the price screams past
+                # multiple levels in one bar, ladder one step at a time so the
+                # bandit gets per-trim feedback. Remaining steps fire on
+                # subsequent bars.
+                partial_done = int(p['partial_exit_count'] or 0) if 'partial_exit_count' in p.keys() else 0
+                if (tp > 0 and ladder_steps > 0 and partial_done < ladder_steps
+                        and tp_level is not None):
+                    step_mult = float(ladder_pcts[partial_done])
+                    step_target = entry * (1 + tp * step_mult)
+                    if bar_high >= step_target:
+                        trim_frac = float(ladder_trim[partial_done])
+                        # Compute trim shares; round to whole shares to avoid
+                        # fractional artifacts. Floor so we never trim more
+                        # than the position holds.
+                        trim_shares = int(p['shares'] * trim_frac)
+                        if trim_shares > 0 and trim_shares < p['shares']:
+                            trim_exit_price = step_target if bar_low <= step_target else step_target
+                            sell_value = trim_shares * trim_exit_price
+                            sell_cost_pct = total_transaction_cost_bps(sym, 'sell', sell_value)
+                            proceeds = sell_value * (1 - sell_cost_pct)
+                            trim_pnl_abs = proceeds - trim_shares * entry
+                            trim_pnl_pct = (trim_exit_price / entry - 1) * 100 if entry else 0
+                            cash += proceeds
+                            remaining = p['shares'] - trim_shares
+                            ladder_reason = f'ladder_trim_{partial_done + 1}'
+                            # Update position: reduce shares, bump count.
+                            c.execute(
+                                '''UPDATE paper_positions
+                                   SET shares=?, partial_exit_count=?
+                                   WHERE id=?''',
+                                (remaining, partial_done + 1, p['id']))
+                            c.execute(
+                                '''INSERT INTO paper_transactions
+                                   (account_id, position_id, type, symbol, shares,
+                                    price, value, fee, cash_after, reason, ts_date)
+                                   VALUES (?, ?, 'sell', ?, ?, ?, ?, ?, ?, ?, ?)''',
+                                (account_id, p['id'], sym, trim_shares,
+                                 trim_exit_price,
+                                 float(sell_value),
+                                 float(sell_value * sell_cost_pct),
+                                 float(cash), ladder_reason, d))
+                            new_tx += 1
+                            _log(account_id, 'info',
+                                 f'ladder trim {partial_done+1}/{ladder_steps} '
+                                 f'{sym}: {trim_shares}sh @ ${trim_exit_price:.2f} '
+                                 f'(+{trim_pnl_pct:.1f}%, ${trim_pnl_abs:.0f}); '
+                                 f'remaining {remaining}sh')
+                            # Skip the rest of the exit checks this bar so we
+                            # don't also trigger TP on the same hop. Next bar
+                            # the next step (or full TP) can fire.
+                            continue
+
+                # Gap-aware exit selection (loss-side priority) — shared with
+                # the optimizer backtest via _select_exit so the two engines
+                # price stops/targets identically. The soft-exit decision
+                # prefers the explicit exit_signals array (computed at a softer
+                # combine-mode than entry, see _build_exit_signals) and falls
+                # back to a 1→0 signal cross.
+                exit_arr = s.get('exit_signals')
+                # P1a — with fill_mode='next_close' the soft exit acts on the
+                # PREVIOUS bar's signal state (decision made at yesterday's
+                # close, executed at today's close). Price-level exits above
+                # (SL/TP/trailing/ATR) are intraday limit/stop semantics, not
+                # look-ahead, so they stay unlagged.
+                _j = i - sig_lag
+                _sig = s['signals'][_j] if _j >= 0 else 0
+                _prev_sig = s['signals'][_j - 1] if _j > 0 else 0
+                _exit_now = ((exit_arr is not None and _j >= 0 and exit_arr[_j] == 1)
+                             or (_sig == 0 and _prev_sig == 1))
+                exit_reason, exit_price = _select_exit(
+                    price, bar_high, bar_low,
+                    sl_level=sl_level, atr_sl_level=atr_sl_level,
+                    trail_level=trail_level, tp_level=tp_level,
+                    exit_signal_now=_exit_now)
                 if exit_reason:
-                    sell_bps = _fee_bps(sym, 'sell')
-                    proceeds = p['shares'] * exit_price * (1 - sell_bps)
+                    sell_value = p['shares'] * exit_price
+                    sell_cost_pct = total_transaction_cost_bps(sym, 'sell', sell_value)
+                    proceeds = sell_value * (1 - sell_cost_pct)
                     pnl_abs = proceeds - p['shares'] * entry
                     pnl_pct = (exit_price / entry - 1) * 100 if entry else 0
                     cash += proceeds
@@ -3021,7 +3793,8 @@ def _run_account_tick_impl(user_id: int, account_id: int,
                                 from web.modules.paper_learning import record_bandit_reward  # type: ignore
                             record_bandit_reward(account_id, entry_strat_for_pos,
                                                  won=(pnl_abs > 0),
-                                                 conn_factory=_conn)
+                                                 conn_factory=_conn,
+                                                 pnl_pct=float(pnl_pct))
                         except Exception as e:
                             _log(account_id, 'warning',
                                  f'bandit reward write failed for {entry_strat_for_pos}: {e}')
@@ -3030,7 +3803,7 @@ def _run_account_tick_impl(user_id: int, account_id: int,
                                  VALUES (?, ?, 'sell', ?, ?, ?, ?, ?, ?, ?, ?)''',
                               (account_id, p['id'], sym, p['shares'], exit_price,
                                float(p['shares'] * exit_price),
-                               float(p['shares'] * exit_price * sell_bps),
+                               float(sell_value * sell_cost_pct),
                                float(cash), exit_reason, d))
                     new_tx += 1
                     # Update per-symbol P&L tracking; check blacklist threshold
@@ -3074,9 +3847,31 @@ def _run_account_tick_impl(user_id: int, account_id: int,
                 # entries on any replay day when the gate is tripped.
                 if vix_block_entries:
                     continue
-                sig = s['signals'][i]
+                # P1a — next_close mode enters on YESTERDAY's signal at
+                # today's close; same_close (legacy) keeps the original
+                # same-bar fill. i==0 is already skipped above, so i-sig_lag
+                # is always a valid index.
+                sig = s['signals'][i - sig_lag]
                 if sig != 1:
                     continue
+                # T15 VWAP-distance gate — reject entries that are chasing
+                # an overextended move OR catching a knife. Skipped when
+                # both thresholds are 0 (disabled) or insufficient history.
+                if vwap_chase_max_pct > 0 or vwap_undercut_max_pct > 0:
+                    close_seg = s['closes'][:i + 1]
+                    high_seg = s['highs'][:i + 1]
+                    low_seg = s['lows'][:i + 1]
+                    dist = _vwap_distance_pct(close_seg, high_seg, low_seg,
+                                              window=vwap_window)
+                    if dist is not None:
+                        if vwap_chase_max_pct > 0 and dist > vwap_chase_max_pct:
+                            _log(account_id, 'info',
+                                 f'VWAP chase block {sym}: +{dist:.2f}% > {vwap_chase_max_pct}%')
+                            continue
+                        if vwap_undercut_max_pct > 0 and dist < -vwap_undercut_max_pct:
+                            _log(account_id, 'info',
+                                 f'VWAP knife block {sym}: {dist:.2f}% < -{vwap_undercut_max_pct}%')
+                            continue
                 # Skip if already holding this symbol
                 already = c.execute(
                     "SELECT id FROM paper_positions WHERE account_id=? AND symbol=? AND status='open'",
@@ -3112,11 +3907,14 @@ def _run_account_tick_impl(user_id: int, account_id: int,
                 # can compound while losers stay protected.
                 positions_mtm = 0.0
                 for r in c.execute(
-                    "SELECT symbol, shares FROM paper_positions WHERE account_id=? AND status='open'",
+                    "SELECT entry_price, symbol, shares FROM paper_positions WHERE account_id=? AND status='open'",
                     (account_id,)).fetchall():
                     s_held = series.get(r['symbol'])
-                    if s_held and d in s_held['idx_by_date']:
-                        positions_mtm += float(r['shares']) * float(s_held['closes'][s_held['idx_by_date'][d]])
+                    if s_held:
+                        lk = _last_known_close(s_held, d)
+                        positions_mtm += float(r['shares']) * (lk if lk is not None else float(r['entry_price']))
+                    else:
+                        positions_mtm += float(r['shares']) * float(r['entry_price'])
                 current_equity = cash + positions_mtm
                 cap_basis = max(float(a['initial_capital']), current_equity)
 
@@ -3150,16 +3948,98 @@ def _run_account_tick_impl(user_id: int, account_id: int,
                                  f'sector MTM ${sector_mtm:.0f} >= cap ${sector_cap:.0f}')
                             continue
 
-                # Position sizing
-                if vol_target > 0:
-                    sigma = _realized_vol_annual(s['closes'][:i + 1], 30)
-                    # Floor sigma to avoid blow-up sizing on near-zero-vol names.
-                    sigma = max(sigma, _VOL_TARGET_SIGMA_FLOOR)
+                # Position sizing. Three modes (T11):
+                #   - kelly:      use the bandit table's per-strategy win-rate
+                #                 + payoff ratio to size by Kelly fraction.
+                #                 Falls back to vol_target/fixed when the
+                #                 sample is too small to be reliable.
+                #   - vol_target: weight = vol_target / realized_vol  (T-existing)
+                #   - fixed:      slice_cash = cash * pos_pct          (legacy)
+                sizing_mode = (plan.get('sizing_mode') or 'fixed').lower()
+                kelly_safety = float(plan.get('kelly_safety') or _KELLY_DEFAULT_SAFETY)
+                kelly_weight: Optional[float] = None
+                if sizing_mode == 'kelly':
+                    # Pick the strategy that would fire BUY on this bar (first
+                    # match wins, mirrors the entry_strategy tagging below).
+                    cand_strategy: Optional[str] = None
+                    try:
+                        for cs in (plan.get('strategies') or []):
+                            votes = _build_signals(cs, s['closes'], s['highs'], s['lows'])
+                            # P1a — attribute to the vote on the bar that
+                            # actually fired the (possibly lagged) signal.
+                            if i - sig_lag < len(votes) and votes[i - sig_lag] == 1:
+                                cand_strategy = cs
+                                break
+                    except Exception:
+                        cand_strategy = None
+                    if cand_strategy:
+                        try:
+                            with _conn() as c2:
+                                c2.row_factory = sqlite3.Row
+                                br = c2.execute(
+                                    '''SELECT wins, losses,
+                                              COALESCE(avg_win_pct,0) AS avg_win_pct,
+                                              COALESCE(avg_loss_pct,0) AS avg_loss_pct
+                                       FROM bandit_state
+                                       WHERE account_id=? AND strategy=?''',
+                                    (account_id, cand_strategy)).fetchone()
+                            k_wins = int(br['wins']) if br else 0
+                            k_losses = int(br['losses']) if br else 0
+                            k_aw = float(br['avg_win_pct'] or 0) if br else 0.0
+                            k_al = float(br['avg_loss_pct'] or 0) if br else 0.0
+                            # Phase 5: when THIS account's sample for the
+                            # strategy is too thin for Kelly (≈never reaches 20
+                            # at a couple trades/month), fall back to the SAME
+                            # strategy's record pooled across all accounts so
+                            # Kelly can actually engage. A strategy behaves
+                            # similarly across names, so the pooled stats are a
+                            # sound prior; the per-account row takes over once
+                            # it's rich enough on its own.
+                            if k_wins + k_losses < _KELLY_MIN_SAMPLES:
+                                try:
+                                    try:
+                                        from .paper_learning import pooled_strategy_stats
+                                    except Exception:
+                                        from web.modules.paper_learning import pooled_strategy_stats  # type: ignore
+                                    pooled = pooled_strategy_stats(cand_strategy, _conn)
+                                    if pooled['wins'] + pooled['losses'] > k_wins + k_losses:
+                                        k_wins, k_losses = pooled['wins'], pooled['losses']
+                                        k_aw, k_al = pooled['avg_win_pct'], pooled['avg_loss_pct']
+                                except Exception:
+                                    pass
+                            kelly_weight = _kelly_fraction(
+                                k_wins, k_losses, k_aw, k_al, safety=kelly_safety)
+                        except sqlite3.Error:
+                            kelly_weight = None
+
+                if kelly_weight is not None:
+                    # Cap by max_per_name so Kelly can never exceed the
+                    # account's per-name concentration policy.
+                    weight = min(kelly_weight, max_per_name_pct)
+                    slice_cash = cap_basis * weight
+                elif sizing_mode == 'kelly' and vol_target > 0:
+                    # Kelly insufficient data → defer to vol_target.
+                    sigma = _sigma_for_sizing(sym, s['closes'][:i + 1], plan)
+                    weight = min(vol_target / sigma, max_per_name_pct)
+                    weight = max(weight, 0.01)
+                    slice_cash = cap_basis * weight
+                elif vol_target > 0:
+                    sigma = _sigma_for_sizing(sym, s['closes'][:i + 1], plan)
                     weight = min(vol_target / sigma, max_per_name_pct)
                     weight = max(weight, 0.01)
                     slice_cash = cap_basis * weight
                 else:
-                    slice_cash = cash * pos_pct
+                    # Phase 4: size off the EQUITY basis (cap_basis = max(initial,
+                    # current_equity)), not declining cash. The old `cash * pos_pct`
+                    # starved later entries in a tick — once a few positions opened,
+                    # cash shrank and every subsequent name got a smaller slice, so
+                    # capital sat idle. Equity-based sizing deploys the intended
+                    # pos_pct per name; the budget_left + available-cash caps below
+                    # keep it from overcommitting.
+                    slice_cash = cap_basis * pos_pct
+
+                # P2 — ranker-confidence gate (1.0 for non-ranker accounts).
+                slice_cash *= size_gate
 
                 # Leverage cap on max(initial, current) instead of initial only.
                 budget_left = max(0.0, cap_basis - positions_mtm)
@@ -3169,13 +4049,21 @@ def _run_account_tick_impl(user_id: int, account_id: int,
                 per_name_cap = cap_basis * max_per_name_pct
                 slice_cash = min(slice_cash, per_name_cap)
 
+                # Never spend more than the cash actually on hand — guards the
+                # equity-based sizing above during a drawdown, where
+                # cap_basis (=initial) can exceed current equity/cash.
+                slice_cash = min(slice_cash, cash)
+
                 if slice_cash <= 0:
                     continue
 
                 # Per-venue buy fee (used for both lot rounding and cost calc)
                 buy_bps = _fee_bps(sym, 'buy')
                 lot = _lot_size(sym)
-                lots = int(slice_cash / (price * lot * (1 + buy_bps))) if price > 0 else 0
+                # Use the all-in cost (fee + half-spread + size slippage) for
+                # lot rounding so we don't overcommit cash on illiquid names.
+                all_in_buy = total_transaction_cost_bps(sym, 'buy', slice_cash)
+                lots = int(slice_cash / (price * lot * (1 + all_in_buy))) if price > 0 else 0
                 shares = lots * lot
                 if shares <= 0:
                     continue
@@ -3184,7 +4072,9 @@ def _run_account_tick_impl(user_id: int, account_id: int,
                 # whose fees dominate.
                 if trade_value < min_trade_value:
                     continue
-                cost = trade_value * (1 + buy_bps)
+                # Total cash effect = trade_value × (1 + fee + half_spread + slippage)
+                buy_cost_pct = total_transaction_cost_bps(sym, 'buy', trade_value)
+                cost = trade_value * (1 + buy_cost_pct)
                 cash -= cost
                 # T6.5: tag the trade with which sub-strategy actually
                 # voted BUY at this bar. Compute each strategy's vote and
@@ -3195,7 +4085,8 @@ def _run_account_tick_impl(user_id: int, account_id: int,
                 try:
                     for cand_strat in (plan.get('strategies') or []):
                         votes = _build_signals(cand_strat, s['closes'], s['highs'], s['lows'])
-                        if i < len(votes) and votes[i] == 1:
+                        # P1a — same lagged-bar attribution as the entry signal.
+                        if i - sig_lag < len(votes) and votes[i - sig_lag] == 1:
                             entry_strategy = cand_strat
                             break
                 except Exception:
@@ -3215,14 +4106,32 @@ def _run_account_tick_impl(user_id: int, account_id: int,
                 new_tx += 1
 
             # 3) End-of-day equity snapshot
+            #
+            # Carryover pricing: when a symbol has no bar on `d` (venue holiday
+            # mismatch, late feed, or a cache miss) we value the position at
+            # its LAST KNOWN close — never at zero. Zeroing was the cause of
+            # the catastrophic "1-day -67%" snapshots seen on accts #4/#7/#8:
+            # one missed bar on a multi-position day flattened positions_value
+            # and tripped the auto-drawdown stop, paused the account and
+            # locked it out for a feed glitch.
             positions_value = 0.0
+            stale_carryover: List[str] = []  # symbols valued from cache, not today's bar
             for r in c.execute(
-                "SELECT symbol, shares FROM paper_positions WHERE account_id=? AND status='open'",
+                "SELECT entry_price, symbol, shares FROM paper_positions WHERE account_id=? AND status='open'",
                 (account_id,)).fetchall():
                 s = series.get(r['symbol'])
-                if not s or d not in s['idx_by_date']:
-                    continue
-                positions_value += r['shares'] * float(s['closes'][s['idx_by_date'][d]])
+                if s and d in s['idx_by_date']:
+                    positions_value += r['shares'] * float(s['closes'][s['idx_by_date'][d]])
+                else:
+                    lk = _last_known_close(s, d) if s else None
+                    if lk is None:
+                        lk = float(r['entry_price'])
+                    positions_value += r['shares'] * lk
+                    stale_carryover.append(r['symbol'])
+            if stale_carryover:
+                _log(account_id, 'info',
+                     f'equity snapshot {d}: carryover pricing for {sorted(set(stale_carryover))} '
+                     f'(no fresh bar — using last known close)')
             equity = cash + positions_value
             c.execute(
                 'INSERT OR REPLACE INTO paper_equity_history (account_id, date, cash, positions_value, equity) VALUES (?, ?, ?, ?, ?)',
@@ -3242,9 +4151,20 @@ def _run_account_tick_impl(user_id: int, account_id: int,
                         (account_id,)).fetchall()
                     for p in open_now:
                         s = series.get(p['symbol'])
-                        if not s or d not in s['idx_by_date']:
-                            continue
-                        ep = float(s['closes'][s['idx_by_date'][d]])
+                        # Liquidation must price at a real number, not $0.
+                        # Use today's bar if available, else the last known
+                        # close. If even that fails, skip the liquidation for
+                        # this position — better to leave it open than to
+                        # crystallize a fake loss at zero.
+                        if s and d in s['idx_by_date']:
+                            ep = float(s['closes'][s['idx_by_date'][d]])
+                        else:
+                            lk = _last_known_close(s, d) if s else None
+                            if lk is None:
+                                _log(account_id, 'warning',
+                                     f'drawdown-liquidate skipped {p["symbol"]} on {d}: no price available')
+                                continue
+                            ep = lk
                         sell_bps = _fee_bps(p['symbol'], 'sell')
                         proceeds = p['shares'] * ep * (1 - sell_bps)
                         pnl_abs = proceeds - p['shares'] * p['entry_price']

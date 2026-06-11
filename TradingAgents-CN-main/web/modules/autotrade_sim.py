@@ -91,7 +91,35 @@ def _simulate_symbol(symbol: str, plan: Dict[str, Any], capital_slice: float,
         highs = highs[i0:i1]
         lows = lows[i0:i1]
 
-    # Support either a single strategy or a list of strategies with a combine mode
+    # Mirror the LIVE engine's per-trade mechanics so the optimizer scores the
+    # same game production actually trades (autotrade_sim ↔ paper_trading parity):
+    #   - level-triggered entry (sig==1), not an edge cross
+    #   - real fee + half-spread + slippage via total_transaction_cost_bps
+    #   - gap-aware SL / ATR-stop / trailing-stop / TP via the shared _select_exit
+    #   - soft signal exit via _build_exit_signals (same softening live uses)
+    #   - profit-taking ladder, min-trade-value floor, post-close cooldown
+    #
+    # NOT modeled here: account/market-level gates (VIX / HMM / MTF / VWAP /
+    # earnings / sector caps) — those live in the day-major account loop and
+    # only SUPPRESS trades, so omitting them is a documented, conservative
+    # residual (the optimizer may see slightly more trades than live).
+    #
+    # Fill timing (P1a): plan['fill_mode'] selects between the legacy same-bar
+    # fill ('same_close', default when absent — pre-fix accounts) and the
+    # honest lagged fill ('next_close': act on bar i-1's signal at bar i's
+    # close). The SAME flag drives the live engine's lag in
+    # paper_trading._run_account_tick_impl so the two engines never drift.
+    try:
+        from .paper_trading import (
+            _lot_size, _atr, total_transaction_cost_bps, _build_exit_signals,
+            _select_exit, _DEFAULT_MIN_TRADE_VALUE, _DEFAULT_HOLD_COOLDOWN_DAYS,
+        )
+    except Exception:  # pragma: no cover - import path shim
+        from web.modules.paper_trading import (  # type: ignore
+            _lot_size, _atr, total_transaction_cost_bps, _build_exit_signals,
+            _select_exit, _DEFAULT_MIN_TRADE_VALUE, _DEFAULT_HOLD_COOLDOWN_DAYS,
+        )
+
     raw_strats = plan.get('strategies') or plan.get('strategy') or 'ma_cross'
     if isinstance(raw_strats, str):
         strats = [s.strip() for s in raw_strats.split(',') if s.strip()]
@@ -101,9 +129,28 @@ def _simulate_symbol(symbol: str, plan: Dict[str, Any], capital_slice: float,
     if combine_mode not in ('any', 'majority', 'all'):
         combine_mode = 'any'
     signals = _combine_signals(strats, combine_mode, closes, highs, lows)
+    exit_signals = _build_exit_signals(strats, combine_mode, closes, highs, lows)
+
     tp = (plan.get('take_profit_pct') or 0) / 100.0
     sl = (plan.get('stop_loss_pct') or 0) / 100.0
-    fee_bps = 5.0 / 10000.0  # 0.05% one-way
+    atr_stop_mult = float(plan.get('atr_stop_mult') or 0)
+    trailing_stop_pct = float(plan.get('trailing_stop_pct') or 0) / 100.0
+    ladder_pcts = list(plan.get('profit_ladder_pct') or [])
+    ladder_trim = list(plan.get('ladder_trim_fractions') or [])
+    ladder_steps = min(len(ladder_pcts), len(ladder_trim))
+    min_trade_value = float(plan.get('min_trade_value') or _DEFAULT_MIN_TRADE_VALUE)
+    _hc = plan.get('hold_cooldown_days', _DEFAULT_HOLD_COOLDOWN_DAYS)
+    hold_cooldown_days = int(_hc) if _hc is not None else _DEFAULT_HOLD_COOLDOWN_DAYS
+    # P1a fill timing — see the parity note above. Lag of 1 bar in
+    # next_close mode; 0 preserves the legacy same-bar fill.
+    fill_mode = (plan.get('fill_mode') or 'same_close').lower()
+    sig_lag = 1 if fill_mode == 'next_close' else 0
+    lot = _lot_size(symbol)
+    atr_val = _atr(highs, lows, closes, 14) if atr_stop_mult > 0 else 0.0
+
+    def _sell_proceeds(shares: int, fill: float) -> float:
+        sell_value = shares * fill
+        return sell_value * (1 - total_transaction_cost_bps(symbol, 'sell', sell_value))
 
     equity_series: List[Dict[str, Any]] = []
     trades: List[Dict[str, Any]] = []
@@ -111,54 +158,97 @@ def _simulate_symbol(symbol: str, plan: Dict[str, Any], capital_slice: float,
     position = 0  # share count
     entry_price = 0.0
     entry_date = ''
+    peak = 0.0           # high-water mark for the trailing stop
+    partial_done = 0     # ladder steps already trimmed on the open position
+    cooldown_until = -1  # bar index; new entries blocked while i <= cooldown_until
 
     for i, d in enumerate(dates):
         price = closes[i]
-        # check exits while in position
+        bar_high = highs[i] if i < len(highs) else price
+        bar_low = lows[i] if i < len(lows) else price
+
+        # --- exits on the open position (processed before entries, like live) ---
         if position > 0:
-            exit_reason = None
-            if tp > 0 and price >= entry_price * (1 + tp):
-                exit_reason = 'TP'
-            elif sl > 0 and price <= entry_price * (1 - sl):
-                exit_reason = 'SL'
-            elif signals[i] == 0 and (i == 0 or signals[i - 1] == 1):
-                exit_reason = 'signal'
-            if exit_reason:
-                proceeds = position * price * (1 - fee_bps)
-                pnl_pct = (price / entry_price - 1) * 100 if entry_price else 0
-                trades.append({
-                    'symbol': symbol,
-                    'entry_date': entry_date, 'entry_price': float(round(entry_price, 4)),
-                    'exit_date': d, 'exit_price': float(round(price, 4)),
-                    'pnl_pct': float(round(pnl_pct, 3)),
-                    'exit_reason': exit_reason,
-                })
-                cash += proceeds
-                position = 0
-                entry_price = 0.0
-        # check entry
-        if position == 0 and signals[i] == 1 and (i == 0 or signals[i - 1] == 0):
-            try:
-                from .paper_trading import _lot_size  # type: ignore
-            except Exception:
-                from web.modules.paper_trading import _lot_size  # type: ignore
-            lot = _lot_size(symbol)
-            lots = int((cash * (1 - fee_bps)) / (price * lot)) if price > 0 else 0
+            if trailing_stop_pct > 0:
+                peak = max(peak, price)
+            post_ladder = ladder_steps > 0 and partial_done >= ladder_steps
+            tp_level = (entry_price * (1 + tp)) if (tp > 0 and not post_ladder) else None
+            sl_level = (entry_price * (1 - sl)) if sl > 0 else None
+            atr_sl_level = (entry_price - atr_stop_mult * atr_val) if (
+                atr_stop_mult > 0 and atr_val > 0) else None
+            trail_level = (peak * (1 - trailing_stop_pct)) if (
+                trailing_stop_pct > 0 and peak > 0) else None
+
+            # Profit-taking ladder — one trim per bar (mirrors live T17D). Fire
+            # before the regular exit check so a runner trims instead of fully
+            # closing on the static TP.
+            laddered = False
+            if (tp > 0 and ladder_steps > 0 and partial_done < ladder_steps
+                    and tp_level is not None):
+                step_target = entry_price * (1 + tp * float(ladder_pcts[partial_done]))
+                if bar_high >= step_target:
+                    trim_shares = int(position * float(ladder_trim[partial_done]))
+                    if 0 < trim_shares < position:
+                        cash += _sell_proceeds(trim_shares, step_target)
+                        pnl_pct = (step_target / entry_price - 1) * 100 if entry_price else 0
+                        trades.append({
+                            'symbol': symbol, 'entry_date': entry_date,
+                            'entry_price': float(round(entry_price, 4)),
+                            'exit_date': d, 'exit_price': float(round(step_target, 4)),
+                            'pnl_pct': float(round(pnl_pct, 3)),
+                            'exit_reason': f'ladder_trim_{partial_done + 1}',
+                        })
+                        position -= trim_shares
+                        partial_done += 1
+                        laddered = True
+
+            if not laddered:
+                _j = i - sig_lag
+                exit_now = (_j >= 0 and exit_signals[_j] == 1) or (
+                    _j > 0 and signals[_j] == 0 and signals[_j - 1] == 1)
+                reason, fill = _select_exit(
+                    price, bar_high, bar_low,
+                    sl_level=sl_level, atr_sl_level=atr_sl_level,
+                    trail_level=trail_level, tp_level=tp_level,
+                    exit_signal_now=exit_now)
+                if reason:
+                    cash += _sell_proceeds(position, fill)
+                    pnl_pct = (fill / entry_price - 1) * 100 if entry_price else 0
+                    trades.append({
+                        'symbol': symbol, 'entry_date': entry_date,
+                        'entry_price': float(round(entry_price, 4)),
+                        'exit_date': d, 'exit_price': float(round(fill, 4)),
+                        'pnl_pct': float(round(pnl_pct, 3)),
+                        'exit_reason': reason,
+                    })
+                    position = 0
+                    entry_price = 0.0
+                    peak = 0.0
+                    partial_done = 0
+                    cooldown_until = i + hold_cooldown_days
+
+        # --- entry: level-triggered, after exits on the same bar (like live) ---
+        if (position == 0 and i >= sig_lag and signals[i - sig_lag] == 1
+                and i > cooldown_until and price > 0):
+            all_in_buy = total_transaction_cost_bps(symbol, 'buy', cash)
+            lots = int(cash / (price * lot * (1 + all_in_buy)))
             shares = lots * lot
-            if shares > 0:
-                cost = shares * price * (1 + fee_bps)
-                cash -= cost
-                position = shares
-                entry_price = price
-                entry_date = d
+            trade_value = shares * price
+            if shares > 0 and trade_value >= min_trade_value:
+                cost = trade_value * (1 + total_transaction_cost_bps(symbol, 'buy', trade_value))
+                if cost <= cash:
+                    cash -= cost
+                    position = shares
+                    entry_price = price
+                    entry_date = d
+                    peak = price
+                    partial_done = 0
 
-        equity_now = cash + position * price
-        equity_series.append({'date': d, 'value': round(equity_now, 2)})
+        equity_series.append({'date': d, 'value': round(cash + position * price, 2)})
 
-    # close any open position at the last bar
+    # close any open position at the last bar (end-of-period)
     if position > 0:
         last_price = closes[-1]
-        proceeds = position * last_price * (1 - fee_bps)
         pnl_pct = (last_price / entry_price - 1) * 100 if entry_price else 0
         trades.append({
             'symbol': symbol,
@@ -167,8 +257,13 @@ def _simulate_symbol(symbol: str, plan: Dict[str, Any], capital_slice: float,
             'pnl_pct': float(round(pnl_pct, 3)),
             'exit_reason': 'EOP',
         })
-        cash += proceeds
+        cash += _sell_proceeds(position, last_price)
         position = 0
+
+    # Buy-and-hold of this symbol over the same (sliced) window — the
+    # per-symbol benchmark the optimizer scores alpha against. Free: computed
+    # from price data we already fetched, no extra network call.
+    buyhold_pct = ((closes[-1] / closes[0] - 1.0) * 100.0) if closes and closes[0] else 0.0
 
     return {
         'symbol': symbol,
@@ -176,6 +271,7 @@ def _simulate_symbol(symbol: str, plan: Dict[str, Any], capital_slice: float,
         'equity': [{'date': p['date'], 'value': float(p['value'])} for p in equity_series],
         'trades': trades,
         'final_equity': float(round(cash, 2)),
+        'buyhold_pct': float(round(buyhold_pct, 3)),
     }
 
 
@@ -242,30 +338,130 @@ def _annualize_pct(total_pct: float, days: int) -> float:
     return annual * 100.0
 
 
+# Weight on alpha vs buy-and-hold. The benchmark is ~constant across the
+# candidates of a single optimize_plan run (same symbols/window), so this term
+# mainly (a) amplifies the weight on annual return and (b) drives cash-sitting
+# plans (annual≈0 while the benchmark rose) to a negative score — which is the
+# point: a "trading" product that underperforms idle buy-and-hold is not
+# marketable, so the optimizer must stop selecting it.
+_ALPHA_WEIGHT = 0.5
+
+
+def _score_components(annual, dd, sharpe, total_ret_pct, trade_count,
+                      target_annual_pct, benchmark_annual_pct=0.0):
+    """The single source of truth for the fitness score, shared by the
+    optimizer backtest (_score_result) and the live realized-equity scorer
+    (paper_trading._live_fitness) so the two can never drift. Inputs are
+    already-computed metrics (each caller annualizes in its own day convention);
+    this only combines them.
+
+    score = annual - 0.5*dd + 2*sharpe + alpha*(annual - benchmark)
+            + 15 (hit target) - 20 (losing) - 10 (< 3 trades, unreliable)
+    """
+    score = annual - 0.5 * dd + 2.0 * sharpe
+    score += _ALPHA_WEIGHT * (annual - benchmark_annual_pct)
+    if annual >= target_annual_pct:
+        score += 15  # bonus for hitting target
+    if total_ret_pct < 0:
+        score -= 20  # heavy penalty for losing money
+    if trade_count < 3:
+        score -= 10  # too few trades = unreliable signal
+    return round(score, 3)
+
+
 def _score_result(metrics, days, target_annual_pct):
-    """Higher = better. Combines annualized return, drawdown, Sharpe, target hit."""
+    """Higher = better. Combines annualized return, drawdown, Sharpe, target hit,
+    and alpha vs the basket's buy-and-hold over the same window."""
     total_ret = metrics.get('total_return_pct', 0)
     annual = _annualize_pct(total_ret, days)
     dd = metrics.get('max_drawdown_pct', 100)
     sharpe = metrics.get('sharpe', 0) or 0
     trade_count = metrics.get('trade_count', 0)
+    # Annualize the basket buy-and-hold with the SAME `days` so the alpha term
+    # compares like-for-like.
+    benchmark_annual = _annualize_pct(metrics.get('benchmark_total_pct', 0) or 0, days)
 
-    score = annual - 0.5 * dd + 2.0 * sharpe
-    if annual >= target_annual_pct:
-        score += 15  # bonus for hitting target
-    if total_ret < 0:
-        score -= 20  # heavy penalty for losing money
-    if trade_count < 3:
-        score -= 10  # too few trades = unreliable signal
-    return round(score, 3), round(annual, 3)
+    score = _score_components(annual, dd, sharpe, total_ret, trade_count,
+                              target_annual_pct, benchmark_annual_pct=benchmark_annual)
+    return score, round(annual, 3)
 
 
 _ALL_STRATEGIES = ['ma_cross', 'rsi_meanreversion', 'macd_cross', 'breakout', 'momentum']
 
+# P1b — multiple-testing deflation. The expected maximum of N independent
+# noise scores with spread σ is ≈ σ·sqrt(2·ln N), so subtracting exactly that
+# (λ=1) from the winner estimates its selection bias: a "best" config found by
+# searching N configs over pure noise deflates back to roughly the mean.
+_DEFLATE_LAMBDA = 1.0
+
+
+def _deflate_penalty(scores, n_evals):
+    """Selection-bias penalty for picking the max of ``n_evals`` trials whose
+    final scores are ``scores``. Returns 0 when there's nothing to deflate."""
+    valid = [s for s in scores if s is not None and s > -1e8]
+    if len(valid) < 2 or n_evals < 2:
+        return 0.0
+    mean = sum(valid) / len(valid)
+    var = sum((s - mean) ** 2 for s in valid) / len(valid)
+    spread = math.sqrt(var)
+    return _DEFLATE_LAMBDA * spread * math.sqrt(2.0 * math.log(n_evals))
+
+
+_EMBARGO_PCT = 0.02       # ~5 bars on a 1y window between train end / OOS start
+_MIN_FOLD_BARS = 60       # _simulate_symbol refuses slices shorter than this
+_MAX_OOS_FOLDS = 4
+
+
+def oos_fold_slices(period_days: int, train_pct: float = 0.7):
+    """P4 — contiguous purged OOS folds over the post-train window.
+
+    Returns (train_slice, folds): train ends _EMBARGO_PCT before the first
+    fold (the purge gap, so no training bar's forward window touches OOS),
+    and the test region splits into as many >=_MIN_FOLD_BARS folds as fit
+    (1 on a 1y window, 2 on 2y, 4 on 5y). Scoring on the MEAN across folds
+    instead of one 70/30 split stops a single lucky test window from
+    selecting the winner — the CPCV idea sized to this engine's constraint
+    that every slice must be a contiguous >=60-bar run.
+    """
+    bars = max(1, int(period_days * 0.69))   # calendar days → ~trading bars
+    test_frac = max(0.0, 1.0 - train_pct)
+    test_bars = test_frac * bars
+    k = max(1, min(_MAX_OOS_FOLDS, int(test_bars // _MIN_FOLD_BARS)))
+    fold_frac = test_frac / k
+    folds = [(round(train_pct + i * fold_frac, 4),
+              round(train_pct + (i + 1) * fold_frac, 4)) for i in range(k)]
+    train_slice = (0.0, round(max(0.1, train_pct - _EMBARGO_PCT), 4))
+    return train_slice, folds
+
+
+def score_plan_oos(base_plan, target_annual_pct, period_days,
+                   train_pct: float = 0.7):
+    """Score a plan as the MEAN deflated-comparable score across the purged
+    OOS folds (the same folds optimize_plan validates with — champion and
+    challengers must be judged on identical data)."""
+    _train, folds = oos_fold_slices(period_days, train_pct)
+    fold_days = max(1, int(period_days * (folds[0][1] - folds[0][0])))
+    scores, annuals, metrics = [], [], {}
+    for sl in folds:
+        res = simulate_plan(base_plan, slice_range=sl)
+        if not res.get('success'):
+            continue
+        s, a = _score_result(res['metrics'], fold_days, target_annual_pct)
+        scores.append(s)
+        annuals.append(a)
+        metrics = res['metrics']  # keep the latest fold's detail for display
+    if not scores:
+        return {'score': -1e9, 'annual_return_pct': 0.0, 'metrics': {},
+                'n_folds': 0}
+    return {'score': sum(scores) / len(scores),
+            'annual_return_pct': sum(annuals) / len(annuals),
+            'metrics': metrics, 'n_folds': len(scores),
+            'fold_scores': [round(s, 3) for s in scores]}
+
 
 def optimize_plan(base_plan, target_monthly_pct=5.0, max_iterations=60,
                   walk_forward=False, train_pct=0.7,
-                  expand_search=False, rng_seed=None):
+                  expand_search=False, rng_seed=None, trial_sink=None):
     """
     Random + local-refinement search over the strategy / TP / SL space.
     Scores configs against an annualized return target derived from the
@@ -290,15 +486,34 @@ def optimize_plan(base_plan, target_monthly_pct=5.0, max_iterations=60,
       - Top-K candidates get re-run on the remaining (1-train_pct) (OOS).
       - Final ranking uses the OOS score so winners generalize.
 
+    TRIAL LOGGING (P1b): pass ``trial_sink`` (a callable taking one dict) to
+    receive a record for EVERY configuration evaluated — config, train score,
+    OOS score (when walk-forward re-ran it), annual %, trade count, slices.
+    evolve_account_plan persists these to the optimizer_trials table so the
+    deflated score below can be audited. Sink errors are swallowed; logging
+    must never break the search.
+
+    DEFLATED SCORE (P1b): every returned candidate carries ``score_deflated``
+    = score − λ·σ·sqrt(2·ln N_evals), the expected-max-of-N selection-bias
+    correction. Rankings within one run are unchanged (constant penalty);
+    consumers comparing across runs or against a non-searched baseline (the
+    live champion in evolve_account_plan) must use the DEFLATED score so
+    over-searched configs stop auto-promoting.
+
     Returns: {success, target_monthly_pct, target_annual_pct, best, top,
-             trials_count, walk_forward, search_space}
+             trials_count, walk_forward, search_space, deflation}
     """
     import random as _rand
 
     target_annual = round(((1.0 + target_monthly_pct / 100.0) ** 12 - 1.0) * 100.0, 2)
     days = _period_to_days(base_plan.get('period', '1y'))
-    train_slice = (0.0, train_pct) if walk_forward else None
-    test_slice = (train_pct, 1.0) if walk_forward else None
+    # P4 — purged train window + K contiguous OOS folds (K adapts to the
+    # period; 1 on 1y, up to 4 on 5y). OOS rank = mean across folds.
+    if walk_forward:
+        train_slice, oos_folds = oos_fold_slices(days, train_pct)
+        test_slice = (train_pct, 1.0)  # kept for the trial-log slice record
+    else:
+        train_slice, oos_folds, test_slice = None, [], None
     train_days = int(days * train_pct) if walk_forward else days
     test_days = days - train_days if walk_forward else days
 
@@ -326,6 +541,7 @@ def optimize_plan(base_plan, target_monthly_pct=5.0, max_iterations=60,
     pos_choices = [10, 15, 20, 30, 50]
 
     trials = []
+    eval_log = []  # P1b — one record per evaluated config, emitted to trial_sink
 
     def try_config(strats, combine, tp, sl, pos):
         plan = dict(base_plan)
@@ -339,7 +555,19 @@ def optimize_plan(base_plan, target_monthly_pct=5.0, max_iterations=60,
         if not result.get('success'):
             return None
         score, annual = _score_result(result['metrics'], train_days, target_annual)
+        rec = {
+            'config': {'strategies': list(strats), 'combine_mode': combine,
+                       'take_profit_pct': tp, 'stop_loss_pct': sl,
+                       'pos_size_pct': pos},
+            'train_score': score,
+            'oos_score': None,
+            'annual_pct': annual,
+            'n_trades': int(result['metrics'].get('trade_count') or 0),
+            'slice': {'train': train_slice, 'test': test_slice},
+        }
+        eval_log.append(rec)
         return {
+            '_trial_rec': rec,
             'plan': {
                 'strategies': strats,
                 'combine_mode': combine,
@@ -357,18 +585,20 @@ def optimize_plan(base_plan, target_monthly_pct=5.0, max_iterations=60,
         }
 
     def try_config_oos(p):
-        """Re-run a candidate plan on the held-out portion."""
+        """Re-run a candidate plan on the purged OOS folds; mean score wins
+        (P4 — one lucky window can no longer select the champion)."""
         plan = dict(base_plan)
         plan.update(p)
-        result = simulate_plan(plan, slice_range=test_slice)
-        if not result.get('success'):
+        oos = score_plan_oos(plan, target_annual, days, train_pct=train_pct)
+        if oos['n_folds'] == 0:
             return None
-        score, annual = _score_result(result['metrics'], test_days, target_annual)
         return {
-            'metrics': result['metrics'],
-            'annual_return_pct': annual,
-            'score': score,
-            'hit_target': annual >= target_annual,
+            'metrics': oos['metrics'],
+            'annual_return_pct': oos['annual_return_pct'],
+            'score': oos['score'],
+            'n_folds': oos['n_folds'],
+            'fold_scores': oos.get('fold_scores'),
+            'hit_target': oos['annual_return_pct'] >= target_annual,
         }
 
     # Phase 1: random sampling
@@ -413,6 +643,9 @@ def optimize_plan(base_plan, target_monthly_pct=5.0, max_iterations=60,
         for t in candidates:
             oos = try_config_oos(t['plan'])
             if oos:
+                rec = t.get('_trial_rec')
+                if rec is not None:
+                    rec['oos_score'] = oos['score']
                 t['in_sample'] = {
                     'score': t['score'],
                     'annual_return_pct': t['annual_return_pct'],
@@ -435,6 +668,22 @@ def optimize_plan(base_plan, target_monthly_pct=5.0, max_iterations=60,
         if not trials:
             trials = candidates
 
+    # P1b — selection-bias correction over EVERYTHING evaluated this run.
+    # σ comes from the final (OOS-reranked where available) candidate scores;
+    # N is the count of configs actually tried, not just the survivors.
+    n_evals = len(eval_log)
+    penalty = _deflate_penalty([t.get('score') for t in trials], n_evals)
+    for t in trials:
+        t['score_deflated'] = round(float(t['score']) - penalty, 3)
+        t.pop('_trial_rec', None)  # internal bookkeeping — keep output JSON-clean
+
+    if trial_sink is not None:
+        for rec in eval_log:
+            try:
+                trial_sink(rec)
+            except Exception:
+                pass  # logging must never break the search
+
     best = trials[0] if trials else None
     return {
         'success': True,
@@ -448,6 +697,11 @@ def optimize_plan(base_plan, target_monthly_pct=5.0, max_iterations=60,
         'hit_target_count': sum(1 for t in trials if t.get('hit_target')),
         'walk_forward': walk_forward,
         'train_pct': train_pct if walk_forward else None,
+        'deflation': {
+            'n_evals': n_evals,
+            'penalty': round(penalty, 3),
+            'lambda': _DEFLATE_LAMBDA,
+        },
         'search_space': {
             'kind': search_space_kind,
             'strategies': strategies,
@@ -636,6 +890,13 @@ def simulate_plan(plan: Dict[str, Any], slice_range=None) -> Dict[str, Any]:
     all_trades.sort(key=lambda t: t.get('exit_date', ''))
 
     metrics = _aggregate_metrics(combined, all_trades, capital)
+
+    # Equal-weight buy-and-hold of the basket over the same window — stored as
+    # a TOTAL return % so _score_result annualizes it with the same `days` it
+    # uses for the strategy, keeping the alpha term internally consistent.
+    bh_vals = [s['buyhold_pct'] for s in per_symbol
+               if s.get('success') and s.get('buyhold_pct') is not None]
+    metrics['benchmark_total_pct'] = float(round(sum(bh_vals) / len(bh_vals), 3)) if bh_vals else 0.0
 
     # Build a CSV blob of every trade for client-side download
     csv_lines = ['symbol,entry_date,entry_price,exit_date,exit_price,pnl_pct,exit_reason']

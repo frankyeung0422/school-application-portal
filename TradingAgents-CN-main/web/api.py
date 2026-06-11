@@ -10,7 +10,7 @@ import os
 import requests
 import socket
 from pathlib import Path
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from http.server import HTTPServer, BaseHTTPRequestHandler, ThreadingHTTPServer
 import os
 from socketserver import ThreadingMixIn
@@ -20,6 +20,7 @@ import time
 import hashlib
 import sqlite3
 from collections import defaultdict, deque
+from typing import Any, Dict, List, Optional
 
 # 添加項目根目錄到Python路徑
 project_root = Path(__file__).parent.parent
@@ -2520,6 +2521,8 @@ class TradingAgentsAPIHandler(BaseHTTPRequestHandler):
             self.serve_pro_theme_css()
         elif parsed_path.path == '/terminal_styles.css':
             self.serve_terminal_styles_css()
+        elif parsed_path.path == '/responsive.css':
+            self.serve_responsive_css()
         elif parsed_path.path == '/terminal.js':
             self.serve_terminal_js()
         elif parsed_path.path == '/api/status':
@@ -2697,6 +2700,8 @@ class TradingAgentsAPIHandler(BaseHTTPRequestHandler):
         # =========================================================
         elif parsed_path.path == '/pro' or parsed_path.path == '/pro.html':
             self.serve_pro_dashboard()
+        elif parsed_path.path == '/smart-money' or parsed_path.path == '/smart_money.html':
+            self.serve_smart_money_dashboard()
         elif parsed_path.path == '/pricing' or parsed_path.path == '/pricing.html':
             self.serve_pricing_page()
         elif parsed_path.path == '/api/pro/screener/presets':
@@ -2758,6 +2763,81 @@ class TradingAgentsAPIHandler(BaseHTTPRequestHandler):
             self.handle_ai_compare(parsed_path)
         elif parsed_path.path == '/api/options/recommend':
             self.handle_options_recommend(parsed_path)
+        elif parsed_path.path == '/api/options/small-capital':
+            self.handle_options_small_capital(parsed_path)
+        elif parsed_path.path == '/api/options/chain':
+            self.handle_options_chain(parsed_path)
+        elif parsed_path.path == '/api/options/rec-log/snapshot':
+            self.handle_options_rec_log_snapshot(parsed_path)
+        elif parsed_path.path == '/api/options/rec-log/list':
+            self.handle_options_rec_log_list(parsed_path)
+        elif parsed_path.path == '/api/options/rec-log/summary':
+            self.handle_options_rec_log_summary(parsed_path)
+        elif parsed_path.path == '/api/options/rec-log/settle':
+            self.handle_options_rec_log_settle(parsed_path)
+        elif parsed_path.path == '/api/options/rec-log/mtm':
+            self.handle_options_rec_log_mtm(parsed_path)
+        elif parsed_path.path == '/api/options/rec-log/curve':
+            self.handle_options_rec_log_curve(parsed_path)
+        elif parsed_path.path == '/api/events/pead':
+            self.handle_events_pead(parsed_path)
+        elif parsed_path.path == '/api/pairs/discover':
+            self.handle_pairs_discover(parsed_path)
+        elif parsed_path.path == '/api/dca/plans':
+            self.handle_dca_plans(parsed_path)
+        elif parsed_path.path == '/api/conviction/ml-status':
+            self.handle_conviction_ml_status(parsed_path)
+        elif parsed_path.path == '/api/conviction/ml-train':
+            self.handle_conviction_ml_train(parsed_path)
+        # ===== T18 quant module routes =====
+        elif parsed_path.path == '/api/garch/forecast':
+            self.handle_garch_forecast(parsed_path)
+        elif parsed_path.path == '/api/regime/hmm':
+            self.handle_regime_hmm(parsed_path)
+        elif parsed_path.path == '/api/ou/signals':
+            self.handle_ou_signals(parsed_path)
+        elif parsed_path.path == '/api/ou/fit':
+            self.handle_ou_fit(parsed_path)
+        elif parsed_path.path == '/api/pairs/kalman':
+            self.handle_pairs_kalman(parsed_path)
+        elif parsed_path.path == '/api/rp/recommend':
+            self.handle_rp_recommend(parsed_path)
+        elif parsed_path.path == '/quant' or parsed_path.path == '/quant.html':
+            self.serve_quant_dashboard()
+        elif parsed_path.path == '/api/options/iron-condor/select-underlying':
+            self.handle_iron_condor_select_underlying(parsed_path)
+        elif parsed_path.path == '/api/regime':
+            self.handle_regime()
+        # ===== T10 Smart-Money Conviction Engine =====
+        elif parsed_path.path == '/api/conviction':
+            self.handle_conviction_single(parsed_path)
+        elif parsed_path.path == '/api/conviction/top':
+            self.handle_conviction_top(parsed_path)
+        elif parsed_path.path == '/api/13f/holdings':
+            self.handle_13f_holdings(parsed_path)
+        elif parsed_path.path == '/api/13f/convergence':
+            self.handle_13f_convergence(parsed_path)
+        elif parsed_path.path == '/api/news/symbol':
+            self.handle_news_symbol(parsed_path)
+        # ===== T11–T14 enhancements =====
+        elif parsed_path.path == '/api/events/earnings-momentum':
+            self.handle_events_earnings_momentum(parsed_path)
+        elif parsed_path.path == '/api/events/insider-buys':
+            self.handle_events_insider_buys(parsed_path)
+        elif parsed_path.path == '/api/pairs/list':
+            self.handle_pairs_list(parsed_path)
+        elif parsed_path.path == '/api/pairs/signals':
+            self.handle_pairs_signals(parsed_path)
+        elif parsed_path.path == '/api/pairs/stats':
+            self.handle_pairs_stats(parsed_path)
+        elif parsed_path.path == '/api/wheel/state':
+            self.handle_wheel_state(parsed_path)
+        elif parsed_path.path == '/api/registry':
+            self.handle_strategy_registry(parsed_path)
+        elif parsed_path.path == '/api/experiments':
+            self.handle_experiments_list(parsed_path)
+        elif parsed_path.path == '/api/alerts/recent':
+            self.handle_alerts_recent(parsed_path)
         # ===== ANALYTICS / A/B testing =====
         elif parsed_path.path == '/api/track':
             self.handle_track_get(parsed_path)
@@ -2933,6 +3013,14 @@ class TradingAgentsAPIHandler(BaseHTTPRequestHandler):
             self.handle_paper_evolve()
         elif parsed_path.path == '/api/paper/evolve-config':
             self.handle_paper_evolve_config()
+        elif parsed_path.path == '/api/options/iron-condor/propose':
+            print("✅ 路由到鐵兀鷹提案處理器")
+            self.handle_iron_condor_propose()
+        elif parsed_path.path == '/api/options/iron-condor/size':
+            self.handle_iron_condor_size()
+        elif parsed_path.path == '/api/options/calendar/propose':
+            print("✅ 路由到日曆價差提案處理器")
+            self.handle_calendar_propose()
         elif parsed_path.path == '/api/me/api-keys/create':
             self.handle_api_keys_create()
         elif parsed_path.path == '/api/me/api-keys/revoke':
@@ -3150,6 +3238,20 @@ class TradingAgentsAPIHandler(BaseHTTPRequestHandler):
             self.wfile.write(content.encode('utf-8'))
         except FileNotFoundError:
             self.send_error(404, "terminal_styles.css not found")
+
+    def serve_responsive_css(self):
+        """Shared mobile-responsive utilities (drawer, table-scroll, form-grid, chart-wrap)."""
+        try:
+            module_dir = os.path.dirname(__file__)
+            with open(os.path.join(module_dir, 'responsive.css'), 'r', encoding='utf-8') as f:
+                content = f.read()
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/css; charset=utf-8')
+            self.send_header('Cache-Control', 'no-cache, no-store, must-revalidate')
+            self.end_headers()
+            self.wfile.write(content.encode('utf-8'))
+        except FileNotFoundError:
+            self.send_error(404, "responsive.css not found")
 
     def serve_terminal_js(self):
         """提供 Pro Trading Terminal JS"""
@@ -5169,6 +5271,10 @@ class TradingAgentsAPIHandler(BaseHTTPRequestHandler):
                 sym = str(sym).upper().strip()
                 if sym.isdigit() and len(sym) in (4, 5):
                     return [f"{sym}.HK", sym]
+                # 美股類別股（如BRK.B）Yahoo使用連字符格式BRK-B
+                parts = sym.split('.')
+                if len(parts) == 2 and parts[0].isalpha() and parts[1].isalpha() and len(sym) <= 7:
+                    return [sym.replace('.', '-'), sym]
                 return [sym]
 
             import yfinance as yf
@@ -6480,8 +6586,12 @@ class TradingAgentsAPIHandler(BaseHTTPRequestHandler):
                 
                 # 已包含市場後綴的符號
                 elif '.' in symbol:
+                    # 美股類別股（如BRK.B）Yahoo使用連字符格式BRK-B
+                    parts = symbol.split('.')
+                    if len(parts) == 2 and parts[0].isalpha() and parts[1].isalpha() and len(symbol) <= 7:
+                        return [symbol.replace('.', '-'), symbol]
                     return [symbol]
-                
+
                 return [symbol]
             
             # 獲取要嘗試的符號列表
@@ -9556,6 +9666,20 @@ class TradingAgentsAPIHandler(BaseHTTPRequestHandler):
         except FileNotFoundError:
             self.send_error(404, "Pro dashboard not found")
 
+    def serve_smart_money_dashboard(self):
+        """Serve the Smart-Money Conviction cockpit (T10)."""
+        try:
+            module_dir = os.path.dirname(__file__)
+            with open(os.path.join(module_dir, 'smart_money.html'), 'r', encoding='utf-8') as f:
+                content = f.read()
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/html; charset=utf-8')
+            self.send_header('Cache-Control', 'no-cache')
+            self.end_headers()
+            self.wfile.write(content.encode('utf-8'))
+        except FileNotFoundError:
+            self.send_error(404, "Smart-money dashboard not found")
+
     def serve_pricing_page(self):
         """Serve the marketing pricing page."""
         try:
@@ -9796,10 +9920,17 @@ class TradingAgentsAPIHandler(BaseHTTPRequestHandler):
     # ----- Insider / Institutional -----
     def handle_pro_insider(self, parsed_path):
         try:
-            from modules.pro_insider import insider_trades
+            from modules.pro_insider import insider_trades, insider_universe
             qs = self._qs(parsed_path)
-            symbol = qs.get('symbol', ['AAPL'])[0]
-            self.send_utf8_json_response(insider_trades(symbol))
+            symbol = (qs.get('symbol', [''])[0] or '').strip().upper()
+            if symbol:
+                # Filter mode: live, detailed view for one ticker.
+                self.send_utf8_json_response(insider_trades(symbol))
+            else:
+                # Default: scan the whole universe and show everything.
+                market = (qs.get('market', ['us'])[0] or 'us').lower()
+                syms = self._get_quant_universe(market)
+                self.send_utf8_json_response(insider_universe(syms))
         except Exception as e:
             self.send_utf8_json_response({"success": False, "error": str(e)}, 500)
 
@@ -10735,6 +10866,796 @@ p{color:#8b95b8;font-size:14px;line-height:1.6;}
             count = int(qs.get('count', ['10'])[0])
             dte = int(qs.get('dte', ['35'])[0])
             self.send_utf8_json_response(daily_recommendations(count=count, dte=dte))
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            self.send_utf8_json_response({'success': False, 'error': str(e)}, 500)
+
+    # -----------------------------------------------------------------
+    # T10 Smart-Money Conviction Engine — handlers
+    # -----------------------------------------------------------------
+    def handle_conviction_single(self, parsed_path):
+        """GET /api/conviction?symbol=AAPL&budget=2000&recompute=0
+
+        Returns the latest persisted conviction score + factor breakdown +
+        30-day trajectory. ``recompute=1`` forces an on-demand re-score
+        (useful when the user just landed on the page and the nightly
+        batch hasn't run yet).
+        """
+        try:
+            from modules.conviction_engine import (
+                score_symbol, persist_score, get_cached_score, trajectory,
+            )
+            qs = self._qs(parsed_path)
+            symbol = (qs.get('symbol', [''])[0] or '').strip().upper()
+            if not symbol:
+                self.send_utf8_json_response(
+                    {'success': False, 'error': 'symbol parameter required'}, 400)
+                return
+            try:
+                budget = float(qs.get('budget', ['2000'])[0])
+            except (TypeError, ValueError):
+                budget = 2000.0
+            recompute = qs.get('recompute', ['0'])[0] in ('1', 'true', 'True')
+            cached = get_cached_score(symbol, max_age_days=2)
+            if cached and not recompute:
+                latest = cached
+            else:
+                latest = score_symbol(symbol, budget=budget)
+                persist_score(latest)
+            self.send_utf8_json_response({
+                'success': True,
+                'symbol': symbol,
+                'latest': latest,
+                'trajectory_30d': trajectory(symbol, days=30),
+            })
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            self.send_utf8_json_response({'success': False, 'error': str(e)}, 500)
+
+    def handle_conviction_top(self, parsed_path):
+        """GET /api/conviction/top?count=20&min_score=50&budget=5000&recompute=0
+
+        Returns the top-N picks. When the persistent store has nothing
+        recent, falls back to running the engine over the union universe
+        on-the-fly (slower; usually only on a fresh install).
+        """
+        try:
+            from modules.conviction_engine import top_picks, rank_universe
+            from modules.ai_picks import UNIVERSES
+            qs = self._qs(parsed_path)
+            count = max(1, min(100, int(qs.get('count', ['20'])[0])))
+            try:
+                min_score = float(qs.get('min_score', ['50'])[0])
+            except (TypeError, ValueError):
+                min_score = 50.0
+            try:
+                budget = float(qs.get('budget', ['5000'])[0])
+            except (TypeError, ValueError):
+                budget = 5000.0
+            recompute = qs.get('recompute', ['0'])[0] in ('1', 'true', 'True')
+
+            picks = top_picks(count=count, min_score=min_score, max_age_days=3)
+            if not picks or recompute:
+                union: set = set()
+                for u in UNIVERSES.values():
+                    for s in u['symbols']:
+                        union.add(s)
+                ranked = rank_universe(sorted(union), budget=budget, persist=True)
+                picks = [r for r in ranked if r['conviction_score'] >= min_score][:count]
+            self.send_utf8_json_response({
+                'success': True,
+                'count': len(picks),
+                'min_score': min_score,
+                'budget_usd': budget,
+                'picks': picks,
+            })
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            self.send_utf8_json_response({'success': False, 'error': str(e)}, 500)
+
+    def handle_13f_holdings(self, parsed_path):
+        """GET /api/13f/holdings?cik=0001067983&quarter=2026-03-31
+
+        Returns the fund's full holdings snapshot for the requested quarter.
+        ``quarter`` is optional (defaults to latest available)."""
+        try:
+            from modules.sec_edgar_13f import fund_snapshot, SUPERINVESTORS
+            qs = self._qs(parsed_path)
+            cik = (qs.get('cik', [''])[0] or '').strip()
+            if not cik:
+                # No CIK supplied — list all funds we track + their latest quarter.
+                from modules.conviction_engine import _conn  # type: ignore
+                with _conn() as c:
+                    latest_by_cik = {
+                        r['cik']: r['quarter_end']
+                        for r in c.execute(
+                            '''SELECT cik, MAX(quarter_end) AS quarter_end
+                               FROM institutional_holdings_13f GROUP BY cik''').fetchall()}
+                funds = [{
+                    'cik': s['cik'], 'label': s['label'], 'style': s['style'],
+                    'latest_quarter': latest_by_cik.get(s['cik']),
+                } for s in SUPERINVESTORS]
+                self.send_utf8_json_response({'success': True, 'funds': funds})
+                return
+            quarter = qs.get('quarter', [None])[0]
+            snap = fund_snapshot(cik, quarter_end=quarter)
+            self.send_utf8_json_response({'success': True, **snap})
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            self.send_utf8_json_response({'success': False, 'error': str(e)}, 500)
+
+    def handle_13f_convergence(self, parsed_path):
+        """GET /api/13f/convergence?min_funds=3&quarter=2026-03-31
+
+        Cross-fund accumulation picks — the canonical "smart money is
+        converging on X" output."""
+        try:
+            from modules.sec_edgar_13f import find_convergence
+            qs = self._qs(parsed_path)
+            min_funds = max(1, int(qs.get('min_funds', ['3'])[0]))
+            quarter = qs.get('quarter', [None])[0]
+            actions_raw = qs.get('actions', ['NEW,INCREASE'])[0]
+            actions = tuple(a.strip().upper() for a in actions_raw.split(',') if a.strip())
+            result = find_convergence(quarter_end=quarter, min_funds=min_funds,
+                                      actions=actions)
+            self.send_utf8_json_response({
+                'success': True,
+                'count': len(result),
+                'min_funds': min_funds,
+                'quarter_end': result[0]['quarter_end'] if result else quarter,
+                'picks': result,
+            })
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            self.send_utf8_json_response({'success': False, 'error': str(e)}, 500)
+
+    def handle_news_symbol(self, parsed_path):
+        """GET /api/news/symbol?symbol=AAPL&days=14
+
+        Returns the persisted news headlines + sentiment trajectory for the
+        symbol. Read-only; doesn't trigger a new scan."""
+        try:
+            from modules.news_aggregator import sentiment_trajectory, _conn  # type: ignore
+            qs = self._qs(parsed_path)
+            symbol = (qs.get('symbol', [''])[0] or '').strip().upper()
+            if not symbol:
+                self.send_utf8_json_response(
+                    {'success': False, 'error': 'symbol parameter required'}, 400)
+                return
+            days = max(1, min(60, int(qs.get('days', ['14'])[0])))
+            from datetime import date, timedelta
+            since = (date.today() - timedelta(days=days)).isoformat()
+            with _conn() as c:
+                articles = [dict(r) for r in c.execute(
+                    '''SELECT source, url, headline, published_at, body_excerpt
+                       FROM news_articles
+                       WHERE symbol=? AND (published_at IS NULL OR published_at >= ?)
+                       ORDER BY published_at DESC LIMIT 40''',
+                    (symbol, since)).fetchall()]
+            self.send_utf8_json_response({
+                'success': True,
+                'symbol': symbol,
+                'articles': articles,
+                'sentiment_trajectory': sentiment_trajectory(symbol, days=days),
+            })
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            self.send_utf8_json_response({'success': False, 'error': str(e)}, 500)
+
+    # -----------------------------------------------------------------
+    # T11–T14 enhancement handlers
+    # -----------------------------------------------------------------
+    def handle_events_earnings_momentum(self, parsed_path):
+        """GET /api/events/earnings-momentum?budget=2000&min_conviction=70
+        Returns pre-earnings momentum picks (3-7d before EPS + high conviction)."""
+        try:
+            from modules.event_alpha import earnings_momentum_picks
+            qs = self._qs(parsed_path)
+            budget = float(qs.get('budget', ['2000'])[0])
+            min_c = float(qs.get('min_conviction', ['70'])[0])
+            dte_lo = int(qs.get('dte_min', ['3'])[0])
+            dte_hi = int(qs.get('dte_max', ['7'])[0])
+            picks = earnings_momentum_picks(min_conviction=min_c,
+                                            dte_range=(dte_lo, dte_hi),
+                                            budget=budget)
+            self.send_utf8_json_response({'success': True, 'count': len(picks), 'picks': picks})
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            self.send_utf8_json_response({'success': False, 'error': str(e)}, 500)
+
+    def handle_events_insider_buys(self, parsed_path):
+        """GET /api/events/insider-buys?days=30&min_value_usd=500000
+        Returns persisted open-market insider buys (read-only)."""
+        try:
+            from modules.insider_watch import recent_insider_buys
+            qs = self._qs(parsed_path)
+            days = int(qs.get('days', ['30'])[0])
+            min_v = float(qs.get('min_value_usd', ['500000'])[0])
+            symbol = (qs.get('symbol', [''])[0] or None)
+            rows = recent_insider_buys(symbol=symbol, days=days,
+                                       min_value_usd=min_v, limit=200)
+            self.send_utf8_json_response({'success': True, 'count': len(rows), 'rows': rows})
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            self.send_utf8_json_response({'success': False, 'error': str(e)}, 500)
+
+    def handle_pairs_list(self, parsed_path):
+        """GET /api/pairs/list — return the curated pair universe."""
+        try:
+            from modules.pairs_trading import ALLOWED_PAIRS
+            self.send_utf8_json_response({
+                'success': True,
+                'pairs': [{'y': y, 'x': x, 'sector': s} for (y, x, s) in ALLOWED_PAIRS],
+            })
+        except Exception as e:
+            self.send_utf8_json_response({'success': False, 'error': str(e)}, 500)
+
+    def handle_pairs_signals(self, parsed_path):
+        """GET /api/pairs/signals — today's z-score + action per pair."""
+        try:
+            from modules.pairs_trading import list_pair_signals
+            sigs = list_pair_signals()
+            self.send_utf8_json_response({'success': True, 'count': len(sigs), 'signals': sigs})
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            self.send_utf8_json_response({'success': False, 'error': str(e)}, 500)
+
+    def handle_pairs_stats(self, parsed_path):
+        """GET /api/pairs/stats?pair=KO_PEP — latest computed stats."""
+        try:
+            from modules.pairs_trading import _latest_pair_stats
+            qs = self._qs(parsed_path)
+            pair_id = (qs.get('pair', [''])[0] or '').strip()
+            if not pair_id:
+                self.send_utf8_json_response(
+                    {'success': False, 'error': 'pair query param required'}, 400)
+                return
+            stats = _latest_pair_stats(pair_id)
+            self.send_utf8_json_response({'success': True, 'pair_id': pair_id, 'stats': stats})
+        except Exception as e:
+            self.send_utf8_json_response({'success': False, 'error': str(e)}, 500)
+
+    def handle_strategy_registry(self, parsed_path):
+        """GET /api/registry[?kind=equity_plan] — P4 forward-validation
+        registry (incubating/approved/killed configs + forward trade counts),
+        plus the ranker IC trend and options play scorecard for one-stop
+        promotion-discipline observability."""
+        try:
+            from modules.strategy_registry import list_registry
+            qs = self._qs(parsed_path)
+            kind = (qs.get('kind', [''])[0] or None)
+            out = {'success': True, 'registry': list_registry(kind=kind)}
+            try:
+                from modules.ml_ranker import latest_metrics
+                out['ranker_metrics'] = latest_metrics(limit=12)
+            except Exception:
+                out['ranker_metrics'] = []
+            try:
+                from modules.options_playbook import latest_scorecard
+                out['options_scorecard'] = latest_scorecard()
+            except Exception:
+                out['options_scorecard'] = []
+            self.send_utf8_json_response(out)
+        except Exception as e:
+            self.send_utf8_json_response({'success': False, 'error': str(e)}, 500)
+
+    def handle_experiments_list(self, parsed_path):
+        """GET /api/experiments — P5 forward-validation experiments (ranker
+        A/B + per-play options trials) with their frozen gates, latest arm
+        metrics, and pass/fail verdicts."""
+        try:
+            from modules.ab_experiments import list_experiments
+            self.send_utf8_json_response(
+                {'success': True, 'experiments': list_experiments()})
+        except Exception as e:
+            self.send_utf8_json_response({'success': False, 'error': str(e)}, 500)
+
+    def handle_wheel_state(self, parsed_path):
+        """GET /api/wheel/state?account_id=N — current wheel cycle state per
+        underlying, plus account equity decomposition."""
+        try:
+            from modules.options_wheel import wheel_state_summary
+            from modules.paper_options_mtm import options_account_equity
+            qs = self._qs(parsed_path)
+            account_id = int(qs.get('account_id', [''])[0] or '0')
+            if not account_id:
+                self.send_utf8_json_response(
+                    {'success': False, 'error': 'account_id query param required'}, 400)
+                return
+            eq = options_account_equity(account_id)
+            state = wheel_state_summary(account_id)
+            self.send_utf8_json_response({'success': True, 'equity': eq, 'wheel': state})
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            self.send_utf8_json_response({'success': False, 'error': str(e)}, 500)
+
+    def handle_alerts_recent(self, parsed_path):
+        """GET /api/alerts/recent?user_id=1&days=7&kind=conviction_cross_up"""
+        try:
+            from modules.alerts import recent_alerts
+            qs = self._qs(parsed_path)
+            user_id = int(qs.get('user_id', ['1'])[0])
+            days = int(qs.get('days', ['7'])[0])
+            kind = (qs.get('kind', [''])[0] or None)
+            rows = recent_alerts(user_id, days=days, kind=kind)
+            self.send_utf8_json_response({'success': True, 'count': len(rows), 'alerts': rows})
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            self.send_utf8_json_response({'success': False, 'error': str(e)}, 500)
+
+    # -----------------------------------------------------------------
+    # Options rec-log handlers (forward backtest of daily recommendations)
+    # -----------------------------------------------------------------
+    def handle_options_rec_log_snapshot(self, parsed_path):
+        """GET /api/options/rec-log/snapshot?daily_count=20&small_cap_count=15
+        Captures today's recommendations into options_rec_log."""
+        try:
+            from modules.options_rec_tracker import snapshot_today
+            qs = self._qs(parsed_path)
+            dc = int(qs.get('daily_count', ['20'])[0])
+            sc = int(qs.get('small_cap_count', ['15'])[0])
+            budget = float(qs.get('small_cap_budget', ['2000'])[0])
+            res = snapshot_today(daily_count=dc, small_cap_count=sc,
+                                 small_cap_budget=budget)
+            self.send_utf8_json_response(res)
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            self.send_utf8_json_response({'success': False, 'error': str(e)}, 500)
+
+    def handle_options_rec_log_list(self, parsed_path):
+        """GET /api/options/rec-log/list?status=open|settled&source=daily|small_capital&days=60&limit=200"""
+        try:
+            from modules.options_rec_tracker import list_log
+            qs = self._qs(parsed_path)
+            status = (qs.get('status', [''])[0] or None)
+            source = (qs.get('source', [''])[0] or None)
+            days = int(qs.get('days', ['60'])[0])
+            limit = int(qs.get('limit', ['200'])[0])
+            rows = list_log(status=status, source=source, days=days, limit=limit)
+            self.send_utf8_json_response({'success': True, 'count': len(rows), 'rows': rows})
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            self.send_utf8_json_response({'success': False, 'error': str(e)}, 500)
+
+    def handle_options_rec_log_summary(self, parsed_path):
+        """GET /api/options/rec-log/summary?days=30"""
+        try:
+            from modules.options_rec_tracker import summary
+            qs = self._qs(parsed_path)
+            days = int(qs.get('days', ['30'])[0])
+            self.send_utf8_json_response({'success': True, **summary(days=days)})
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            self.send_utf8_json_response({'success': False, 'error': str(e)}, 500)
+
+    def handle_options_rec_log_settle(self, parsed_path):
+        """GET /api/options/rec-log/settle — manually trigger settlement for
+        all open rows past their expiry (normally runs nightly)."""
+        try:
+            from modules.options_rec_tracker import settle_expired
+            res = settle_expired()
+            self.send_utf8_json_response(res)
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            self.send_utf8_json_response({'success': False, 'error': str(e)}, 500)
+
+    def handle_options_rec_log_mtm(self, parsed_path):
+        """GET /api/options/rec-log/mtm — recompute MTM for all open rows."""
+        try:
+            from modules.options_rec_tracker import mtm_open
+            res = mtm_open()
+            self.send_utf8_json_response(res)
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            self.send_utf8_json_response({'success': False, 'error': str(e)}, 500)
+
+    def handle_options_rec_log_curve(self, parsed_path):
+        """GET /api/options/rec-log/curve?days=60 — cumulative P&L curve."""
+        try:
+            from modules.options_rec_tracker import daily_pnl_curve
+            qs = self._qs(parsed_path)
+            days = int(qs.get('days', ['60'])[0])
+            self.send_utf8_json_response({'success': True,
+                                          'curve': daily_pnl_curve(days=days)})
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            self.send_utf8_json_response({'success': False, 'error': str(e)}, 500)
+
+    # -----------------------------------------------------------------
+    # T17 handlers
+    # -----------------------------------------------------------------
+    def handle_events_pead(self, parsed_path):
+        """GET /api/events/pead?days=5
+        Returns post-earnings drift candidates."""
+        try:
+            from modules.pead_harvester import scan_pead_opportunities
+            qs = self._qs(parsed_path)
+            days = int(qs.get('days', ['5'])[0])
+            picks = scan_pead_opportunities(lookback_days=days)
+            self.send_utf8_json_response({'success': True, 'count': len(picks),
+                                          'picks': picks})
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            self.send_utf8_json_response({'success': False, 'error': str(e)}, 500)
+
+    def handle_pairs_discover(self, parsed_path):
+        """GET /api/pairs/discover?max=50
+        Runs the auto-pair scanner over SP500_TOP200 (slow, ~3 min)."""
+        try:
+            from modules.pairs_trading import discover_pairs
+            qs = self._qs(parsed_path)
+            max_pairs = max(1, min(200, int(qs.get('max', ['50'])[0])))
+            res = discover_pairs(max_pairs=max_pairs, verbose=False)
+            self.send_utf8_json_response({'success': True, **res})
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            self.send_utf8_json_response({'success': False, 'error': str(e)}, 500)
+
+    def handle_dca_plans(self, parsed_path):
+        """GET /api/dca/plans?account_id=N&status=active"""
+        try:
+            from modules.dca_executor import list_plans, run_dca_tick
+            qs = self._qs(parsed_path)
+            account_id = int(qs.get('account_id', ['1'])[0])
+            status = (qs.get('status', [''])[0] or None)
+            run_now = qs.get('run', ['0'])[0] in ('1', 'true', 'True')
+            tick_result = None
+            if run_now:
+                tick_result = run_dca_tick(account_id)
+            plans = list_plans(account_id, status=status)
+            self.send_utf8_json_response({'success': True, 'count': len(plans),
+                                          'plans': plans, 'tick_result': tick_result})
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            self.send_utf8_json_response({'success': False, 'error': str(e)}, 500)
+
+    def handle_conviction_ml_status(self, parsed_path):
+        """GET /api/conviction/ml-status"""
+        try:
+            from modules.conviction_ml import model_status
+            self.send_utf8_json_response({'success': True, **model_status()})
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            self.send_utf8_json_response({'success': False, 'error': str(e)}, 500)
+
+    def handle_conviction_ml_train(self, parsed_path):
+        """GET /api/conviction/ml-train?min_samples=100 — manually trigger retrain."""
+        try:
+            from modules.conviction_ml import train_model
+            qs = self._qs(parsed_path)
+            min_s = int(qs.get('min_samples', ['100'])[0])
+            res = train_model(min_samples=min_s)
+            self.send_utf8_json_response(res)
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            self.send_utf8_json_response({'success': False, 'error': str(e)}, 500)
+
+    # -----------------------------------------------------------------
+    # T18 quant module handlers
+    # -----------------------------------------------------------------
+    def handle_garch_forecast(self, parsed_path):
+        """GET /api/garch/forecast?symbol=AAPL&horizon=5"""
+        try:
+            from modules.garch import fit_garch, forecast_vol, model_for, is_stale
+            qs = self._qs(parsed_path)
+            symbol = (qs.get('symbol', [''])[0] or '').strip().upper()
+            if not symbol:
+                self.send_utf8_json_response({'success': False, 'error': 'symbol required'}, 400)
+                return
+            horizon = max(1, int(qs.get('horizon', ['5'])[0]))
+            refit = qs.get('refit', ['0'])[0] in ('1', 'true', 'True')
+            if refit or is_stale(symbol):
+                fit_garch(symbol)
+            v = forecast_vol(symbol, horizon=horizon)
+            m = model_for(symbol)
+            self.send_utf8_json_response({
+                'success': True,
+                'symbol': symbol,
+                'forecast_vol_annualized': v,
+                'horizon_days': horizon,
+                'model': m,
+            })
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            self.send_utf8_json_response({'success': False, 'error': str(e)}, 500)
+
+    def handle_regime_hmm(self, parsed_path):
+        """GET /api/regime/hmm?days=90"""
+        try:
+            from modules.hmm_regime import current_regime, regime_history, fit_hmm
+            qs = self._qs(parsed_path)
+            days = max(7, int(qs.get('days', ['90'])[0]))
+            refit = qs.get('refit', ['0'])[0] in ('1', 'true', 'True')
+            if refit:
+                fit_hmm()
+            cur = current_regime()
+            hist = regime_history(days=days)
+            self.send_utf8_json_response({'success': True,
+                                          'current': cur, 'history': hist})
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            self.send_utf8_json_response({'success': False, 'error': str(e)}, 500)
+
+    def handle_ou_signals(self, parsed_path):
+        """GET /api/ou/signals?min_z=2.0"""
+        try:
+            from modules.ou_meanrev import scan_universe, recent_signals
+            qs = self._qs(parsed_path)
+            min_z = float(qs.get('min_z', ['2.0'])[0])
+            live = qs.get('live', ['0'])[0] in ('1', 'true', 'True')
+            if live:
+                picks = scan_universe(min_z=min_z)
+                self.send_utf8_json_response({'success': True,
+                                              'count': len(picks),
+                                              'picks': picks,
+                                              'note': 'live scan'})
+                return
+            rows = recent_signals(days=7, limit=100)
+            actionable = [r for r in rows if abs(r.get('z_score') or 0) >= min_z
+                          and r.get('action') in ('LONG', 'SHORT')]
+            self.send_utf8_json_response({'success': True,
+                                          'count': len(actionable),
+                                          'picks': actionable,
+                                          'note': 'cached'})
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            self.send_utf8_json_response({'success': False, 'error': str(e)}, 500)
+
+    def handle_ou_fit(self, parsed_path):
+        """GET /api/ou/fit?symbol=AAPL"""
+        try:
+            from modules.ou_meanrev import fit_ou, signal_action
+            qs = self._qs(parsed_path)
+            symbol = (qs.get('symbol', [''])[0] or '').strip().upper()
+            if not symbol:
+                self.send_utf8_json_response({'success': False, 'error': 'symbol required'}, 400)
+                return
+            f = fit_ou(symbol, persist=True)
+            act = signal_action(symbol)
+            self.send_utf8_json_response({'success': True, 'fit': f, 'action': act})
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            self.send_utf8_json_response({'success': False, 'error': str(e)}, 500)
+
+    def handle_pairs_kalman(self, parsed_path):
+        """GET /api/pairs/kalman?pair=KO_PEP"""
+        try:
+            from modules.kalman_pairs import kalman_beta, refit_pair
+            qs = self._qs(parsed_path)
+            pair = (qs.get('pair', [''])[0] or '').strip().upper()
+            if '_' not in pair:
+                self.send_utf8_json_response({'success': False,
+                                              'error': 'pair query must be Y_X like KO_PEP'}, 400)
+                return
+            y_sym, x_sym = pair.split('_', 1)
+            r = kalman_beta(y_sym, x_sym)
+            if not r:
+                self.send_utf8_json_response({'success': False, 'error': 'fit_failed'}, 500)
+                return
+            # Persist
+            refit_pair(y_sym, x_sym)
+            self.send_utf8_json_response({'success': True, **r})
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            self.send_utf8_json_response({'success': False, 'error': str(e)}, 500)
+
+    def handle_rp_recommend(self, parsed_path):
+        """GET /api/rp/recommend?account_id=N"""
+        try:
+            from modules.risk_parity import rebalance_account
+            qs = self._qs(parsed_path)
+            account_id = int(qs.get('account_id', ['1'])[0])
+            res = rebalance_account(account_id, mode='advisory')
+            self.send_utf8_json_response(res)
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            self.send_utf8_json_response({'success': False, 'error': str(e)}, 500)
+
+    def serve_quant_dashboard(self):
+        """Serve the /quant cockpit page."""
+        try:
+            import os
+            module_dir = os.path.dirname(__file__)
+            with open(os.path.join(module_dir, 'quant.html'), 'r', encoding='utf-8') as f:
+                content = f.read()
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/html; charset=utf-8')
+            self.send_header('Cache-Control', 'no-cache')
+            self.end_headers()
+            self.wfile.write(content.encode('utf-8'))
+        except FileNotFoundError:
+            self.send_error(404, "Quant dashboard not found")
+
+    def handle_options_chain(self, parsed_path):
+        """GET /api/options/chain?symbol=AAPL&expiry=2026-06-12
+        Returns real yfinance option chain (calls + puts) for the nearest
+        ≥14-DTE expiry (or specified expiry)."""
+        try:
+            from modules.option_chain import fetch_chain, fetch_expirations
+            qs = self._qs(parsed_path)
+            symbol = (qs.get('symbol', [''])[0] or '').strip().upper()
+            if not symbol:
+                self.send_utf8_json_response(
+                    {'success': False, 'error': 'symbol query param required'}, 400)
+                return
+            expiry = (qs.get('expiry', [''])[0] or '').strip() or None
+            chain = fetch_chain(symbol, expiry=expiry)
+            if not chain:
+                self.send_utf8_json_response(
+                    {'success': False, 'error': 'no chain data',
+                     'available_expirations': fetch_expirations(symbol)})
+                return
+            self.send_utf8_json_response({'success': True, **chain,
+                                          'available_expirations': fetch_expirations(symbol)})
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            self.send_utf8_json_response({'success': False, 'error': str(e)}, 500)
+
+    def handle_options_small_capital(self, parsed_path):
+        """GET /api/options/small-capital?budget=2000&count=10&dte=14&include_csp=1
+
+        Returns income-focused option setups sized so each trade's
+        capital-at-risk fits a small account. Defaults: $2k budget, 20%
+        per-trade cap, 14 DTE for weekly theta. Returns per-trade detail +
+        a portfolio_summary projecting weekly/monthly income if the top N
+        are all opened concurrently.
+        """
+        try:
+            from modules.pro_options_recommender import (
+                small_capital_recommendations,
+                SMALL_CAP_DEFAULT_DTE,
+                SMALL_CAP_MAX_TRADE_FRACTION,
+            )
+            qs = self._qs(parsed_path)
+            try:
+                budget = max(100.0, float(qs.get('budget', ['2000'])[0]))
+            except (TypeError, ValueError):
+                budget = 2000.0
+            count = max(1, min(30, int(qs.get('count', ['10'])[0])))
+            dte = max(2, min(90, int(qs.get('dte', [str(SMALL_CAP_DEFAULT_DTE)])[0])))
+            try:
+                frac = float(qs.get('max_trade_fraction', [str(SMALL_CAP_MAX_TRADE_FRACTION)])[0])
+            except (TypeError, ValueError):
+                frac = SMALL_CAP_MAX_TRADE_FRACTION
+            frac = max(0.05, min(0.5, frac))
+            include_csp = qs.get('include_csp', ['1'])[0] not in ('0', 'false', 'False', '')
+            self.send_utf8_json_response(small_capital_recommendations(
+                budget=budget, count=count, dte=dte,
+                max_trade_fraction=frac, include_csp=include_csp))
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            self.send_utf8_json_response({'success': False, 'error': str(e)}, 500)
+
+    def handle_iron_condor_propose(self):
+        """POST /api/options/iron-condor/propose
+
+        Body (JSON):
+          {
+            "account_size": 10000,                # required, USD
+            "expiration":   "0DTE",               # required: 0DTE|7DTE|14DTE|30DTE|45DTE
+            "short_delta":  0.10,                 # optional, default 0.10 (low-delta short)
+            "wing_delta":   0.05,                 # optional, default 0.05
+            "risk_pct":     0.03,                 # optional, must be in [0.02, 0.05]
+            "prefer_underlying": "SPY"            # optional override of auto-selection
+          }
+        """
+        try:
+            from modules.iron_condor import propose_iron_condor, DEFAULT_SHORT_DELTA, DEFAULT_WING_DELTA, DEFAULT_RISK_PCT
+            body = self._read_post_body() or {}
+            if 'account_size' not in body or 'expiration' not in body:
+                self.send_utf8_json_response(
+                    {'success': False,
+                     'error': 'account_size and expiration are required before any iron-condor proposal'},
+                    400)
+                return
+            res = propose_iron_condor(
+                account_size=float(body['account_size']),
+                expiration=str(body['expiration']),
+                short_delta=float(body.get('short_delta', DEFAULT_SHORT_DELTA)),
+                wing_delta=float(body.get('wing_delta', DEFAULT_WING_DELTA)),
+                risk_pct=float(body.get('risk_pct', DEFAULT_RISK_PCT)),
+                prefer_underlying=body.get('prefer_underlying'),
+                skip_event_days=bool(body.get('skip_event_days', True)),
+                regime_gate=bool(body.get('regime_gate', True)),
+            )
+            self.send_utf8_json_response(res)
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            self.send_utf8_json_response({'success': False, 'error': str(e)}, 500)
+
+    def handle_iron_condor_size(self):
+        """POST /api/options/iron-condor/size — sizing-only utility.
+
+        Body: {"account_size": 10000, "max_loss_per_contract_usd": 150, "risk_pct": 0.03}
+        """
+        try:
+            from modules.iron_condor import size_only, DEFAULT_RISK_PCT
+            body = self._read_post_body() or {}
+            if 'account_size' not in body or 'max_loss_per_contract_usd' not in body:
+                self.send_utf8_json_response(
+                    {'success': False,
+                     'error': 'account_size and max_loss_per_contract_usd are required'},
+                    400)
+                return
+            res = size_only(
+                account_size=float(body['account_size']),
+                max_loss_per_contract_usd=float(body['max_loss_per_contract_usd']),
+                risk_pct=float(body.get('risk_pct', DEFAULT_RISK_PCT)),
+            )
+            self.send_utf8_json_response(res)
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            self.send_utf8_json_response({'success': False, 'error': str(e)}, 500)
+
+    def handle_iron_condor_select_underlying(self, parsed_path):
+        """GET /api/options/iron-condor/select-underlying?account_size=10000&prefer=SPY"""
+        try:
+            from modules.iron_condor import select_underlying
+            qs = self._qs(parsed_path)
+            try:
+                account_size = float(qs.get('account_size', ['10000'])[0])
+            except Exception:
+                account_size = 10000.0
+            prefer = qs.get('prefer', [None])[0]
+            self.send_utf8_json_response(select_underlying(account_size, prefer=prefer))
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            self.send_utf8_json_response({'success': False, 'error': str(e)}, 500)
+
+    def handle_regime(self):
+        """GET /api/regime — current market regime classification + raw inputs.
+
+        Returns { success, regime, reason, inputs }. 15-min cached upstream.
+        """
+        try:
+            from modules.regime import classify_regime, STRATEGY_RULES
+            res = classify_regime()
+            res['strategy_rules'] = STRATEGY_RULES
+            self.send_utf8_json_response(res)
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            self.send_utf8_json_response({'success': False, 'error': str(e)}, 500)
+
+    def handle_calendar_propose(self):
+        """POST /api/options/calendar/propose
+
+        Body (JSON):
+          {
+            "account_size":      10000,
+            "front_expiration":  "30DTE",   # 0DTE|7DTE|14DTE|30DTE|45DTE
+            "back_expiration":   "45DTE",   # must be later than front
+            "option_type":       "call",    # call|put
+            "anchor":            "ATM",     # ATM|spot+5|spot-5|numeric
+            "prefer_underlying": "SPY",     # optional
+            "risk_pct":          0.03,      # 2-5%
+            "regime_gate":       true,
+            "skip_event_days":   true
+          }
+        """
+        try:
+            from modules.calendar_spread import (
+                propose_calendar_spread,
+                DEFAULT_FRONT_DTE, DEFAULT_BACK_DTE, DEFAULT_OPTION_TYPE,
+                DEFAULT_ANCHOR, DEFAULT_RISK_PCT,
+            )
+            body = self._read_post_body() or {}
+            if 'account_size' not in body:
+                self.send_utf8_json_response(
+                    {'success': False, 'error': 'account_size is required'},
+                    400)
+                return
+            res = propose_calendar_spread(
+                account_size=float(body['account_size']),
+                front_expiration=str(body.get('front_expiration', DEFAULT_FRONT_DTE)),
+                back_expiration=str(body.get('back_expiration', DEFAULT_BACK_DTE)),
+                option_type=str(body.get('option_type', DEFAULT_OPTION_TYPE)),
+                anchor=body.get('anchor', DEFAULT_ANCHOR),
+                prefer_underlying=body.get('prefer_underlying'),
+                risk_pct=float(body.get('risk_pct', DEFAULT_RISK_PCT)),
+                regime_gate=bool(body.get('regime_gate', True)),
+                skip_event_days=bool(body.get('skip_event_days', True)),
+            )
+            self.send_utf8_json_response(res)
         except Exception as e:
             import traceback; traceback.print_exc()
             self.send_utf8_json_response({'success': False, 'error': str(e)}, 500)
@@ -12524,8 +13445,12 @@ p{color:#8b95b8;font-size:14px;line-height:1.6;}
                 
                 # 已包含市場後綴的符號
                 elif '.' in symbol:
+                    # 美股類別股（如BRK.B）Yahoo使用連字符格式BRK-B
+                    parts = symbol.split('.')
+                    if len(parts) == 2 and parts[0].isalpha() and parts[1].isalpha() and len(symbol) <= 7:
+                        return [symbol.replace('.', '-'), symbol]
                     return [symbol]
-                
+
                 # 默認嘗試
                 return [symbol]
             
@@ -14448,6 +15373,348 @@ def run_server(host='0.0.0.0', port=8501):
                     except Exception as e:
                         _sched_log('error', f'daily AI ideas crashed: {e}')
 
+                    # T10 — Smart-Money Conviction Engine batch.
+                    # Three nightly jobs (each best-effort + isolated):
+                    #   1. news_scan over the union universe
+                    #   2. 13F filing check (only does work in filing windows)
+                    #   3. conviction_engine.rank_universe + persist top scores
+                    try:
+                        from modules.news_aggregator import daily_news_scan
+                        from modules.ai_picks import UNIVERSES
+                        union_syms: set = set()
+                        for u in UNIVERSES.values():
+                            for s in u['symbols']:
+                                union_syms.add(s)
+                        scan_syms = sorted(union_syms)
+                        scan_res = daily_news_scan(scan_syms, use_llm=False)
+                        _sched_log('info', f'news_scan done: {len(scan_res)} symbols')
+                    except Exception as e:
+                        _sched_log('error', f'nightly news_scan crashed: {e}')
+
+                    # 13F filing ingest — only does work in May/Aug/Nov/Feb
+                    # filing windows (45-day SEC lag). Other months it's a
+                    # cheap no-op since fetch_latest_13f returns nothing new.
+                    try:
+                        from modules.sec_edgar_13f import (
+                            ingest_all_superinvestors, resolve_cusips,
+                        )
+                        if now.month in (2, 5, 8, 11):
+                            ingest_res = ingest_all_superinvestors(verbose=False)
+                            _sched_log('info',
+                                       'edgar 13F ingest',
+                                       funds=ingest_res['funds_processed'])
+                            # Resolve any newly-arrived CUSIPs (batched, throttled).
+                            rmap = resolve_cusips(limit=200)
+                            _sched_log('info',
+                                       f'cusip resolve: {rmap["resolved"]} new, '
+                                       f'{rmap["remaining"]} pending')
+                    except Exception as e:
+                        _sched_log('error', f'nightly 13F ingest crashed: {e}')
+
+                    # T16 — daily snapshot of options recommendations +
+                    # settle anything past expiry + MTM the rest. Builds
+                    # a forward backtest record showing realized P&L if
+                    # the user had followed every rec.
+                    try:
+                        from modules.options_rec_tracker import (
+                            snapshot_today, settle_expired, mtm_open,
+                        )
+                        snap = snapshot_today(daily_count=20, small_cap_count=15)
+                        _sched_log('info',
+                                   f'options rec snapshot: {snap.get("total_new_rows", 0)} new rows')
+                        settle = settle_expired()
+                        if settle.get('settled_count'):
+                            _sched_log('info',
+                                       f'options rec settled: {settle["settled_count"]} expirations')
+                        mtm = mtm_open()
+                        _sched_log('info',
+                                   f'options rec MTM: {mtm.get("mtm_updated", 0)} open positions')
+                    except Exception as e:
+                        _sched_log('error', f'options rec tracker crashed: {e}')
+
+                    # T11 Phase 2 — nightly insider open-market-buy scan.
+                    # Re-uses the news_scan universe so we don't double-pull.
+                    try:
+                        from modules.insider_watch import scan_insider_buys
+                        from modules.ai_picks import UNIVERSES
+                        union_syms: set = set()
+                        for u in UNIVERSES.values():
+                            for s in u['symbols']:
+                                union_syms.add(s)
+                        fresh = scan_insider_buys(sorted(union_syms),
+                                                  min_value_usd=500_000,
+                                                  lookback_days=7,
+                                                  fire_alerts=True)
+                        _sched_log('info', f'insider scan: {len(fresh)} fresh open-market buys')
+                    except Exception as e:
+                        _sched_log('error', f'insider scan crashed: {e}')
+
+                    # T17 — nightly opt-in jobs.
+
+                    # PEAD scan (cheap; persists pead_signals + fires alerts).
+                    try:
+                        from modules.pead_harvester import scan_pead_opportunities
+                        pead = scan_pead_opportunities(lookback_days=5)
+                        _sched_log('info', f'PEAD scan: {len(pead)} candidates')
+                    except Exception as e:
+                        _sched_log('error', f'PEAD scan crashed: {e}')
+
+                    # DCA tick per auto-run account.
+                    try:
+                        from modules.dca_executor import run_dca_tick
+                        from modules.paper_trading import list_accounts as _list_accts
+                        # We don't have a per-user iterator handy; walk all
+                        # accounts with auto_run=1 directly via SQL.
+                        import sqlite3 as _sql3
+                        from pathlib import Path as _P
+                        _db = _P(__file__).parent / 'trading_agents.db'
+                        with _sql3.connect(str(_db)) as _c:
+                            _c.row_factory = _sql3.Row
+                            _accts = _c.execute(
+                                'SELECT id FROM paper_accounts WHERE auto_run=1 AND status="active"'
+                            ).fetchall()
+                        for _a in _accts:
+                            try:
+                                run_dca_tick(int(_a['id']))
+                            except Exception as e:
+                                _sched_log('warning', f'DCA tick failed for acct#{_a["id"]}: {e}')
+                        _sched_log('info', f'DCA ticks: {len(_accts)} accounts processed')
+                    except Exception as e:
+                        _sched_log('error', f'DCA tick batch crashed: {e}')
+
+                    # Weekly ML retrain (Sundays).
+                    if now.weekday() == 6:
+                        try:
+                            from modules.conviction_ml import train_model
+                            r = train_model()
+                            _sched_log('info',
+                                       f'ML retrain: {"ok" if r.get("success") else "skipped"} '
+                                       f'samples={r.get("samples")} cv_mae={r.get("cv_mae")}')
+                        except Exception as e:
+                            _sched_log('error', f'ML retrain crashed: {e}')
+                        # P1c — weekly LightGBM learning-to-rank retrain.
+                        try:
+                            from modules.ml_ranker import train_weekly
+                            r = train_weekly()
+                            _sched_log('info',
+                                       f'ml_ranker retrain: {"ok" if r.get("success") else r.get("error")} '
+                                       f'rank_ic={r.get("rank_ic")} ndcg10={r.get("ndcg10")} '
+                                       f'n={r.get("n_samples")} '
+                                       f'llm_delta={r.get("llm_ic_delta")}')
+                        except Exception as e:
+                            _sched_log('error', f'ml_ranker retrain crashed: {e}')
+                        # P2 — weekly conviction-weight recalibration (the
+                        # calibrator existed since T15 but was never
+                        # scheduled, so weights were effectively static).
+                        try:
+                            from modules.conviction_calibration import recalibrate
+                            r = recalibrate(min_samples=50)
+                            _sched_log('info',
+                                       f'conviction recalibrate: applied={r.get("applied")} '
+                                       f'n={r.get("n_samples")} '
+                                       f'oos_rc={r.get("out_sample_rank_corr")}')
+                        except Exception as e:
+                            _sched_log('error', f'conviction recalibrate crashed: {e}')
+                        # P2 — weekly factor-momentum overlay refit (bounded
+                        # ±30% tilt on the calibrated conviction weights).
+                        try:
+                            from modules.factor_momentum import compute_weights
+                            r = compute_weights()
+                            _sched_log('info',
+                                       f'factor momentum: n={r.get("n_samples")} '
+                                       f'neutral={r.get("neutral")} '
+                                       f'mult={r.get("multipliers")}')
+                        except Exception as e:
+                            _sched_log('error', f'factor momentum crashed: {e}')
+
+                    # Monthly auto-pair discovery (1st of month).
+                    if now.day == 1:
+                        try:
+                            from modules.pairs_trading import discover_pairs
+                            disc = discover_pairs(max_pairs=50)
+                            _sched_log('info',
+                                       f'pair discovery: {disc.get("passed", 0)} new pairs '
+                                       f'(scanned {disc.get("candidates_scanned", 0)})')
+                        except Exception as e:
+                            _sched_log('error', f'pair discovery crashed: {e}')
+
+                    # T18 — nightly OU mean-reversion scan (cheap; persists ou_signals).
+                    try:
+                        from modules.ou_meanrev import scan_universe
+                        ou_picks = scan_universe(min_z=1.5)
+                        _sched_log('info', f'OU scan: {len(ou_picks)} candidates above z=1.5')
+                    except Exception as e:
+                        _sched_log('error', f'OU scan crashed: {e}')
+
+                    # T18 — Sunday: refit GARCH for top symbols + refit HMM.
+                    if now.weekday() == 6:
+                        try:
+                            from modules.garch import refit_universe as garch_refit
+                            from modules.ai_picks import UNIVERSES
+                            syms: set = set()
+                            for u in UNIVERSES.values():
+                                for s in u['symbols']:
+                                    syms.add(s)
+                            top_syms = sorted(syms)[:80]
+                            res = garch_refit(top_syms)
+                            _sched_log('info',
+                                       f'GARCH weekly refit: {res["ok"]} ok, {res["fail"]} fail')
+                        except Exception as e:
+                            _sched_log('error', f'GARCH weekly refit crashed: {e}')
+                        try:
+                            from modules.hmm_regime import fit_hmm
+                            r = fit_hmm()
+                            _sched_log('info',
+                                       f'HMM weekly refit: iter={r.get("iterations")} '
+                                       f'converged={r.get("converged")}')
+                        except Exception as e:
+                            _sched_log('error', f'HMM weekly refit crashed: {e}')
+                        try:
+                            from modules.kalman_pairs import refit_universe as kalman_refit
+                            res = kalman_refit(limit=30)
+                            _sched_log('info', f'Kalman pair refit: {res.get("ok")} ok')
+                        except Exception as e:
+                            _sched_log('error', f'Kalman pair refit crashed: {e}')
+                        try:
+                            from modules.risk_parity import rebalance_account
+                            import sqlite3 as _sql3
+                            from pathlib import Path as _P
+                            _db = _P(__file__).parent / 'trading_agents.db'
+                            with _sql3.connect(str(_db)) as _c:
+                                _c.row_factory = _sql3.Row
+                                _accts = _c.execute(
+                                    'SELECT id FROM paper_accounts WHERE auto_run=1 AND status="active"'
+                                ).fetchall()
+                            for _a in _accts:
+                                try:
+                                    rebalance_account(int(_a['id']), mode='advisory')
+                                except Exception as e:
+                                    _sched_log('warning', f'RP failed for acct#{_a["id"]}: {e}')
+                            _sched_log('info', f'Risk-parity advisory: {len(_accts)} accounts')
+                        except Exception as e:
+                            _sched_log('error', f'RP advisory crashed: {e}')
+
+                    # T13 — weekly pair-stats recompute. Mondays only since
+                    # cointegration relationships are slow-moving and a single
+                    # day of new data rarely changes the screen.
+                    if now.weekday() == 0:
+                        try:
+                            from modules.pairs_trading import recompute_pair_stats
+                            pr = recompute_pair_stats(period='2y')
+                            _sched_log('info',
+                                       f'pair_stats recomputed: '
+                                       f'{pr["pairs_processed"]} pairs')
+                        except Exception as e:
+                            _sched_log('error', f'pair_stats recompute crashed: {e}')
+
+                    # Conviction ranking — runs over the union universe daily.
+                    # Persists into conviction_scores so the dashboard can
+                    # render trajectories without recomputing every page load.
+                    try:
+                        from modules.conviction_engine import rank_universe
+                        from modules.ai_picks import UNIVERSES
+                        c_syms: set = set()
+                        for u in UNIVERSES.values():
+                            for s in u['symbols']:
+                                c_syms.add(s)
+                        ranked = rank_universe(sorted(c_syms), budget=5000)
+                        top10 = ranked[:10]
+                        _sched_log('info',
+                                   f'conviction_engine ranked {len(ranked)} symbols; '
+                                   f'top: ' + ', '.join(
+                                       f'{r["symbol"]}={r["conviction_score"]:.0f}'
+                                       for r in top10))
+                    except Exception as e:
+                        _sched_log('error', f'conviction_engine crashed: {e}')
+
+                    # P1c — nightly ml_ranker scoring (consumes the weekly
+                    # model; pick_source='ml_ranker' accounts read these) +
+                    # point-in-time fundamentals snapshot for future models.
+                    try:
+                        from modules.ml_ranker import score_universe as _ml_score
+                        r = _ml_score()
+                        _sched_log('info',
+                                   f'ml_ranker scoring: {"ok" if r.get("success") else r.get("error")} '
+                                   f'n={r.get("n_scored")}')
+                    except Exception as e:
+                        _sched_log('error', f'ml_ranker scoring crashed: {e}')
+                    try:
+                        from modules.ml_ranker import snapshot_fundamentals
+                        r = snapshot_fundamentals()
+                        _sched_log('info',
+                                   f'fundamentals snapshot: {r.get("written", 0)} symbols')
+                    except Exception as e:
+                        _sched_log('error', f'fundamentals snapshot crashed: {e}')
+                    # P2 — nightly LLM/news feature extraction (point-in-time
+                    # columns for the ranker panel; embargo enforced in SQL).
+                    try:
+                        from modules.llm_features import build_daily_features
+                        r = build_daily_features()
+                        _sched_log('info',
+                                   f'llm features: {r.get("written", 0)} symbols')
+                    except Exception as e:
+                        _sched_log('error', f'llm features crashed: {e}')
+
+                    # P3 — wheel tick for accounts that opted in via
+                    # plan.wheel_enabled (the wheel engine existed but had no
+                    # caller). Labeled income/risk-reshaping, not alpha — it
+                    # does not beat buy-and-hold on total return.
+                    try:
+                        from modules.options_wheel import run_wheel_tick
+                        import sqlite3 as _sql3w
+                        import json as _jsonw
+                        from pathlib import Path as _Pw
+                        _dbw = _Pw(__file__).parent / 'trading_agents.db'
+                        with _sql3w.connect(str(_dbw)) as _cw:
+                            _cw.row_factory = _sql3w.Row
+                            _wheel_accts = [
+                                int(row['id'])
+                                for row in _cw.execute(
+                                    'SELECT id, plan_json FROM paper_accounts '
+                                    "WHERE auto_run=1 AND status='active'").fetchall()
+                                if _jsonw.loads(row['plan_json'] or '{}').get('wheel_enabled')
+                            ]
+                        for _wa in _wheel_accts:
+                            try:
+                                run_wheel_tick(_wa)
+                            except Exception as e:
+                                _sched_log('warning', f'wheel tick failed acct#{_wa}: {e}')
+                        if _wheel_accts:
+                            _sched_log('info', f'wheel ticks: {len(_wheel_accts)} accounts')
+                    except Exception as e:
+                        _sched_log('error', f'wheel tick batch crashed: {e}')
+
+                    # P5 — nightly experiment evaluation: apply each running
+                    # A/B / play trial's frozen gate, conclude passed/failed.
+                    try:
+                        from modules.ab_experiments import evaluate_experiments
+                        r = evaluate_experiments()
+                        concluded = [e for e in r.get('experiments', [])
+                                     if e['status'] != 'running']
+                        if concluded:
+                            _sched_log('info', f'experiments concluded: {concluded}')
+                        elif r.get('evaluated'):
+                            _sched_log('info',
+                                       f'experiments: {r["evaluated"]} still running')
+                    except Exception as e:
+                        _sched_log('error', f'experiment evaluation crashed: {e}')
+
+                    # P4 — nightly forward-validation registry update:
+                    # tallies live trades per frozen config, applies the
+                    # pre-registered approve (n>=200) / kill criteria.
+                    try:
+                        from modules.strategy_registry import update_forward_counts
+                        r = update_forward_counts()
+                        if r.get('killed') or r.get('approved'):
+                            _sched_log('info',
+                                       f'registry: approved={r.get("approved")} '
+                                       f'killed={r.get("killed")}')
+                        else:
+                            _sched_log('info',
+                                       f'registry: {r.get("updated", 0)} configs updated')
+                    except Exception as e:
+                        _sched_log('error', f'registry update crashed: {e}')
+
                     # Weekly leaderboard — fire on Sundays only (weekday() == 6)
                     if now.weekday() == 6:
                         try:
@@ -14536,6 +15803,77 @@ def run_server(host='0.0.0.0', port=8501):
     paper_thread = threading.Thread(target=paper_scheduler_loop, daemon=True, name='paper-scheduler')
     paper_thread.start()
     print("⏰ 每日模擬交易排程器: ✅ 已啟用 (每小時檢查 + 22:00 後發送每日摘要)")
+
+    # T15 intraday loop — re-runs conviction scan + alerts every 15 minutes
+    # during US regular trading hours (09:30-16:00 ET, weekdays). Sleeps
+    # otherwise. Detects fresh <50→≥70 conviction crosses INTRADAY so the
+    # user gets alerted before the next nightly batch.
+    _INTRADAY_INTERVAL_SECS = 900   # 15 min
+    _INTRADAY_OFFHOURS_SECS = 3600  # 1 h check during off-hours
+
+    def _is_us_market_hours(now: datetime) -> bool:
+        """Approximate US RTH check. Uses LOCAL server time + a 13h offset
+        guess for UTC server → ET. For a more accurate version, use
+        zoneinfo('America/New_York') if available."""
+        try:
+            from zoneinfo import ZoneInfo
+            et = now.astimezone(ZoneInfo('America/New_York'))
+        except Exception:
+            # Crude UTC→ET = subtract 4 (EDT) or 5 (EST); we use 4.
+            et = now - timedelta(hours=4)
+        if et.weekday() >= 5:  # Sat/Sun
+            return False
+        if et.hour < 9 or et.hour >= 16:
+            return False
+        if et.hour == 9 and et.minute < 30:
+            return False
+        return True
+
+    def intraday_scheduler_loop():
+        time.sleep(30)  # avoid colliding with nightly thread at boot
+        last_run_iso: Optional[str] = None
+        while True:
+            try:
+                now = datetime.now()
+                in_rth = _is_us_market_hours(now)
+                if in_rth:
+                    # 15-min-stamped key dedupes re-runs in the same window.
+                    stamp = now.strftime('%Y-%m-%d %H:') + f'{(now.minute // 15) * 15:02d}'
+                    if stamp != last_run_iso:
+                        last_run_iso = stamp
+                        try:
+                            from modules.conviction_engine import rank_universe
+                            from modules.ai_picks import UNIVERSES
+                            union: set = set()
+                            for u in UNIVERSES.values():
+                                for s in u['symbols']:
+                                    union.add(s)
+                            # Cap intraday scan to keep cost low — only the
+                            # top-correlated 60 names by previous-day score.
+                            try:
+                                from modules.conviction_engine import top_picks
+                                hot = [p['symbol'] for p in top_picks(count=60, min_score=40)]
+                                scan = sorted(set(hot) | set(list(union)[:40]))
+                            except Exception:
+                                scan = sorted(union)[:60]
+                            ranked = rank_universe(scan, budget=5000, persist=True)
+                            crosses = [r for r in ranked if r['conviction_score'] >= 70][:10]
+                            _sched_log('info',
+                                       f'intraday scan {stamp}: {len(ranked)} ranked, '
+                                       f'{len(crosses)} ≥70')
+                        except Exception as e:
+                            _sched_log('error', f'intraday scan crashed: {e}')
+                    sleep_for = _INTRADAY_INTERVAL_SECS
+                else:
+                    sleep_for = _INTRADAY_OFFHOURS_SECS
+            except Exception as e:
+                _sched_log('error', f'intraday loop outer crashed: {e}')
+                sleep_for = _INTRADAY_OFFHOURS_SECS
+            time.sleep(sleep_for)
+
+    intraday_thread = threading.Thread(target=intraday_scheduler_loop, daemon=True, name='intraday-scheduler')
+    intraday_thread.start()
+    print("⚡ 盤中智能掃描排程器: ✅ 已啟用 (美股盤中每 15 分鐘)")
 
     try:
         print("🎯 服務器進入主循環，按 Ctrl+C 停止")
