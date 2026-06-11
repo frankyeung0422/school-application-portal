@@ -2834,8 +2834,12 @@ class TradingAgentsAPIHandler(BaseHTTPRequestHandler):
             self.handle_wheel_state(parsed_path)
         elif parsed_path.path == '/api/registry':
             self.handle_strategy_registry(parsed_path)
-        elif parsed_path.path == '/api/experiments':
-            self.handle_experiments_list(parsed_path)
+        # P5 forward-validation experiments. NOTE: '/api/experiments' (no
+        # prefix) belongs to the PRE-EXISTING marketing A/B-testing module
+        # (pro_analytics, handle_experiments_list at the bottom of this
+        # class) — reusing that path/name shadowed it and broke both.
+        elif parsed_path.path == '/api/research/experiments':
+            self.handle_research_experiments(parsed_path)
         elif parsed_path.path == '/api/alerts/recent':
             self.handle_alerts_recent(parsed_path)
         # ===== ANALYTICS / A/B testing =====
@@ -11139,10 +11143,11 @@ p{color:#8b95b8;font-size:14px;line-height:1.6;}
         except Exception as e:
             self.send_utf8_json_response({'success': False, 'error': str(e)}, 500)
 
-    def handle_experiments_list(self, parsed_path):
-        """GET /api/experiments — P5 forward-validation experiments (ranker
-        A/B + per-play options trials) with their frozen gates, latest arm
-        metrics, and pass/fail verdicts."""
+    def handle_research_experiments(self, parsed_path):
+        """GET /api/research/experiments — P5 forward-validation experiments
+        (ranker A/B + per-play options trials) with their frozen gates,
+        latest arm metrics, and pass/fail verdicts. Distinct from the
+        marketing A/B endpoint at /api/experiments."""
         try:
             from modules.ab_experiments import list_experiments
             self.send_utf8_json_response(
