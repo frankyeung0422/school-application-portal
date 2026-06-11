@@ -258,6 +258,10 @@ def create_options_follow_account(user_id: int, plan: Dict[str, Any],
         'options_alloc_pct': alloc_pct,
         'options_max_contracts': max_contracts,
         'options_plays': plays,
+        # E1 — dual-source earnings gating for the straddle play. ON for new
+        # accounts; the frozen straddle trial (created pre-E1) lacks the key
+        # and keeps its yfinance behavior.
+        'earnings_v2': bool(plan.get('earnings_v2', True)),
         # Keep these so the existing list/detail UI (which reads plan.symbols /
         # plan.strategies) never trips on undefined.
         'symbols': [],
@@ -468,7 +472,8 @@ def run_follow_tick_impl(user_id: int, account_id: int, target_iso: str,
                     from web.modules.options_playbook import generate_recommendations  # type: ignore
                 recs = generate_recommendations(
                     user_id, account_id, top_n=top_n,
-                    plays=plan.get('options_plays'), target_iso=target_iso)
+                    plays=plan.get('options_plays'), target_iso=target_iso,
+                    require_confirmed_earnings=bool(plan.get('earnings_v2')))
             else:
                 recs = fetch_recommendations(engine, top_n, dte=dte, budget=budget)
         except Exception as e:  # noqa: BLE001

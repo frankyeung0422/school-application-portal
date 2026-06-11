@@ -145,6 +145,14 @@ def _simulate_symbol(symbol: str, plan: Dict[str, Any], capital_slice: float,
     # next_close mode; 0 preserves the legacy same-bar fill.
     fill_mode = (plan.get('fill_mode') or 'same_close').lower()
     sig_lag = 1 if fill_mode == 'next_close' else 0
+    # E3 — T+1 settlement for mainland A-shares (same flag as the live
+    # engine; engine parity). NOTE: the exits-before-entries ordering of
+    # both engines already makes a same-bar entry→exit impossible — this
+    # check is a defense-in-depth INVARIANT so a future reordering (e.g.
+    # intrabar exit modeling) can't silently break Chinese settlement rules.
+    _sym_u = (symbol or '').upper()
+    t_plus_one = bool(plan.get('cn_t_plus_one')) and (
+        _sym_u.endswith('.SS') or _sym_u.endswith('.SZ'))
     lot = _lot_size(symbol)
     atr_val = _atr(highs, lows, closes, 14) if atr_stop_mult > 0 else 0.0
 
@@ -168,7 +176,9 @@ def _simulate_symbol(symbol: str, plan: Dict[str, Any], capital_slice: float,
         bar_low = lows[i] if i < len(lows) else price
 
         # --- exits on the open position (processed before entries, like live) ---
-        if position > 0:
+        if position > 0 and t_plus_one and entry_date == d:
+            pass  # E3 — T+1: no same-day exit on A-shares (stops included)
+        elif position > 0:
             if trailing_stop_pct > 0:
                 peak = max(peak, price)
             post_ladder = ladder_steps > 0 and partial_done >= ladder_steps

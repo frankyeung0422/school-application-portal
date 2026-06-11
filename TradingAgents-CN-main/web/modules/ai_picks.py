@@ -52,10 +52,27 @@ _CRYPTO_TOP10 = [
     'ADA-USD', 'AVAX-USD', 'DOGE-USD', 'LINK-USD', 'DOT-USD',
 ]
 
+# E3 — CSI 300 most-liquid ~50 (yfinance-style .SS/.SZ suffixes; data path
+# falls back to tushare/akshare via pro_backtest's CN delegation). A-share
+# accounts get honest costs (2.5bp+stamp) and T+1 from paper_trading.
+_CSI300_TOP50 = [
+    '600519.SS', '601318.SS', '600036.SS', '601012.SS', '600900.SS',
+    '601166.SS', '600276.SS', '600030.SS', '601398.SS', '601888.SS',
+    '600887.SS', '601988.SS', '601628.SS', '600028.SS', '601857.SS',
+    '600048.SS', '600309.SS', '600406.SS', '601601.SS', '601288.SS',
+    '603259.SS', '603501.SS', '600585.SS', '601899.SS', '600031.SS',
+    '300750.SZ', '000858.SZ', '000333.SZ', '002594.SZ', '000651.SZ',
+    '002475.SZ', '300059.SZ', '002415.SZ', '000725.SZ', '002714.SZ',
+    '300760.SZ', '002352.SZ', '000568.SZ', '002304.SZ', '300015.SZ',
+    '000001.SZ', '000002.SZ', '002142.SZ', '300124.SZ', '002027.SZ',
+    '300498.SZ', '000063.SZ', '002460.SZ', '300274.SZ', '002812.SZ',
+]
+
 UNIVERSES: Dict[str, Dict[str, Any]] = {
     'sp500_top50': {'label': '美股大盤 (S&P 500 Top 50)', 'symbols': _SP500_TOP50},
     'tech':        {'label': '科技股 (Mega Cap Tech)', 'symbols': _LARGE_TECH_50},
     'hsi':         {'label': '港股 (HSI Top 30)', 'symbols': _HSI_TOP30},
+    'csi300_top50': {'label': 'A股 (滬深300 Top 50)', 'symbols': _CSI300_TOP50},
     'crypto':      {'label': '加密貨幣 (Top 10 USD pairs)', 'symbols': _CRYPTO_TOP10},
 }
 

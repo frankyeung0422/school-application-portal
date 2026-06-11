@@ -412,29 +412,65 @@ def _play_index_spread() -> List[Dict[str, Any]]:
     return out
 
 
-def _play_preearnings_straddle(target_iso: str) -> List[Dict[str, Any]]:
+def _play_preearnings_straddle(target_iso: str,
+                               require_confirmed: bool = False) -> List[Dict[str, Any]]:
+    """E1: with require_confirmed, a setup only fires when the dual-source
+    calendar has >=2 sources agreeing on the date AND a known bmo/amc
+    session — and the forced exit is session-aware (BMO prints before the
+    open, so the last safe close is the day BEFORE the event). Without the
+    flag (legacy / frozen straddle trial), the yfinance path is unchanged."""
     cfg = PLAYS['preearnings_straddle']
     lo, hi = cfg['entry_days_before']
+    ec_mod = None
+    if require_confirmed:
+        try:
+            try:
+                from . import earnings_calendar as ec_mod  # type: ignore
+            except ImportError:
+                from web.modules import earnings_calendar as ec_mod  # type: ignore
+        except Exception:
+            return []  # confirmed-mode without the module = no trades, by design
     try:
         try:
             from .pro_calendar import _fetch_calendar
         except ImportError:
             from web.modules.pro_calendar import _fetch_calendar  # type: ignore
     except Exception:
-        return []
+        if not require_confirmed:
+            return []
+        _fetch_calendar = None  # type: ignore
     out = []
     today = datetime.fromisoformat(target_iso).date()
     for sym in _STRADDLE_UNIVERSE:
-        try:
-            cal = _fetch_calendar(sym)
-        except Exception:
-            continue
-        if not cal or cal.get('next_event_type') != 'earnings_date':
-            continue
-        days_to = cal.get('next_event_days')
-        if days_to is None or not (lo <= int(days_to) <= hi):
-            continue
-        event_date = (today + timedelta(days=int(days_to))).isoformat()
+        if require_confirmed:
+            ev = None
+            try:
+                ev = ec_mod.confirmed(sym)
+            except Exception:
+                ev = None
+            if not ev:
+                continue
+            days_to = (datetime.fromisoformat(ev['event_date']).date()
+                       - today).days
+            if not (lo <= days_to <= hi):
+                continue
+            # Session-aware forced exit: never hold through the print.
+            if ev['session'] == 'bmo':
+                event_date = (datetime.fromisoformat(ev['event_date']).date()
+                              - timedelta(days=1)).isoformat()
+            else:  # amc — print is after the close; event-day close is safe
+                event_date = ev['event_date']
+        else:
+            try:
+                cal = _fetch_calendar(sym)
+            except Exception:
+                continue
+            if not cal or cal.get('next_event_type') != 'earnings_date':
+                continue
+            days_to = cal.get('next_event_days')
+            if days_to is None or not (lo <= int(days_to) <= hi):
+                continue
+            event_date = (today + timedelta(days=int(days_to))).isoformat()
         sv = _spot_vol_ivr(sym)
         if not sv:
             continue
@@ -489,10 +525,13 @@ def _play_preearnings_straddle(target_iso: str) -> List[Dict[str, Any]]:
 
 def generate_recommendations(user_id: int, account_id: int, top_n: int = 5,
                              plays: Optional[List[str]] = None,
-                             target_iso: Optional[str] = None) -> List[Dict[str, Any]]:
+                             target_iso: Optional[str] = None,
+                             require_confirmed_earnings: bool = False) -> List[Dict[str, Any]]:
     """Today's playbook recommendations, best-play-first. ``plays`` filters
     to a subset (account plan's options_plays); killed plays are excluded by
-    the pre-registered criterion regardless of the plan."""
+    the pre-registered criterion regardless of the plan.
+    require_confirmed_earnings (E1) gates the pre-earnings straddle on
+    dual-source date+session agreement."""
     init_playbook_tables()
     target_iso = target_iso or date.today().isoformat()
     wanted = [p for p in (plays or list(PLAYS))
@@ -510,7 +549,8 @@ def generate_recommendations(user_id: int, account_id: int, top_n: int = 5,
             elif play == 'index_put_credit_spread':
                 recs.extend(_play_index_spread())
             elif play == 'preearnings_straddle':
-                recs.extend(_play_preearnings_straddle(target_iso))
+                recs.extend(_play_preearnings_straddle(
+                    target_iso, require_confirmed=require_confirmed_earnings))
         except Exception:
             continue
     return recs

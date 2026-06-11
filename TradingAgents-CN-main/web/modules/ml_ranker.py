@@ -587,7 +587,8 @@ def confidence_state(ic_window: int = 8) -> Dict[str, Any]:
         with _conn() as c:
             ics = [r['rank_ic'] for r in c.execute(
                 '''SELECT rank_ic FROM ml_ranker_metrics
-                   WHERE note IS NULL OR note NOT LIKE 'ablation%'
+                   WHERE (note IS NULL OR (note NOT LIKE 'ablation%'
+                          AND note != 'pick_churn'))
                    ORDER BY id DESC LIMIT ?''', (ic_window,)).fetchall()
                 if r['rank_ic'] is not None]
             disp_rows = c.execute(
@@ -634,6 +635,49 @@ def latest_metrics(limit: int = 12) -> List[Dict[str, Any]]:
             'SELECT * FROM ml_ranker_metrics ORDER BY id DESC LIMIT ?',
             (limit,)).fetchall()
     return [dict(r) for r in rows]
+
+
+def record_pick_churn(top_n: int = 10) -> Dict[str, Any]:
+    """E4 — observability for the dropped 'rank buffer' idea: Jaccard
+    distance between today's and the previous scoring day's top-N. The tick
+    never force-sells on rank churn (held symbols stay in the universe), so
+    churn is only a problem if this metric shows entry/exit cycling — in
+    which case the buffer gets revisited WITH data. Stored as an
+    ml_ranker_metrics row (note='pick_churn', rank_ic field = distance)."""
+    init_ml_tables()
+    with _conn() as c:
+        days = [r['score_date'] for r in c.execute(
+            'SELECT DISTINCT score_date FROM ml_rank_scores '
+            'ORDER BY score_date DESC LIMIT 2').fetchall()]
+        if len(days) < 2:
+            return {'success': False, 'error': 'need two scored days'}
+        sets = []
+        for d in days:
+            rows = c.execute(
+                'SELECT symbol FROM ml_rank_scores WHERE score_date=? '
+                'ORDER BY rank_position LIMIT ?', (d, top_n)).fetchall()
+            sets.append({r['symbol'] for r in rows})
+        union = sets[0] | sets[1]
+        inter = sets[0] & sets[1]
+        churn = round(1.0 - len(inter) / len(union), 4) if union else 0.0
+        c.execute(
+            '''INSERT INTO ml_ranker_metrics
+               (train_date, rank_ic, n_samples, n_holdout_dates,
+                model_version, note)
+               VALUES (?, ?, ?, ?, ?, 'pick_churn')''',
+            (days[0], churn, top_n, None, None))
+        c.commit()
+    return {'success': True, 'date': days[0], 'prev_date': days[1],
+            'churn': churn, 'top_n': top_n}
+
+
+def latest_pick_churn() -> Optional[float]:
+    init_ml_tables()
+    with _conn() as c:
+        row = c.execute(
+            "SELECT rank_ic FROM ml_ranker_metrics WHERE note='pick_churn' "
+            'ORDER BY id DESC LIMIT 1').fetchone()
+    return float(row['rank_ic']) if row and row['rank_ic'] is not None else None
 
 
 # ---------------------------------------------------------------------------

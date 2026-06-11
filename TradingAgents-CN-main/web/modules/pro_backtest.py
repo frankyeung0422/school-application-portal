@@ -20,7 +20,45 @@ import time
 from typing import Any, Dict, List, Optional, Tuple
 
 
+_CN_MIN_BARS_PER_YEAR = 60  # a 1y CN request returning fewer bars = broken feed
+
+
+def _cn_result_suspect(result, period: str) -> bool:
+    """yfinance's .SS/.SZ coverage is patchy — empty or truncated histories
+    come back without errors. Treat short results as failures so the CN
+    fallback engages."""
+    if not result:
+        return True
+    closes = result[1]
+    years = {'3mo': 0.25, '6mo': 0.5, '1y': 1, '2y': 2, '5y': 5}.get(
+        (period or '1y').lower(), 1)
+    return len(closes) < _CN_MIN_BARS_PER_YEAR * min(1.0, years)
+
+
+def _is_cn(symbol: str) -> bool:
+    s = (symbol or '').upper()
+    return s.endswith('.SS') or s.endswith('.SZ')
+
+
 def _fetch(symbol: str, period: str = "5y") -> Optional[Tuple[List, List, List, List]]:
+    out = _fetch_yf(symbol, period)
+    # E3 — CN delegation: only for .SS/.SZ and only when yfinance came back
+    # broken. Non-CN paths are byte-identical to the pre-E3 behavior.
+    if _is_cn(symbol) and _cn_result_suspect(out, period):
+        try:
+            try:
+                from .cn_data import fetch_daily
+            except ImportError:
+                from web.modules.cn_data import fetch_daily  # type: ignore
+            cn = fetch_daily(symbol, period)
+            if cn:
+                return cn
+        except Exception:
+            pass
+    return out
+
+
+def _fetch_yf(symbol: str, period: str = "5y") -> Optional[Tuple[List, List, List, List]]:
     try:
         import yfinance as yf
         h = yf.Ticker(symbol).history(period=period, interval="1d")
@@ -52,6 +90,23 @@ def _fetch_full(symbol: str, period: str = "5y") -> Optional[Tuple[List, List, L
     expose. _fetch is preserved unchanged so the ~25 existing callers don't
     break — opt in to _fetch_full explicitly.
     """
+    out = _fetch_full_yf(symbol, period)
+    if _is_cn(symbol) and (not out or _cn_result_suspect(
+            (out[0], out[2], out[3], out[4]) if out else None, period)):
+        try:
+            try:
+                from .cn_data import fetch_daily_full
+            except ImportError:
+                from web.modules.cn_data import fetch_daily_full  # type: ignore
+            cn = fetch_daily_full(symbol, period)
+            if cn:
+                return cn
+        except Exception:
+            pass
+    return out
+
+
+def _fetch_full_yf(symbol: str, period: str = "5y") -> Optional[Tuple[List, List, List, List, List, List]]:
     try:
         import yfinance as yf
         h = yf.Ticker(symbol).history(period=period, interval="1d")

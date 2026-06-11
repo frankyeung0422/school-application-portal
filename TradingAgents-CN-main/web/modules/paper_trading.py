@@ -153,6 +153,11 @@ FEE_BPS = 5.0 / 10000.0
 _FEE_TABLE = {
     'US':     (1.0 / 10000.0, 1.0 / 10000.0),    # 1 bp each side
     'HK':     (3.0 / 10000.0, 13.0 / 10000.0),   # comm + stamp + slippage
+    # E3 — A-shares: ~2.5 bp commission per side; sell adds the 0.05% stamp
+    # duty (halved 2023-08-28 — do NOT "fix" this back to 0.1%). Without
+    # this entry .SS/.SZ fell to DEFAULT and CN backtests were fiction:
+    # recent A-share ML studies find total costs eat ~30% of gross return.
+    'CN':     (2.5 / 10000.0, 7.5 / 10000.0),
     'CRYPTO': (25.0 / 10000.0, 25.0 / 10000.0),  # 25 bp ≈ Binance/Coinbase taker
     'DEFAULT':(5.0 / 10000.0, 5.0 / 10000.0),
 }
@@ -1022,6 +1027,9 @@ def _lot_size(symbol: str) -> int:
     Unknown HK tickers default to 100. US tickers (and others) return 1.
     """
     s = (symbol or '').upper()
+    # E3 — A-shares trade in uniform 100-share board lots (一手 = 100 股).
+    if s.endswith('.SS') or s.endswith('.SZ'):
+        return 100
     if not s.endswith('.HK'):
         return 1
     if s in _HK_LOT_SIZES:
@@ -1558,6 +1566,18 @@ def create_account(user_id: int, plan: Dict[str, Any]) -> Dict[str, Any]:
         # without the field keep their exact pre-P7 sizing (the tick reads
         # plan.get('corr_aware_sizing') with a falsy default).
         'corr_aware_sizing': bool(plan.get('corr_aware_sizing', True)),
+        # E1 — dual-source earnings calendar (Finnhub+Nasdaq+yfinance with
+        # agreement gating). ON for new accounts; legacy/frozen accounts
+        # (absent key = falsy) keep the exact yfinance-only path.
+        'earnings_v2': bool(plan.get('earnings_v2', True)),
+        # E2 — Jump Model regime gate. Default False EVEN FOR NEW ACCOUNTS:
+        # the JM runs in shadow (jump_regime_state logs agreement vs HMM
+        # nightly) until the disagreement record justifies an experiment.
+        'use_jump_regime': bool(plan.get('use_jump_regime', False)),
+        # E3 — T+1 settlement for mainland A-shares (no same-day sells,
+        # stops included). ON for new accounts; legacy plans (absent key)
+        # are unaffected — they hold no CN symbols anyway.
+        'cn_t_plus_one': bool(plan.get('cn_t_plus_one', True)),
     }
     today = date.today().isoformat()
 
@@ -2829,13 +2849,20 @@ def build_daily_digest_for_user(user_id: int) -> Optional[Dict[str, Any]]:
             from .ml_ranker import latest_metrics
         except ImportError:
             from web.modules.ml_ranker import latest_metrics  # type: ignore
-        mets = [m for m in latest_metrics(limit=8)
-                if not (m.get('note') or '').startswith('ablation')]
+        mets = [m for m in latest_metrics(limit=12)
+                if not (m.get('note') or '').startswith('ablation')
+                and (m.get('note') or '') != 'pick_churn']
         if mets:
             research['ranker_latest_ic'] = mets[0].get('rank_ic')
             ics = [m['rank_ic'] for m in mets if m.get('rank_ic') is not None]
             research['ranker_trailing_ic'] = (round(sum(ics) / len(ics), 4)
                                               if ics else None)
+        # E4 — pick-churn observability (Jaccard of consecutive top-N).
+        try:
+            from .ml_ranker import latest_pick_churn
+        except ImportError:
+            from web.modules.ml_ranker import latest_pick_churn  # type: ignore
+        research['pick_churn'] = latest_pick_churn()
     except Exception:
         pass
     try:
@@ -2844,6 +2871,33 @@ def build_daily_digest_for_user(user_id: int) -> Optional[Dict[str, Any]]:
         except ImportError:
             from web.modules.options_playbook import disabled_plays  # type: ignore
         research['killed_plays'] = sorted(disabled_plays())
+    except Exception:
+        pass
+    # E1 — dual-source earnings-calendar coverage over the straddle universe.
+    try:
+        try:
+            from .earnings_calendar import coverage_stats
+            from .options_playbook import _STRADDLE_UNIVERSE
+        except ImportError:
+            from web.modules.earnings_calendar import coverage_stats  # type: ignore
+            from web.modules.options_playbook import _STRADDLE_UNIVERSE  # type: ignore
+        research['earnings_calendar'] = coverage_stats(_STRADDLE_UNIVERSE)
+    except Exception:
+        pass
+    # E2 — Jump Model shadow vs the live HMM gate.
+    try:
+        try:
+            from .jump_regime import current_regime as _jm_cur, disagreement_rate
+        except ImportError:
+            from web.modules.jump_regime import (  # type: ignore
+                current_regime as _jm_cur, disagreement_rate)
+        _jm = _jm_cur()
+        if _jm.get('regime') != 'unknown':
+            research['regime_shadow'] = {
+                'jm': _jm.get('regime'),
+                'jm_bear_prob': (_jm.get('posterior') or {}).get('bear'),
+                'disagree_30d': disagreement_rate(30),
+            }
     except Exception:
         pass
 
@@ -2930,14 +2984,35 @@ def send_daily_digests() -> Dict[str, Any]:
             if rh.get('ranker_trailing_ic') is not None:
                 ic = rh['ranker_trailing_ic']
                 ic_color = '#16a34a' if ic and ic > 0.03 else '#d97706'
+                churn = rh.get('pick_churn')
                 rh_lines.append(
                     f"<div style='font-size:12px;padding:2px 0;'>📐 ML 排序模型 trailing IC: "
                     f"<span style='color:{ic_color};font-weight:700;'>{ic:.4f}</span>"
-                    f" (門檻 0.03)</div>")
+                    f" (門檻 0.03)"
+                    + (f" · 選股換手 {churn:.0%}/日" if churn is not None else '')
+                    + "</div>")
             if rh.get('killed_plays'):
                 rh_lines.append(
                     f"<div style='font-size:12px;padding:2px 0;color:#dc2626;'>"
                     f"☠️ 已停用策略: {', '.join(rh['killed_plays'])}</div>")
+            rs = rh.get('regime_shadow') or {}
+            if rs.get('jm'):
+                dis = rs.get('disagree_30d')
+                rh_lines.append(
+                    f"<div style='font-size:12px;padding:2px 0;'>🌀 跳躍模型(影子): "
+                    f"{rs['jm']} (bear {rs.get('jm_bear_prob', 0):.2f})"
+                    + (f" · 與 HMM 分歧率 {dis:.0%}/30d" if dis is not None else '')
+                    + "</div>")
+            ec = rh.get('earnings_calendar') or {}
+            if ec.get('checked_frac') is not None:
+                cf = ec['checked_frac']
+                ec_color = '#16a34a' if cf >= 0.6 else '#dc2626'
+                cf_conf = ec.get('confirmed_frac')
+                rh_lines.append(
+                    f"<div style='font-size:12px;padding:2px 0;'>📅 財報日曆覆蓋: "
+                    f"<span style='color:{ec_color};font-weight:700;'>{cf:.0%}</span>"
+                    + (f" · 雙源確認 {cf_conf:.0%}" if cf_conf is not None else '')
+                    + f" · {ec.get('upcoming_events', 0)} 件將至</div>")
             if rh_lines:
                 research_html = (
                     "<div style='margin-top:16px;padding:12px;background:#f5f7fb;"
@@ -3577,19 +3652,31 @@ def _run_account_tick_impl(user_id: int, account_id: int,
         # fear; HMM measures the persistent regime.
         if bool(plan.get('use_hmm_regime', True)) and not vix_block_entries:
             try:
-                try:
-                    from .hmm_regime import is_bear, current_regime  # type: ignore
-                except ImportError:
-                    from web.modules.hmm_regime import is_bear, current_regime  # type: ignore
+                # E2 — regime engine selection. use_jump_regime is read with a
+                # plain falsy default (unlike use_hmm_regime's default-True):
+                # the Jump Model runs in SHADOW until an account/experiment
+                # explicitly opts in, so no existing plan can be affected.
+                if bool(plan.get('use_jump_regime')):
+                    try:
+                        from .jump_regime import is_bear, current_regime  # type: ignore
+                    except ImportError:
+                        from web.modules.jump_regime import is_bear, current_regime  # type: ignore
+                    gate_name = 'JM'
+                else:
+                    try:
+                        from .hmm_regime import is_bear, current_regime  # type: ignore
+                    except ImportError:
+                        from web.modules.hmm_regime import is_bear, current_regime  # type: ignore
+                    gate_name = 'HMM'
                 if is_bear(threshold=0.7):
                     vix_block_entries = True
                     cr = current_regime()
                     _log(account_id, 'info',
-                         f'HMM bear gate tripped: '
+                         f'{gate_name} bear gate tripped: '
                          f'posterior bear={cr.get("posterior",{}).get("bear",0):.2f} — '
                          f'pausing new entries')
             except Exception as e:  # noqa: BLE001
-                _log(account_id, 'warning', f'HMM regime gate failed: {e}')
+                _log(account_id, 'warning', f'regime gate failed: {e}')
 
         cash = float(a['cash'])
         # On the very first tick (last_run_date is NULL) we include the start_date
@@ -3633,15 +3720,34 @@ def _run_account_tick_impl(user_id: int, account_id: int,
                 from web.modules.pro_calendar import _fetch_calendar  # type: ignore
             except Exception:
                 _fetch_calendar = None  # type: ignore
-        if _fetch_calendar:
+        # E1 — dual-source calendar first (DB read, no network); per-symbol
+        # yfinance stays as the fallback so a fresh install / failed nightly
+        # refresh degrades to the legacy behavior, never to no-gate.
+        _ec_mod = None
+        if bool(plan.get('earnings_v2')):
+            try:
+                try:
+                    from . import earnings_calendar as _ec_mod  # type: ignore
+                except ImportError:
+                    from web.modules import earnings_calendar as _ec_mod  # type: ignore
+            except Exception:
+                _ec_mod = None
+        if _fetch_calendar or _ec_mod:
             cal_failures = 0
             for sym in symbols:
                 try:
-                    cal = _fetch_calendar(sym)
-                    if cal and cal.get('next_event_type') == 'earnings_date':
-                        d_to = cal.get('next_event_days')
-                        if d_to is not None and 0 <= d_to <= ENTRY_BLACKOUT_DAYS:
-                            avoid_earnings.add(sym)
+                    d_to = None
+                    if _ec_mod is not None:
+                        ev = _ec_mod.next_earnings(sym)
+                        if ev:
+                            d_to = (date.fromisoformat(ev['event_date'])
+                                    - date.today()).days
+                    if d_to is None and _fetch_calendar:
+                        cal = _fetch_calendar(sym)
+                        if cal and cal.get('next_event_type') == 'earnings_date':
+                            d_to = cal.get('next_event_days')
+                    if d_to is not None and 0 <= d_to <= ENTRY_BLACKOUT_DAYS:
+                        avoid_earnings.add(sym)
                 except Exception:
                     cal_failures += 1
                     continue
@@ -3657,6 +3763,20 @@ def _run_account_tick_impl(user_id: int, account_id: int,
                 _log(account_id, 'warning',
                      f'earnings calendar degraded ({cal_failures}/{len(symbols)} lookups failed) — '
                      'blackout gate partially disabled')
+            # E1 — surface low dual-source coverage even when individual
+            # lookups didn't raise (the dangerous failure is silent).
+            if _ec_mod is not None and symbols:
+                try:
+                    cov = _ec_mod.coverage_stats(symbols)
+                    if cov['checked_frac'] < 0.6:
+                        tick_warnings.append({
+                            'kind': 'earnings_calendar_low_coverage',
+                            'detail': f"dual-source calendar covers only "
+                                      f"{cov['checked_frac']:.0%} of universe "
+                                      f"(refresh job degraded?)",
+                        })
+                except Exception:
+                    pass
         else:
             # We couldn't even import pro_calendar — gate is entirely off.
             tick_warnings.append({
@@ -3721,6 +3841,16 @@ def _run_account_tick_impl(user_id: int, account_id: int,
                 (account_id,)).fetchall()
             for p in open_rows:
                 sym = p['symbol']
+                # E3 — T+1 settlement: mainland A-shares bought today cannot
+                # be sold today, stops included (that IS the rule — the
+                # market does not let you stop out of a same-day buy).
+                # NOTE: the exits-before-entries day ordering already makes
+                # same-day entry→exit impossible; this is a defense-in-depth
+                # INVARIANT against future reordering. hold_cooldown_days is
+                # exit→re-entry — the opposite direction — and can't cover it.
+                if (plan.get('cn_t_plus_one') and _venue_for(sym) == 'CN'
+                        and p['entry_date'] == d):
+                    continue
                 s = series.get(sym)
                 if not s or d not in s['idx_by_date']:
                     continue

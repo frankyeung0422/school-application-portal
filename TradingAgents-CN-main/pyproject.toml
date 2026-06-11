@@ -50,6 +50,7 @@ dependencies = [
     "yfinance>=0.2.63",
     "futu-api>=9.1.0",
     "lightgbm>=4.3",
+    "jumpmodels>=0.1",
 ]
 
 [project.scripts]

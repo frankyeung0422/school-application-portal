@@ -15498,9 +15498,15 @@ def run_server(host='0.0.0.0', port=8501):
                         except Exception as e:
                             _sched_log('error', f'ML retrain crashed: {e}')
                         # P1c — weekly LightGBM learning-to-rank retrain.
+                        # E3: CN universe joins training only behind an env
+                        # flag until its data quality is proven.
                         try:
-                            from modules.ml_ranker import train_weekly
-                            r = train_weekly()
+                            from modules.ml_ranker import train_weekly, _EQUITY_UNIVERSE_IDS
+                            import os as _os_ml
+                            _uids = (list(_EQUITY_UNIVERSE_IDS) + ['csi300_top50']
+                                     if _os_ml.environ.get('ML_RANKER_INCLUDE_CN') == '1'
+                                     else None)
+                            r = train_weekly(universe_ids=_uids)
                             _sched_log('info',
                                        f'ml_ranker retrain: {"ok" if r.get("success") else r.get("error")} '
                                        f'rank_ic={r.get("rank_ic")} ndcg10={r.get("ndcg10")} '
@@ -15574,6 +15580,15 @@ def run_server(host='0.0.0.0', port=8501):
                                        f'converged={r.get("converged")}')
                         except Exception as e:
                             _sched_log('error', f'HMM weekly refit crashed: {e}')
+                        # E2 — weekly Jump Model refit (shadow regime engine).
+                        try:
+                            from modules.jump_regime import fit_weekly
+                            r = fit_weekly()
+                            _sched_log('info',
+                                       f'JM weekly refit: {"ok" if r.get("success") else r.get("error")} '
+                                       f'bear_frac={r.get("bear_frac")}')
+                        except Exception as e:
+                            _sched_log('error', f'JM weekly refit crashed: {e}')
                         try:
                             from modules.kalman_pairs import refit_universe as kalman_refit
                             res = kalman_refit(limit=30)
@@ -15632,15 +15647,43 @@ def run_server(host='0.0.0.0', port=8501):
                     except Exception as e:
                         _sched_log('error', f'conviction_engine crashed: {e}')
 
+                    # E2 — nightly Jump Model shadow update (causal regime
+                    # probability + agreement row vs the live HMM gate).
+                    try:
+                        from modules.jump_regime import update_daily
+                        r = update_daily()
+                        _sched_log('info',
+                                   f'JM shadow: {r.get("regime")} '
+                                   f'bear={r.get("bear_prob")} '
+                                   f'hmm={r.get("hmm_state")} agree={r.get("agree")}'
+                                   if r.get('success') else
+                                   f'JM shadow skipped: {r.get("error")}')
+                    except Exception as e:
+                        _sched_log('error', f'JM shadow update crashed: {e}')
+
                     # P1c — nightly ml_ranker scoring (consumes the weekly
                     # model; pick_source='ml_ranker' accounts read these) +
                     # point-in-time fundamentals snapshot for future models.
                     try:
-                        from modules.ml_ranker import score_universe as _ml_score
-                        r = _ml_score()
+                        from modules.ml_ranker import (
+                            score_universe as _ml_score,
+                            _EQUITY_UNIVERSE_IDS as _ml_uids)
+                        import os as _os_mls
+                        _suids = (list(_ml_uids) + ['csi300_top50']
+                                  if _os_mls.environ.get('ML_RANKER_INCLUDE_CN') == '1'
+                                  else None)
+                        r = _ml_score(universe_ids=_suids)
                         _sched_log('info',
                                    f'ml_ranker scoring: {"ok" if r.get("success") else r.get("error")} '
                                    f'n={r.get("n_scored")}')
+                        # E4 — pick-churn observability (needs 2 scored days).
+                        try:
+                            from modules.ml_ranker import record_pick_churn
+                            rc = record_pick_churn()
+                            if rc.get('success'):
+                                _sched_log('info', f'pick churn: {rc["churn"]:.2%}')
+                        except Exception as e:
+                            _sched_log('warning', f'pick churn failed: {e}')
                     except Exception as e:
                         _sched_log('error', f'ml_ranker scoring crashed: {e}')
                     try:
@@ -15659,6 +15702,34 @@ def run_server(host='0.0.0.0', port=8501):
                                    f'llm features: {r.get("written", 0)} symbols')
                     except Exception as e:
                         _sched_log('error', f'llm features crashed: {e}')
+
+                    # E1 — nightly dual-source earnings calendar refresh over
+                    # the straddle universe + equity-universe union + held
+                    # symbols. Point-in-time rows accumulate per fetch-day.
+                    try:
+                        from modules.earnings_calendar import refresh_universe
+                        from modules.options_playbook import _STRADDLE_UNIVERSE
+                        from modules.ai_picks import UNIVERSES
+                        _ec_syms: set = set(_STRADDLE_UNIVERSE)
+                        for u in UNIVERSES.values():
+                            for s in u['symbols']:
+                                _ec_syms.add(s)
+                        import sqlite3 as _sql3e
+                        from pathlib import Path as _Pe
+                        _dbe = _Pe(__file__).parent / 'trading_agents.db'
+                        with _sql3e.connect(str(_dbe)) as _ce:
+                            for row in _ce.execute(
+                                    "SELECT DISTINCT symbol FROM paper_positions "
+                                    "WHERE status='open'").fetchall():
+                                _ec_syms.add(row[0])
+                        r = refresh_universe(sorted(_ec_syms))
+                        _sched_log('info',
+                                   f'earnings calendar: {r.get("symbols")} symbols, '
+                                   f'finnhub={r.get("finnhub_rows")} '
+                                   f'nasdaq={r.get("nasdaq_rows")} '
+                                   f'confirmed={r.get("confirmed")}')
+                    except Exception as e:
+                        _sched_log('error', f'earnings calendar refresh crashed: {e}')
 
                     # P3 — wheel tick for accounts that opted in via
                     # plan.wheel_enabled (the wheel engine existed but had no

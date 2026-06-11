@@ -43,3 +43,4 @@ markdown>=3.4.0  # Markdown处理，用于报告生成
 pypandoc>=1.11  # 文档格式转换，用于导出报告功能
 python-dotenv>=1.0.0  # 环境变量管理，用于.env文件解析
 lightgbm>=4.3  # P1c — LightGBM lambdarank 跨截面選股排序模型 (ml_ranker)
+jumpmodels>=0.1  # E2 — 統計跳躍模型市場狀態引擎 (jump_regime, shadow vs HMM)
