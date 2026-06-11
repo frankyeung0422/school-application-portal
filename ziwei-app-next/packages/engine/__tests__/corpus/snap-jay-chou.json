@@ -1,0 +1,25 @@
+{
+  "id": "snap-jay-chou",
+  "source": "engine-snapshot-2026-06",
+  "note": "Jay Chou 周杰倫 — birth time unknown, computed at noon. Used to validate celebrity-page consistency.",
+  "birth": {
+    "year": 1979,
+    "month": 1,
+    "day": 18,
+    "hour": 12,
+    "minute": 0,
+    "gender": "M",
+    "calendar": "solar"
+  },
+  "expected": {
+    "engineVersion": "0.4.0",
+    "mingongBranch": "未",
+    "yearGanzhi": "戊午",
+    "bureau": "火六局",
+    "mingongMainStars": [
+      "太陽",
+      "貪狼"
+    ],
+    "palaceStarCount": 14
+  }
+}

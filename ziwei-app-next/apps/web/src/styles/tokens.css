@@ -1,0 +1,130 @@
+/*
+ * Ziwei design tokens — Premium mystical: midnight + brushed gold + ink-wash + paper cream + vermilion.
+ *
+ * Authoring rules:
+ *   1. All color tokens in OKLCH for perceptual uniformity + gamut safety.
+ *   2. Tailwind v4 `@theme` block in globals.css consumes these.
+ *   3. Use semantic tokens in components, NEVER raw OKLCH/hex.
+ *   4. Dark mode is the default (this product is a midnight brand). Light mode is for printable reports only.
+ */
+
+:root {
+  /* ── Background — midnight + ink ───────────────────────────── */
+  --color-bg:              oklch(0.18 0.05 270);    /* deep midnight   #0E1330 */
+  --color-bg-deep:         oklch(0.12 0.04 270);    /* near-black      #070A1F */
+  --color-bg-elevated:     oklch(0.22 0.04 270);    /* ink wash card   #1A1E36 */
+  --color-bg-overlay:      oklch(0.10 0.03 270 / 0.85);
+
+  /* ── Foreground — gold + paper + ink ───────────────────────── */
+  --color-fg:              oklch(0.96 0.01 80);     /* calligraphy paper #F5EFE0 */
+  --color-fg-muted:        oklch(0.78 0.02 80);     /* dim paper       */
+  --color-fg-subtle:       oklch(0.62 0.02 80);     /* tertiary text   */
+  --color-fg-ink:          oklch(0.14 0.01 270);    /* used on paper bg */
+
+  /* ── Gold — primary accent ─────────────────────────────────── */
+  --color-gold:            oklch(0.78 0.13 80);     /* brushed gold    #C9A14A */
+  --color-gold-bright:     oklch(0.86 0.15 85);     /* highlight       #E8C36A */
+  --color-gold-dim:        oklch(0.62 0.10 80);     /* deep gold       */
+  --color-gold-foil:       oklch(0.88 0.12 90);     /* foil glint      */
+
+  /* ── Vermilion — auspicious accent (use sparingly) ─────────── */
+  --color-vermilion:       oklch(0.58 0.21 30);     /* 朱砂            #B33A2A */
+  --color-vermilion-dim:   oklch(0.45 0.18 28);
+
+  /* ── Jade — subtle positive/secondary accent ───────────────── */
+  --color-jade:            oklch(0.68 0.10 160);    /* 玉              #6FA68F */
+
+  /* ── Semantic — status ─────────────────────────────────────── */
+  --color-success:         oklch(0.72 0.14 150);
+  --color-warning:         oklch(0.82 0.15 75);
+  --color-danger:          oklch(0.62 0.22 25);
+  --color-info:            oklch(0.70 0.10 230);
+
+  /* ── Borders / rims ────────────────────────────────────────── */
+  --color-border:          oklch(0.78 0.13 80 / 0.18);
+  --color-border-strong:   oklch(0.78 0.13 80 / 0.40);
+  --color-border-paper:    oklch(0.14 0.01 270 / 0.18);
+
+  /* ── Paper variant (reports, print-friendly) ───────────────── */
+  --color-paper:           oklch(0.96 0.01 80);
+  --color-paper-warm:      oklch(0.92 0.03 70);
+  --color-paper-ink:       oklch(0.14 0.01 270);
+
+  /* ── Typography ───────────────────────────────────────────── */
+  --font-display: var(--font-noto-serif-tc), "Noto Serif TC", "Source Han Serif TC", "PingFang TC", serif;
+  --font-body:    var(--font-noto-sans-tc),  "Noto Sans TC",  "Source Han Sans TC",  "PingFang TC", sans-serif;
+  --font-mono:    ui-monospace, "JetBrains Mono", "SFMono-Regular", monospace;
+
+  /* Modular scale 1.250 (major third) */
+  --text-xs:   0.75rem;
+  --text-sm:   0.875rem;
+  --text-base: 1rem;
+  --text-lg:   1.25rem;
+  --text-xl:   1.563rem;
+  --text-2xl:  1.953rem;
+  --text-3xl:  2.441rem;
+  --text-4xl:  3.052rem;
+  --text-5xl:  3.815rem;
+  --text-6xl:  4.768rem;
+
+  --leading-tight:   1.15;
+  --leading-snug:    1.35;
+  --leading-normal:  1.55;
+  --leading-relaxed: 1.75;
+
+  /* ── Spacing — 4px base ───────────────────────────────────── */
+  --space-px: 1px;
+  --space-1:  0.25rem;
+  --space-2:  0.5rem;
+  --space-3:  0.75rem;
+  --space-4:  1rem;
+  --space-5:  1.25rem;
+  --space-6:  1.5rem;
+  --space-8:  2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+  --space-20: 5rem;
+  --space-24: 6rem;
+  --space-32: 8rem;
+
+  /* ── Radii — restrained ────────────────────────────────────── */
+  --radius-sm:  2px;
+  --radius:     4px;
+  --radius-lg:  8px;
+  --radius-xl:  12px;
+  --radius-2xl: 16px;
+  --radius-full: 9999px;
+
+  /* ── Shadows — gold rim, glow, no soft drop ───────────────── */
+  --shadow-rim-gold:   inset 0 0 0 1px var(--color-border);
+  --shadow-rim-strong: inset 0 0 0 1px var(--color-border-strong);
+  --shadow-glow-gold:  0 0 24px oklch(0.78 0.13 80 / 0.18);
+  --shadow-glow-vermilion: 0 0 20px oklch(0.58 0.21 30 / 0.25);
+  --shadow-card:       0 1px 0 oklch(0.78 0.13 80 / 0.10) inset, 0 8px 24px oklch(0.05 0 0 / 0.5);
+
+  /* ── Motion ───────────────────────────────────────────────── */
+  --duration-instant: 100ms;
+  --duration-fast:    150ms;
+  --duration-base:    200ms;
+  --duration-slow:    300ms;
+  --duration-slower:  500ms;
+
+  --ease-out:    cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+
+  /* ── Layout ───────────────────────────────────────────────── */
+  --max-w-prose:   65ch;
+  --max-w-content: 72rem;
+  --max-w-wide:    90rem;
+
+  /* ── Z-index — strict scale, no magic numbers ─────────────── */
+  --z-base:     0;
+  --z-raised:   10;
+  --z-sticky:   100;
+  --z-dropdown: 1000;
+  --z-overlay:  9000;
+  --z-modal:    9100;
+  --z-toast:    9200;
+  --z-tooltip:  9300;
+}

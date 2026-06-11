@@ -1,0 +1,24 @@
+{
+  "id": "snap-1990-06-15-14-M",
+  "source": "engine-snapshot-2026-06",
+  "note": "Regression snapshot. Replace with textbook-verified values once 紫雲 corpus is loaded.",
+  "birth": {
+    "year": 1990,
+    "month": 6,
+    "day": 15,
+    "hour": 14,
+    "minute": 0,
+    "gender": "M",
+    "calendar": "solar"
+  },
+  "expected": {
+    "engineVersion": "0.4.0",
+    "mingongBranch": "亥",
+    "yearGanzhi": "庚午",
+    "bureau": "土五局",
+    "mingongMainStars": [
+      "天梁"
+    ],
+    "palaceStarCount": 14
+  }
+}

@@ -15,40 +15,42 @@ datasource db {
 // ──────────────────────────────────────────────────────────────────
 
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  passwordHash String?  @map("password_hash") // null when using magic link
-  displayName  String?  @map("display_name")
-  role         UserRole @default(USER)
-  birthYear    Int?     @map("birth_year") // for birthday emails / personalized fortune
-  birthMonth   Int?     @map("birth_month")
-  birthDay     Int?     @map("birth_day")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String?   @map("password_hash") // null when using magic link
+  displayName  String?   @map("display_name")
+  role         UserRole  @default(USER)
+  birthYear    Int?      @map("birth_year") // for birthday emails / personalized fortune
+  birthMonth   Int?      @map("birth_month")
+  birthDay     Int?      @map("birth_day")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
   lastSeenAt   DateTime? @map("last_seen_at")
 
   subscription      Subscription?
   charts            Chart[]
+  subjects          Subject[]
   alerts            Alert[]
   emailPrefs        EmailPreference?
   costLedger        CostLedgerEntry[]
-  referralsSent     Referral[]       @relation("ReferrerRelation")
-  referralsReceived Referral[]       @relation("RefereeRelation")
+  referralsSent     Referral[]         @relation("ReferrerRelation")
+  referralsReceived Referral[]         @relation("RefereeRelation")
   events            Event[]
   passwordResets    PasswordReset[]
   oauthAccounts     OAuthAccount[]
   chatConversations ChatConversation[]
+  fortunes          Fortune[]
 
   @@map("users")
 }
 
 model MagicLinkToken {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   email     String
-  tokenHash String   @unique @map("token_hash")
-  expiresAt DateTime @map("expires_at")
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
   usedAt    DateTime? @map("used_at")
-  createdAt DateTime @default(now()) @map("created_at")
+  createdAt DateTime  @default(now()) @map("created_at")
 
   @@index([email])
   @@map("magic_link_tokens")
@@ -57,7 +59,7 @@ model MagicLinkToken {
 model OAuthAccount {
   id                   String    @id @default(cuid())
   userId               String    @map("user_id")
-  provider             String    // 'google'
+  provider             String // 'google'
   providerAccountId    String    @map("provider_account_id")
   email                String?
   refreshToken         String?   @map("refresh_token")
@@ -77,12 +79,12 @@ enum UserRole {
 }
 
 model PasswordReset {
-  id        String   @id @default(cuid())
-  userId    String   @map("user_id")
-  token     String   @unique
-  expiresAt DateTime @map("expires_at")
+  id        String    @id @default(cuid())
+  userId    String    @map("user_id")
+  token     String    @unique
+  expiresAt DateTime  @map("expires_at")
   usedAt    DateTime? @map("used_at")
-  createdAt DateTime @default(now()) @map("created_at")
+  createdAt DateTime  @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -132,14 +134,14 @@ enum SubscriptionStatus {
 }
 
 model WebhookEvent {
-  id          String   @id @default(cuid())
-  source      String   // 'stripe' | 'sendgrid' | 'elevenlabs' etc.
-  eventId     String   @unique @map("event_id") // dedup key
-  eventType   String   @map("event_type")
+  id          String    @id @default(cuid())
+  source      String // 'stripe' | 'sendgrid' | 'elevenlabs' etc.
+  eventId     String    @unique @map("event_id") // dedup key
+  eventType   String    @map("event_type")
   payload     Json
   processedAt DateTime? @map("processed_at")
   error       String?
-  createdAt   DateTime @default(now()) @map("created_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
 
   @@index([source, eventType])
   @@map("webhook_events")
@@ -149,21 +151,40 @@ model WebhookEvent {
 // Charts & calculation cache
 // ──────────────────────────────────────────────────────────────────
 
+// A 命主 (person): one birth input, grouping up to three system charts
+// (紫微 / 八字 / 果老). Optional — single-system charts have subjectId = null.
+model Subject {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  label     String? // user-given label, e.g. "我", "妻子", "孩子"
+  birthInfo Json     @map("birth_info") // canonical BirthInfo incl. optional lat/long
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  charts Chart[]
+
+  @@index([userId, createdAt])
+  @@map("subjects")
+}
+
 model Chart {
-  id          String   @id @default(cuid())
-  userId      String   @map("user_id")
-  label       String?  // user-given label, e.g. "我", "妻子", "孩子"
-  birthInfo   Json     @map("birth_info") // {year, month, day, hour, minute, gender, calendar}
-  chartHash   String   @map("chart_hash") // sha256 of canonical birth info
-  chartJson   Json     @map("chart_json") // @ziwei/engine output
-  engineVersion String @map("engine_version")
-  createdAt   DateTime @default(now()) @map("created_at")
+  id            String   @id @default(cuid())
+  userId        String   @map("user_id")
+  subjectId     String?  @map("subject_id") // set when part of a unified 三盤 reading
+  label         String? // user-given label, e.g. "我", "妻子", "孩子"
+  birthInfo     Json     @map("birth_info") // {year, month, day, hour, minute, gender, calendar}
+  chartHash     String   @map("chart_hash") // sha256 of canonical birth info
+  chartJson     Json     @map("chart_json") // @ziwei/engine output
+  engineVersion String   @map("engine_version")
+  createdAt     DateTime @default(now()) @map("created_at")
 
   user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subject           Subject?           @relation(fields: [subjectId], references: [id], onDelete: SetNull)
   chatConversations ChatConversation[]
 
   @@unique([userId, chartHash])
   @@index([chartHash])
+  @@index([subjectId])
   @@map("charts")
 }
 
@@ -180,6 +201,19 @@ model ChartCache {
   @@map("chart_cache")
 }
 
+model QizhengCache {
+  id            String   @id @default(cuid())
+  qizhengHash   String   @unique @map("qizheng_hash")
+  chartJson     Json     @map("chart_json")
+  engineVersion String   @map("engine_version")
+  hitCount      Int      @default(0) @map("hit_count")
+  lastAccessed  DateTime @default(now()) @map("last_accessed")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@index([lastAccessed])
+  @@map("qizheng_cache")
+}
+
 // ──────────────────────────────────────────────────────────────────
 // Alerts (命理預警)
 // ──────────────────────────────────────────────────────────────────
@@ -189,13 +223,15 @@ model Alert {
   userId          String   @map("user_id")
   alertHash       String   @map("alert_hash") // dedup per user
   alertType       String   @map("alert_type") // 'health' | 'accident' | 'financial' | etc.
-  severity        Int      // 1-5
+  severity        Int // 1-5
   title           String
   description     String
   palace          String?
   starsJson       Json?    @map("stars_json")
-  period          String?  // e.g. "2026年", "大限45-54"
-  recommendations Json?    // string[]
+  period          String? // e.g. "2026年", "大限45-54"
+  scope           String? // 'natal' | 'year' | 'month' | 'day' (period-scoped alerts)
+  system          String? // 'ziwei' | 'bazi' | 'qizheng' | 'cross'
+  recommendations Json? // string[]
   isRead          Boolean  @default(false) @map("is_read")
   isDismissed     Boolean  @default(false) @map("is_dismissed")
   emailSent       Boolean  @default(false) @map("email_sent")
@@ -213,17 +249,51 @@ model Alert {
 // ──────────────────────────────────────────────────────────────────
 
 model EmailPreference {
-  id                  String   @id @default(cuid())
-  userId              String   @unique @map("user_id")
-  dailyFortuneEnabled Boolean  @default(true) @map("daily_fortune_enabled")
-  weeklyHoroscopeEnabled Boolean @default(true) @map("weekly_horoscope_enabled")
-  marketingEnabled    Boolean  @default(true) @map("marketing_enabled")
-  lastSentDate        DateTime? @map("last_sent_date")
-  updatedAt           DateTime @updatedAt @map("updated_at")
+  id                     String    @id @default(cuid())
+  userId                 String    @unique @map("user_id")
+  dailyFortuneEnabled    Boolean   @default(true) @map("daily_fortune_enabled")
+  weeklyHoroscopeEnabled Boolean   @default(true) @map("weekly_horoscope_enabled")
+  marketingEnabled       Boolean   @default(true) @map("marketing_enabled")
+  // Personalized 三盤合參 digests (premium) — opt-in, default off.
+  monthlyFortuneEnabled  Boolean   @default(false) @map("monthly_fortune_enabled")
+  yearlyFortuneEnabled   Boolean   @default(false) @map("yearly_fortune_enabled")
+  // Real-time high-severity alert emails — default on (safety).
+  alertEmailEnabled      Boolean   @default(true) @map("alert_email_enabled")
+  timezone               String    @default("Asia/Hong_Kong")
+  lastSentDate           DateTime? @map("last_sent_date") // deprecated alias for daily
+  lastDailySentAt        DateTime? @map("last_daily_sent_at")
+  lastMonthlySentAt      DateTime? @map("last_monthly_sent_at")
+  lastYearlySentAt       DateTime? @map("last_yearly_sent_at")
+  updatedAt              DateTime  @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("email_preferences")
+}
+
+// Read-through cache + idempotency for personalized period fortunes. The unique
+// key (user, subject, scope, periodKey) makes cron re-runs no-ops and lets pages
+// reuse a cached reading instead of re-billing the LLM. periodKey matches the
+// engine's TransitSnapshot.periodKey + the alert periodKey scheme
+// ('D2026-06-01' | 'M庚寅' | 'Y丙午').
+model Fortune {
+  id           String   @id @default(cuid())
+  userId       String   @map("user_id")
+  subjectId    String?  @map("subject_id") // the 命主 this reading is for
+  scope        String // 'day' | 'month' | 'year'
+  periodKey    String   @map("period_key")
+  body         String   @db.Text
+  promptId     String   @map("prompt_id")
+  model        String
+  snapshotJson Json?    @map("snapshot_json") // the TransitSnapshot used (audit/regenerate)
+  emailSent    Boolean  @default(false) @map("email_sent")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, subjectId, scope, periodKey])
+  @@index([userId, scope, createdAt])
+  @@map("fortunes")
 }
 
 // ──────────────────────────────────────────────────────────────────
@@ -235,7 +305,7 @@ model CostLedgerEntry {
   userId        String?  @map("user_id")
   promptId      String   @map("prompt_id")
   promptVersion String   @map("prompt_version")
-  model         String   // 'claude-opus-4-7' | 'gemini-2.5-pro' | etc.
+  model         String // 'claude-opus-4-7' | 'gemini-2.5-pro' | etc.
   inputTokens   Int      @map("input_tokens")
   cachedTokens  Int      @default(0) @map("cached_tokens")
   outputTokens  Int      @map("output_tokens")
@@ -276,17 +346,17 @@ model Event {
 // ──────────────────────────────────────────────────────────────────
 
 model Referral {
-  id              String   @id @default(cuid())
-  code            String   @unique // user-friendly invite code
-  referrerId      String   @map("referrer_id")
-  refereeId       String?  @unique @map("referee_id")
-  redeemedAt      DateTime? @map("redeemed_at")
-  rewardApplied   Boolean  @default(false) @map("reward_applied")
-  stripeCouponId  String?  @map("stripe_coupon_id")
-  createdAt       DateTime @default(now()) @map("created_at")
+  id             String    @id @default(cuid())
+  code           String    @unique // user-friendly invite code
+  referrerId     String    @map("referrer_id")
+  refereeId      String?   @unique @map("referee_id")
+  redeemedAt     DateTime? @map("redeemed_at")
+  rewardApplied  Boolean   @default(false) @map("reward_applied")
+  stripeCouponId String?   @map("stripe_coupon_id")
+  createdAt      DateTime  @default(now()) @map("created_at")
 
   referrer User  @relation("ReferrerRelation", fields: [referrerId], references: [id], onDelete: Cascade)
-  referee  User? @relation("RefereeRelation",  fields: [refereeId],  references: [id], onDelete: SetNull)
+  referee  User? @relation("RefereeRelation", fields: [refereeId], references: [id], onDelete: SetNull)
 
   @@index([referrerId])
   @@map("referrals")
@@ -297,23 +367,23 @@ model Referral {
 // ──────────────────────────────────────────────────────────────────
 
 model MarketingPost {
-  id            String   @id @default(cuid())
-  scheduledDate DateTime @map("scheduled_date")
-  slot          MarketingSlot
-  contentType   String   @map("content_type") // 'daily_zodiac' | 'educational' | etc.
-  status        MarketingStatus @default(PLANNED)
-  title         String?
-  body          String?  @db.Text
-  hashtags      String?
-  imagePath     String?  @map("image_path")
-  videoPath     String?  @map("video_path")
-  channels      String[] // 'fb' | 'ig' | 'threads' | 'tiktok' | 'yt-shorts' | 'xhs'
-  channelPostIds Json?   @map("channel_post_ids") // {fb: "...", ig: "...", ...}
-  qcScore       Float?   @map("qc_score") // 0-10 from QC agent
-  qcNotes       Json?    @map("qc_notes")
-  postedAt      DateTime? @map("posted_at")
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  id             String          @id @default(cuid())
+  scheduledDate  DateTime        @map("scheduled_date")
+  slot           MarketingSlot
+  contentType    String          @map("content_type") // 'daily_zodiac' | 'educational' | etc.
+  status         MarketingStatus @default(PLANNED)
+  title          String?
+  body           String?         @db.Text
+  hashtags       String?
+  imagePath      String?         @map("image_path")
+  videoPath      String?         @map("video_path")
+  channels       String[] // 'fb' | 'ig' | 'threads' | 'tiktok' | 'yt-shorts' | 'xhs'
+  channelPostIds Json?           @map("channel_post_ids") // {fb: "...", ig: "...", ...}
+  qcScore        Float?          @map("qc_score") // 0-10 from QC agent
+  qcNotes        Json?           @map("qc_notes")
+  postedAt       DateTime?       @map("posted_at")
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
 
   @@unique([scheduledDate, slot])
   @@index([status])
@@ -346,7 +416,7 @@ model ChatConversation {
   id        String   @id @default(cuid())
   userId    String   @map("user_id")
   chartId   String   @map("chart_id")
-  title     String?  // first user message truncated, or auto-generated
+  title     String? // first user message truncated, or auto-generated
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -362,7 +432,7 @@ model ChatConversation {
 model ChatMessage {
   id             String   @id @default(cuid())
   conversationId String   @map("conversation_id")
-  role           String   // 'user' | 'assistant'
+  role           String // 'user' | 'assistant'
   content        String   @db.Text
   inputTokens    Int?     @map("input_tokens")
   outputTokens   Int?     @map("output_tokens")

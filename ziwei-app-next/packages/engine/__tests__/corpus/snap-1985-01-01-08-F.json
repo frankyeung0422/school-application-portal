@@ -1,0 +1,22 @@
+{
+  "id": "snap-1985-01-01-08-F",
+  "source": "engine-snapshot-2026-06",
+  "note": "Regression snapshot. Replace with textbook-verified values once 紫雲 corpus is loaded.",
+  "birth": {
+    "year": 1985,
+    "month": 1,
+    "day": 1,
+    "hour": 8,
+    "minute": 0,
+    "gender": "F",
+    "calendar": "solar"
+  },
+  "expected": {
+    "engineVersion": "0.4.0",
+    "mingongBranch": "申",
+    "yearGanzhi": "甲子",
+    "bureau": "金四局",
+    "mingongMainStars": [],
+    "palaceStarCount": 14
+  }
+}

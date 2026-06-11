@@ -41,6 +41,7 @@ export function MasterChat({
   const [usedThisSession, setUsedThisSession] = useState(0);
   const [isPending, startTransition] = useTransition();
   const threadRef = useRef<HTMLDivElement>(null);
+  const idSeq = useRef(0);
 
   const remaining = quota.unlimited
     ? Infinity
@@ -62,8 +63,9 @@ export function MasterChat({
 
     setError(null);
     setInput('');
-    const tempUserId = 'tmp-u-' + Date.now();
-    const tempAssistantId = 'tmp-a-' + Date.now();
+    const seq = ++idSeq.current;
+    const tempUserId = 'tmp-u-' + seq;
+    const tempAssistantId = 'tmp-a-' + seq;
     setMessages((prev) => [
       ...prev,
       { id: tempUserId, role: 'user', content: trimmed },
@@ -154,7 +156,7 @@ export function MasterChat({
             className={
               m.role === 'user'
                 ? 'self-end max-w-[85%] px-4 py-2 rounded-[var(--radius)] bg-[var(--color-gold)]/15 text-[var(--color-fg)] text-sm leading-relaxed'
-                : 'self-start max-w-[92%] px-4 py-3 rounded-[var(--radius)] bg-[var(--color-bg-elevated)] text-[var(--color-paper-ink,#f5efe0)] text-sm leading-[1.75] whitespace-pre-wrap'
+                : 'self-start max-w-[92%] px-4 py-3 rounded-[var(--radius)] bg-[var(--color-bg-elevated)] text-[var(--color-fg)] text-sm leading-[1.75] whitespace-pre-wrap'
             }
           >
             {m.role === 'assistant' && m.pending ? (

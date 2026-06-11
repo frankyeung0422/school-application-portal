@@ -165,7 +165,7 @@ async function callClaude(
     model,
     max_tokens: prompt.maxOutputTokens,
     temperature: prompt.temperature,
-    system: systemBlocks as any,
+    system: systemBlocks as Anthropic.Messages.MessageCreateParams['system'],
     messages: [{ role: 'user', content: userMsg }],
   });
 
@@ -365,7 +365,7 @@ async function callClaudeChat(
     model,
     max_tokens: prompt.maxOutputTokens,
     temperature: prompt.temperature,
-    system: systemBlocks as any,
+    system: systemBlocks as Anthropic.Messages.MessageCreateParams['system'],
     messages: messages.map((m) => ({ role: m.role, content: m.content })),
   });
 
@@ -475,7 +475,7 @@ export async function generateStream(params: GenerateParams): Promise<ReadableSt
     model,
     max_tokens: prompt.maxOutputTokens,
     temperature: prompt.temperature,
-    system: systemBlocks as any,
+    system: systemBlocks as Anthropic.Messages.MessageCreateParams['system'],
     messages: [{ role: 'user', content: userMsg }],
   });
 

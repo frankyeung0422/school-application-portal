@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { Suspense } from 'react';
 import { Card, CardContent, Tabs, TabsList, TabsTrigger, TabsContent, Button } from '@/components/ui';
-import { PalaceCell, InkDivider, ReadingSections } from '@/components/chart';
+import { PalaceCell, ReadingSections } from '@/components/chart';
 import { SiteHeader } from '@/components/layout/site-header';
 import { requireSession } from '@/lib/auth/session';
 import { prisma } from '@/lib/db/prisma';
@@ -11,7 +11,9 @@ import { deriveArchetype } from '@/lib/chart/archetype';
 import { getMasterChatQuota } from '@/lib/billing/access';
 import { loadLatestConversation } from '@/lib/chat/actions';
 import { MasterChat } from '@/components/chat/master-chat';
+import { VoiceMaster } from '@/components/chat/voice-master';
 import { ShareArchetype } from '@/components/chat/share-archetype';
+import { computeChart, ENGINE_VERSION } from '@ziwei/engine';
 import type { Chart, PlacedStar } from '@ziwei/engine';
 
 export const metadata = { title: '命盤詳解' };
@@ -49,8 +51,21 @@ export default async function ChartPage({ params }: { params: Promise<{ id: stri
   if (!record) notFound();
   if (record.userId !== session.sub) redirect('/dashboard');
 
-  const chart = record.chartJson as unknown as Chart;
+  let chart = record.chartJson as unknown as Chart;
   const birth = record.birthInfo as { year: number; month: number; day: number; hour: number; minute: number; gender: 'M' | 'F'; calendar: 'solar' | 'lunar' };
+
+  // Engine upgrade on read: older saved charts lack minor stars / 大限 layers.
+  if (chart.engineVersion !== ENGINE_VERSION) {
+    try {
+      chart = computeChart(birth);
+      await prisma.chart.update({
+        where: { id },
+        data: { chartJson: chart as unknown as object, engineVersion: ENGINE_VERSION },
+      });
+    } catch (err) {
+      console.warn('[chart/page] engine upgrade-on-read skipped:', (err as Error).message);
+    }
+  }
   const birthSummary = `${birth.year}年${birth.month}月${birth.day}日${birth.hour}時 (${birth.calendar === 'lunar' ? '農曆' : '陽曆'})`;
 
   const archetype = deriveArchetype(chart);
@@ -82,6 +97,7 @@ export default async function ChartPage({ params }: { params: Promise<{ id: stri
             <TabsTrigger value="reading">深度解讀</TabsTrigger>
             <TabsTrigger value="fortune">流年</TabsTrigger>
             <TabsTrigger value="alerts">命理預警</TabsTrigger>
+            <TabsTrigger value="voice">語音問師傅</TabsTrigger>
             <TabsTrigger value="master">問師傅</TabsTrigger>
           </TabsList>
 
@@ -135,6 +151,26 @@ export default async function ChartPage({ params }: { params: Promise<{ id: stri
             }>
               <AlertsPanel chart={chart} userId={session.sub} birthYear={birth.year} />
             </Suspense>
+          </TabsContent>
+
+          <TabsContent value="voice">
+            <Card variant="paper" padding="lg">
+              <CardContent>
+                <div className="flex justify-end mb-2">
+                  <Button asChild variant="ghost" size="sm"><Link href={`/master/${id}`}>進入全螢幕面見師傅 →</Link></Button>
+                </div>
+                <VoiceMaster
+                  chartId={id}
+                  initialConversationId={latestConv?.id ?? null}
+                  quota={{
+                    unlimited: quota.unlimited,
+                    used: quota.used,
+                    limit: quota.unlimited ? -1 : quota.limit,
+                    remaining: quota.unlimited ? -1 : quota.remaining,
+                  }}
+                />
+              </CardContent>
+            </Card>
           </TabsContent>
 
           <TabsContent value="master">

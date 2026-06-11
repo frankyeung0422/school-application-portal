@@ -1,0 +1,18 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+# Build-script approvals (pnpm 11+). Set true for packages whose postinstall
+# we actually need to run; false otherwise. Trim noise by saying no to anything
+# we don't directly depend on.
+allowBuilds:
+  '@prisma/client': true # generates the Prisma client into node_modules
+  '@prisma/engines': true # downloads Prisma query/migration engines
+  prisma: true # CLI postinstall
+  sharp: true # native image processing (used by marketing img pipeline)
+  esbuild: true # used transitively by next/tsx
+  unrs-resolver: true # used by Turborepo + Next
+  '@sentry/cli': false # only needed when uploading source maps in CI
+  core-js: false # not directly used; transitive only
+  protobufjs: false # not directly used
+  better-sqlite3: false # declared dep but not imported in source; app runs on Postgres

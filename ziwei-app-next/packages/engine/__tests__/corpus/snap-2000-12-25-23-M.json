@@ -1,0 +1,24 @@
+{
+  "id": "snap-2000-12-25-23-M",
+  "source": "engine-snapshot-2026-06",
+  "note": "Regression snapshot. Late 子時 edge case (23:00).",
+  "birth": {
+    "year": 2000,
+    "month": 12,
+    "day": 25,
+    "hour": 23,
+    "minute": 0,
+    "gender": "M",
+    "calendar": "solar"
+  },
+  "expected": {
+    "engineVersion": "0.4.0",
+    "mingongBranch": "子",
+    "yearGanzhi": "庚辰",
+    "bureau": "火六局",
+    "mingongMainStars": [
+      "七殺"
+    ],
+    "palaceStarCount": 14
+  }
+}

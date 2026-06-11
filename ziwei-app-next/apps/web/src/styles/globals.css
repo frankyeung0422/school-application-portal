@@ -1,0 +1,155 @@
+@import "tailwindcss";
+@import "./tokens.css";
+
+@theme {
+  /* Map design tokens → Tailwind utilities. Tailwind v4 reads --color-* etc. */
+
+  --color-bg:               var(--color-bg);
+  --color-bg-deep:          var(--color-bg-deep);
+  --color-bg-elevated:      var(--color-bg-elevated);
+  --color-bg-overlay:       var(--color-bg-overlay);
+
+  --color-fg:               var(--color-fg);
+  --color-fg-muted:         var(--color-fg-muted);
+  --color-fg-subtle:        var(--color-fg-subtle);
+  --color-fg-ink:           var(--color-fg-ink);
+
+  --color-gold:             var(--color-gold);
+  --color-gold-bright:      var(--color-gold-bright);
+  --color-gold-dim:         var(--color-gold-dim);
+  --color-gold-foil:        var(--color-gold-foil);
+
+  --color-vermilion:        var(--color-vermilion);
+  --color-vermilion-dim:    var(--color-vermilion-dim);
+  --color-jade:             var(--color-jade);
+
+  --color-paper:            var(--color-paper);
+  --color-paper-warm:       var(--color-paper-warm);
+  --color-paper-ink:        var(--color-paper-ink);
+
+  --color-border:           var(--color-border);
+  --color-border-strong:    var(--color-border-strong);
+  --color-border-paper:     var(--color-border-paper);
+
+  --color-success:          var(--color-success);
+  --color-warning:          var(--color-warning);
+  --color-danger:           var(--color-danger);
+  --color-info:             var(--color-info);
+
+  --font-display:           var(--font-display);
+  --font-body:              var(--font-body);
+  --font-mono:              var(--font-mono);
+
+  --radius-sm:              var(--radius-sm);
+  --radius:                 var(--radius);
+  --radius-lg:              var(--radius-lg);
+  --radius-xl:              var(--radius-xl);
+  --radius-2xl:             var(--radius-2xl);
+}
+
+/* ── Base layer ────────────────────────────────────────────── */
+
+html {
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  color-scheme: dark;
+}
+
+body {
+  background-color: var(--color-bg);
+  color: var(--color-fg);
+  min-height: 100vh;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+::selection {
+  background-color: oklch(0.78 0.13 80 / 0.30);
+  color: var(--color-fg);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-gold);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* ── Reusable motifs ───────────────────────────────────────── */
+
+/* Ink-wash radial gradient background — subtle, layered */
+.bg-ink-wash {
+  background:
+    radial-gradient(ellipse at 20% 0%, oklch(0.32 0.08 290 / 0.30) 0%, transparent 60%),
+    radial-gradient(ellipse at 80% 100%, oklch(0.28 0.10 260 / 0.25) 0%, transparent 55%),
+    var(--color-bg);
+}
+
+/* Gold-leaf gradient — for premium overlays, locked content */
+.bg-gold-leaf {
+  background-image: linear-gradient(
+    135deg,
+    oklch(0.86 0.15 85 / 0.10) 0%,
+    oklch(0.78 0.13 80 / 0.18) 50%,
+    oklch(0.62 0.10 80 / 0.10) 100%
+  );
+}
+
+/* Gold-foil text — for premium tier names, pricing anchors */
+.text-gold-foil {
+  background: linear-gradient(
+    180deg,
+    oklch(0.86 0.15 85) 0%,
+    oklch(0.78 0.13 80) 50%,
+    oklch(0.92 0.13 90) 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+/* Ink-stroke divider */
+.ink-divider {
+  height: 1px;
+  background-image: linear-gradient(
+    to right,
+    transparent 0%,
+    var(--color-gold) 20%,
+    var(--color-gold-bright) 50%,
+    var(--color-gold) 80%,
+    transparent 100%
+  );
+  opacity: 0.5;
+}
+
+/* Streaming/loading shimmer — gold drying across text */
+@keyframes ink-dry {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.shimmer-gold {
+  background: linear-gradient(
+    90deg,
+    var(--color-fg-muted) 0%,
+    var(--color-gold-bright) 50%,
+    var(--color-fg-muted) 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  animation: ink-dry 2.5s var(--ease-in-out) infinite;
+}
+
+/* Print stylesheet — reports go to paper variant */
+@media print {
+  html { color-scheme: light; }
+  body { background: var(--color-paper); color: var(--color-paper-ink); }
+}

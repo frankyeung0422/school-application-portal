@@ -3,17 +3,20 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
-import { solarToLunar, type Chart } from '@ziwei/engine';
+import { solarToLunar, type Chart, type BaziChart, type QizhengChart, type BirthInfo } from '@ziwei/engine';
 import { prisma } from '@/lib/db/prisma';
 import { getSession } from '@/lib/auth/session';
 import { generateChat, type ChatTurn } from '@/lib/ai/client';
-import { getMasterChatQuota, hasActivePlan } from '@/lib/billing/access';
+import { getMasterChatQuota } from '@/lib/billing/access';
 import { deriveArchetype, mingongStarsLine } from '@/lib/chart/archetype';
+import { buildUnifiedVars, type SubjectCharts } from '@/lib/chart/context';
 
 const askSchema = z.object({
   chartId: z.string().min(1),
   conversationId: z.string().optional().nullable(),
   question: z.string().trim().min(2, 'too short').max(800, 'too long'),
+  /** Voice mode — selects the spoken-tone prompt variant (shorter, no markdown). */
+  voice: z.boolean().optional(),
 });
 
 export type AskMasterResult =
@@ -40,7 +43,7 @@ export async function askMaster(input: z.infer<typeof askSchema>): Promise<AskMa
   if (!parsed.success) {
     return { ok: false, error: 'invalid', message: parsed.error.issues[0]?.message };
   }
-  const { chartId, conversationId: incomingConvId, question } = parsed.data;
+  const { chartId, conversationId: incomingConvId, question, voice } = parsed.data;
 
   // Load + auth-check the chart
   let chartRecord;
@@ -93,27 +96,61 @@ export async function askMaster(input: z.infer<typeof askSchema>): Promise<AskMa
   history.push({ role: 'user', content: question });
 
   // Build chart-context system vars
-  const chart = chartRecord.chartJson as unknown as Chart;
-  const birth = chartRecord.birthInfo as {
-    year: number; month: number; day: number; hour: number; minute: number;
-    gender: 'M' | 'F'; calendar: 'solar' | 'lunar';
-  };
-  const birthSummary = `${birth.year}年${birth.month}月${birth.day}日${birth.hour}時 (${birth.calendar === 'lunar' ? '農曆' : '陽曆'})`;
-  const palacesSummary = chart.palaces.map((p) => {
-    const stars = p.stars.length === 0
-      ? '空宮'
-      : p.stars.map((s) => `${s.name}${s.brightness ?? ''}${s.transformation ? '化' + s.transformation : ''}`).join('、');
-    return `${p.name} (${p.branch}, ${p.ganzhi})${p.isMingong ? ' [命宮]' : ''}${p.isShenGong ? ' [身宮]' : ''}: ${stars}`;
-  }).join('\n');
-
-  const archetype = deriveArchetype(chart);
+  const birth = chartRecord.birthInfo as unknown as BirthInfo;
   const currentYear = new Date().getFullYear();
-  let currentYearGanzhi: string;
+  let currentYearGanzhi = '';
   try {
     // Use mid-February — safely past 立春 for any year.
     currentYearGanzhi = solarToLunar(currentYear, 2, 15, 12, 0).ganzhi.yearGanzhi;
   } catch {
     currentYearGanzhi = '';
+  }
+
+  // A chart that belongs to a 命主 (Subject) gets the three-system 師傅 that can
+  // cross-reference 紫微 + 八字 + 果老; a standalone chart keeps the ziwei-only one.
+  let promptId = 'master-chat';
+  let systemVars: Record<string, unknown>;
+
+  if (chartRecord.subjectId) {
+    const siblings = await prisma.chart.findMany({ where: { subjectId: chartRecord.subjectId } });
+    const charts: SubjectCharts = {};
+    let label = chartRecord.label || '命主';
+    for (const c of siblings) {
+      const cj = c.chartJson as { kind?: string };
+      if (cj.kind === 'bazi') charts.bazi = cj as unknown as BaziChart;
+      else if (cj.kind === 'qizheng') charts.qizheng = cj as unknown as QizhengChart;
+      else charts.ziwei = cj as unknown as Chart;
+      if (c.label) label = c.label;
+    }
+    promptId = voice ? 'master-chat-voice-unified' : 'master-chat-unified';
+    systemVars = {
+      ...buildUnifiedVars(charts, { label, gender: birth.gender, birth }),
+      currentYear,
+      currentYearGanzhi,
+    };
+  } else {
+    promptId = voice ? 'master-chat-voice' : 'master-chat';
+    const chart = chartRecord.chartJson as unknown as Chart;
+    const birthSummary = `${birth.year}年${birth.month}月${birth.day}日${birth.hour}時 (${birth.calendar === 'lunar' ? '農曆' : '陽曆'})`;
+    const palacesSummary = chart.palaces.map((p) => {
+      const stars = p.stars.length === 0
+        ? '空宮'
+        : p.stars.map((s) => `${s.name}${s.brightness ?? ''}${s.transformation ? '化' + s.transformation : ''}`).join('、');
+      return `${p.name} (${p.branch}, ${p.ganzhi})${p.isMingong ? ' [命宮]' : ''}${p.isShenGong ? ' [身宮]' : ''}: ${stars}`;
+    }).join('\n');
+    const archetype = deriveArchetype(chart);
+    systemVars = {
+      label: chartRecord.label || '命主',
+      gender: birth.gender === 'M' ? '男' : '女',
+      birthSummary,
+      bureau: chart.bureau.bureau,
+      yearGanzhi: chart.yearGanzhi,
+      mingongStars: mingongStarsLine(chart),
+      archetype: `${archetype.label} — ${archetype.tagline}`,
+      palaces: palacesSummary,
+      currentYear,
+      currentYearGanzhi,
+    };
   }
 
   // Call the AI
@@ -123,20 +160,9 @@ export async function askMaster(input: z.infer<typeof askSchema>): Promise<AskMa
   let modelUsed = '';
   try {
     const result = await generateChat({
-      promptId: 'master-chat',
+      promptId,
       userId: session.sub,
-      systemVars: {
-        label: chartRecord.label || '命主',
-        gender: birth.gender === 'M' ? '男' : '女',
-        birthSummary,
-        bureau: chart.bureau.bureau,
-        yearGanzhi: chart.yearGanzhi,
-        mingongStars: mingongStarsLine(chart),
-        archetype: `${archetype.label} — ${archetype.tagline}`,
-        palaces: palacesSummary,
-        currentYear,
-        currentYearGanzhi,
-      },
+      systemVars,
       messages: history,
     });
     assistantText = result.text.trim();
