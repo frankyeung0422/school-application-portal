@@ -12,6 +12,7 @@
  */
 import type { BirthInfo } from '../types';
 import { resolveSolarBirth } from '../solar-to-lunar';
+import { toStandardTimeBirth } from '../civil-time';
 import { toSidereal, norm360, ayanamsa } from './ayanamsa';
 import { QIZHENG_CONFIG, QIZHENG_ENGINE_VERSION, DEFAULT_LATITUDE, DEFAULT_LONGITUDE } from './config';
 import { dignityOf } from './data/dignities';
@@ -41,8 +42,9 @@ export { MANSION_BOUNDARIES } from './mansions';
 const FOUR_REMAINDER_SET = new Set<string>(FOUR_REMAINDERS);
 
 export function computeQizhengChart(birthInput: BirthInfo): QizhengChart {
-  // Lunar input → solar equivalent (incl. 閏月) before any time math.
-  const birth = resolveSolarBirth(birthInput);
+  // Lunar input → solar equivalent (incl. 閏月) and historical DST → standard
+  // time before any time math.
+  const birth = toStandardTimeBirth(resolveSolarBirth(birthInput));
   const t = birthToAstroTime(birth);
   const jd = julianDayTT(t);
   const T = julianCenturiesTT(t);

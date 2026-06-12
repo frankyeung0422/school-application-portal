@@ -4,6 +4,7 @@ import type { BirthInfo, HeavenlyStem, EarthlyBranch } from './types';
 import { HEAVENLY_STEMS, EARTHLY_BRANCHES } from './types';
 import { effectiveBirthMoment } from './solar-time';
 import { resolveSolarBirth } from './solar-to-lunar';
+import { toStandardTimeBirth } from './civil-time';
 import { analyzeBaziStrength, type BaziStrength } from './bazi-strength';
 import { computeShenSha, type ShenShaHit } from './bazi-shensha';
 
@@ -105,7 +106,7 @@ export interface BaziChart {
   mingGong?: string;
 }
 
-export const BAZI_ENGINE_VERSION = '0.3.0' as const;
+export const BAZI_ENGINE_VERSION = '0.4.0' as const;
 
 function asStem(s: string): HeavenlyStem {
   if (!HEAVENLY_STEMS.includes(s as HeavenlyStem)) throw new Error(`Bad stem: ${s}`);
@@ -117,9 +118,9 @@ function asBranch(s: string): EarthlyBranch {
 }
 
 export function computeBazi(birth: BirthInfo): BaziChart {
-  // Lunar input → solar equivalent (incl. 閏月) first, then 真太陽時 (opt-in)
-  // shifts the moment before any pillar derivation.
-  const solarBirth = resolveSolarBirth(birth);
+  // Lunar input → solar equivalent (incl. 閏月), historical DST → standard
+  // time, then 真太陽時 (opt-in) shifts the moment before pillar derivation.
+  const solarBirth = toStandardTimeBirth(resolveSolarBirth(birth));
   const eff = effectiveBirthMoment(solarBirth);
   const solar = Solar.fromYmdHms(eff.year, eff.month, eff.day, eff.hour, eff.minute, 0);
   const lunar = solar.getLunar();

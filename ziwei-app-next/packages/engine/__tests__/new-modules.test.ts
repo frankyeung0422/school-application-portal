@@ -85,11 +85,11 @@ describe('minor star placement (安星訣)', () => {
     expect(rat.get('天馬')).toBe('寅');
   });
 
-  it('computeChart includes all 28 stars (14 main + 14 minor)', () => {
+  it('computeChart includes all 33 stars (14 main + 14 minor + 5 雜曜)', () => {
     const chart = computeChart(BIRTH_1990);
     const names = chart.palaces.flatMap((p) => p.stars.map((s) => s.name));
-    expect(names).toHaveLength(28);
-    for (const star of ['祿存', '擎羊', '陀羅', '天魁', '天鉞', '文昌', '文曲', '左輔', '右弼', '火星', '鈴星', '地空', '地劫', '天馬']) {
+    expect(names).toHaveLength(33);
+    for (const star of ['祿存', '擎羊', '陀羅', '天魁', '天鉞', '文昌', '文曲', '左輔', '右弼', '火星', '鈴星', '地空', '地劫', '天馬', '紅鸞', '天喜', '天姚', '天刑', '咸池']) {
       expect(names).toContain(star);
     }
   });

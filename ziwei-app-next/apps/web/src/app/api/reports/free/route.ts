@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { prisma } from '@/lib/db/prisma';
 import { generate } from '@/lib/ai/client';
-import type { Chart, PlacedStar } from '@ziwei/engine';
+import { freshChartFromCache } from '@/lib/chart/fresh';
+import type { PlacedStar } from '@ziwei/engine';
 
 export const runtime = 'nodejs';
 
@@ -19,10 +19,10 @@ export async function POST(req: Request) {
   const parsed = schema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: 'chartHash required' }, { status: 400 });
 
-  const cached = await prisma.chartCache.findUnique({ where: { chartHash: parsed.data.chartHash } });
-  if (!cached) return NextResponse.json({ error: 'chart not found' }, { status: 404 });
+  // Recomputes stale rows so readings never use pre-0.5 star placements.
+  const chart = await freshChartFromCache(parsed.data.chartHash);
+  if (!chart) return NextResponse.json({ error: 'chart not found' }, { status: 404 });
 
-  const chart = cached.chartJson as unknown as Chart;
   const mingong = chart.palaces.find((p) => p.isMingong);
   if (!mingong) return NextResponse.json({ error: 'no 命宮' }, { status: 500 });
 

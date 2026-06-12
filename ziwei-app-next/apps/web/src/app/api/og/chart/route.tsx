@@ -1,7 +1,6 @@
 import { ImageResponse } from 'next/og';
 import { NextRequest } from 'next/server';
-import { prisma } from '@/lib/db/prisma';
-import type { Chart } from '@ziwei/engine';
+import { freshChartFromCache } from '@/lib/chart/fresh';
 
 export const runtime = 'edge';
 
@@ -23,10 +22,11 @@ export async function GET(req: NextRequest) {
   const hash = req.nextUrl.searchParams.get('h');
   if (!hash) return new Response('h param required', { status: 400 });
 
-  const cached = await prisma.chartCache.findUnique({ where: { chartHash: hash } });
-  if (!cached) return new Response('not found', { status: 404 });
+  // Recompute stale rows in-memory (no persist on edge) so share cards never
+  // render pre-0.5 star placements.
+  const chart = await freshChartFromCache(hash, { persist: false });
+  if (!chart) return new Response('not found', { status: 404 });
 
-  const chart = cached.chartJson as unknown as Chart;
   const palacesByIndex = chart.palaces;
 
   return new ImageResponse(

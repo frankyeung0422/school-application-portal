@@ -6,6 +6,7 @@ import { requireSession } from '@/lib/auth/session';
 import { env, publicEnv } from '@/lib/env';
 import { loadPrompt, renderPrompt } from '@/lib/ai/prompts/loader';
 import { recordCost } from '@/lib/ai/cost-tracker';
+import { freshChartFromCache } from '@/lib/chart/fresh';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -35,8 +36,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'premium-only', upgradeUrl: '/pricing' }, { status: 403 });
   }
 
-  const cached = await prisma.chartCache.findUnique({ where: { chartHash: parsed.data.chartHash } });
-  if (!cached) return NextResponse.json({ error: 'chart not found' }, { status: 404 });
+  // Refresh stale rows BEFORE rendering so the OG image (read from the same
+  // cache row) shows current-engine star placements.
+  const chart = await freshChartFromCache(parsed.data.chartHash);
+  if (!chart) return NextResponse.json({ error: 'chart not found' }, { status: 404 });
 
   // Fetch the chart PNG from our own OG renderer
   const chartImageUrl = `${publicEnv.NEXT_PUBLIC_APP_URL}/api/og/chart?h=${parsed.data.chartHash}`;

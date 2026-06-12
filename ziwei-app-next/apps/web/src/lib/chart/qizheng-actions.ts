@@ -2,7 +2,7 @@
 
 import { z } from 'zod';
 import { redirect } from 'next/navigation';
-import { computeQizhengChart, qizhengHash, type BirthInfo } from '@ziwei/engine';
+import { computeQizhengChart, qizhengHash, QIZHENG_ENGINE_VERSION, type BirthInfo } from '@ziwei/engine';
 import { prisma } from '@/lib/db/prisma';
 import { getSession } from '@/lib/auth/session';
 
@@ -60,9 +60,15 @@ export async function calculateSampleQizhengAction(formData: FormData) {
           data: { qizhengHash: hash, chartJson: chart as unknown as object, engineVersion: chart.engineVersion },
         });
       } else {
+        // Refresh stale rows so engine upgrades propagate.
+        const fresh = cached.engineVersion !== QIZHENG_ENGINE_VERSION ? computeQizhengChart(birth) : null;
         await prisma.qizhengCache.update({
           where: { qizhengHash: hash },
-          data: { hitCount: { increment: 1 }, lastAccessed: new Date() },
+          data: {
+            hitCount: { increment: 1 },
+            lastAccessed: new Date(),
+            ...(fresh ? { chartJson: fresh as unknown as object, engineVersion: fresh.engineVersion } : {}),
+          },
         });
       }
     } catch (err) {

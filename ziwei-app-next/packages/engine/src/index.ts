@@ -14,6 +14,7 @@ export * from './cross-system';
 export * from './lords';
 export * from './minor-limit';
 export * from './bazi-shensha';
+export * from './civil-time';
 export * from './iron-plate';
 export * from './bazi';
 export * from './bazi-mangpai';
@@ -44,8 +45,9 @@ import { transformationsForYearStem } from './transformations';
 import { solarToLunar, parseGanzhi, resolveSolarBirth } from './solar-to-lunar';
 import { mingLordOf, shenLordOf } from './lords';
 import { effectiveBirthMoment } from './solar-time';
+import { toStandardTimeBirth } from './civil-time';
 
-export const ENGINE_VERSION = '0.5.0' as const;
+export const ENGINE_VERSION = '0.6.0' as const;
 
 /**
  * Compute a full ziwei chart from birth info.
@@ -61,8 +63,9 @@ export const ENGINE_VERSION = '0.5.0' as const;
  *  8. assemble palaces with brightness + transformation badges
  */
 export function computeChart(birth: BirthInfo): Chart {
-  // Step 0: lunar input → solar equivalent (incl. 閏月), then one solar pipeline.
-  const solarBirth = resolveSolarBirth(birth);
+  // Step 0: lunar input → solar equivalent (incl. 閏月), then historical DST →
+  // standard time, then one solar pipeline.
+  const solarBirth = toStandardTimeBirth(resolveSolarBirth(birth));
 
   // 真太陽時 correction (opt-in) on the solar moment.
   const eff = effectiveBirthMoment(solarBirth);

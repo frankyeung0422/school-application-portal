@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/db/prisma';
 import { generate, generateStream } from '@/lib/ai/client';
 import { requireSession } from '@/lib/auth/session';
-import type { Chart } from '@ziwei/engine';
+import { freshChartFromCache } from '@/lib/chart/fresh';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -29,10 +29,10 @@ export async function POST(req: Request) {
   const parsed = schema.safeParse(body);
   if (!parsed.success) return new Response('chartHash required', { status: 400 });
 
-  const cached = await prisma.chartCache.findUnique({ where: { chartHash: parsed.data.chartHash } });
-  if (!cached) return new Response('chart not found', { status: 404 });
+  // Recomputes stale rows so reports never use pre-0.5 star placements.
+  const chart = await freshChartFromCache(parsed.data.chartHash);
+  if (!chart) return new Response('chart not found', { status: 404 });
 
-  const chart = cached.chartJson as unknown as Chart;
   const age = new Date().getFullYear() - chart.birthInfo.year;
   const sharedVars = {
     chartJson: JSON.stringify(chart),

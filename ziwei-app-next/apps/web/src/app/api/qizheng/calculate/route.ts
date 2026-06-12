@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { computeQizhengChart, qizhengHash, type BirthInfo } from '@ziwei/engine';
+import { computeQizhengChart, qizhengHash, QIZHENG_ENGINE_VERSION, type BirthInfo } from '@ziwei/engine';
 import { prisma } from '@/lib/db/prisma';
 
 export const runtime = 'nodejs';
@@ -35,9 +35,10 @@ export async function POST(req: Request) {
   const birth = parsed.data as BirthInfo;
   const hash = qizhengHash(birth);
 
-  // Cache lookup — charts are deterministic; same birth + place = same chart.
+  // Cache lookup — charts are deterministic; same birth + place + engine
+  // version = same chart. Stale rows are recomputed and refreshed in place.
   const cached = await prisma.qizhengCache.findUnique({ where: { qizhengHash: hash } });
-  if (cached) {
+  if (cached && cached.engineVersion === QIZHENG_ENGINE_VERSION) {
     await prisma.qizhengCache.update({
       where: { qizhengHash: hash },
       data: { hitCount: { increment: 1 }, lastAccessed: new Date() },
@@ -46,8 +47,10 @@ export async function POST(req: Request) {
   }
 
   const chart = computeQizhengChart(birth);
-  await prisma.qizhengCache.create({
-    data: { qizhengHash: hash, chartJson: chart as unknown as object, engineVersion: chart.engineVersion },
+  await prisma.qizhengCache.upsert({
+    where: { qizhengHash: hash },
+    update: { chartJson: chart as unknown as object, engineVersion: chart.engineVersion, hitCount: { increment: 1 }, lastAccessed: new Date() },
+    create: { qizhengHash: hash, chartJson: chart as unknown as object, engineVersion: chart.engineVersion },
   });
 
   return NextResponse.json({ chart, cached: false });

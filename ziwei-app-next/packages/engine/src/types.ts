@@ -69,7 +69,11 @@ export type ExtraStar = (typeof EXTRA_STARS)[number];
 /** All 煞星 the alert rules key on. */
 export const ALL_MALEFICS = ['擎羊', '陀羅', '火星', '鈴星', '地空', '地劫'] as const;
 
-export type StarName = MainStar | AuxStar | Malefic | ExtraStar;
+/** 雜曜 — marriage/桃花-relevant adjective stars (engine ≥0.6). */
+export const ADJECTIVE_STARS = ['紅鸞', '天喜', '天姚', '天刑', '咸池'] as const;
+export type AdjectiveStar = (typeof ADJECTIVE_STARS)[number];
+
+export type StarName = MainStar | AuxStar | Malefic | ExtraStar | AdjectiveStar;
 
 export type StarBrightness = '廟' | '旺' | '得地' | '利益' | '平和' | '不得地' | '陷';
 

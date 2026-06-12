@@ -106,5 +106,23 @@ export function placeMinorStars(input: MinorStarInput): Map<StarName, EarthlyBra
 
   result.set('天馬', TIAN_MA_BY_BRANCH[yearBranch]);
 
+  // 雜曜 (marriage/桃花 cluster):
+  //  紅鸞: 卯起子年逆數; 天喜 = 紅鸞對宮.
+  //  天刑: 酉起正月順數; 天姚: 丑起正月順數.
+  //  咸池: 年支三合 — 申子辰→酉, 寅午戌→卯, 巳酉丑→午, 亥卯未→子.
+  const yIdx = EARTHLY_BRANCHES.indexOf(yearBranch);
+  const hongLuanIdx = ((3 - yIdx) % 12 + 12) % 12;
+  result.set('紅鸞', at(hongLuanIdx));
+  result.set('天喜', at(hongLuanIdx + 6));
+  result.set('天刑', at(9 + m));
+  result.set('天姚', at(1 + m));
+  const XIAN_CHI: Record<EarthlyBranch, EarthlyBranch> = {
+    申: '酉', 子: '酉', 辰: '酉',
+    寅: '卯', 午: '卯', 戌: '卯',
+    巳: '午', 酉: '午', 丑: '午',
+    亥: '子', 卯: '子', 未: '子',
+  };
+  result.set('咸池', XIAN_CHI[yearBranch]);
+
   return result;
 }
