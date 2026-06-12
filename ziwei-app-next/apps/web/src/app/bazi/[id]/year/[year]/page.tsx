@@ -6,9 +6,9 @@ import { ReadingSections, InkDivider } from '@/components/chart';
 import { SiteHeader } from '@/components/layout/site-header';
 import { requireSession } from '@/lib/auth/session';
 import { prisma } from '@/lib/db/prisma';
-import { generate } from '@/lib/ai/client';
+import { getOrCreateReading } from '@/lib/chart/reading-cache';
 import { baziMangpaiContext } from '@/lib/chart/context';
-import { baziYearFlow } from '@ziwei/engine';
+import { baziYearFlow, BAZI_ENGINE_VERSION } from '@ziwei/engine';
 import type { BaziChart } from '@ziwei/engine';
 
 export const metadata = { title: '八字流年詳解' };
@@ -91,7 +91,7 @@ export default async function BaziYearPage({
             </CardContent>
           </Card>
         }>
-          <YearReading chart={chart} userId={session.sub} flow={flow} birth={birth} />
+          <YearReading chart={chart} chartId={id} userId={session.sub} flow={flow} birth={birth} />
         </Suspense>
 
         <div className="text-center mt-12 flex flex-wrap gap-3 justify-center">
@@ -108,9 +108,10 @@ export default async function BaziYearPage({
 }
 
 async function YearReading({
-  chart, userId, flow, birth,
+  chart, chartId, userId, flow, birth,
 }: {
   chart: BaziChart;
+  chartId: string;
   userId: string;
   flow: ReturnType<typeof baziYearFlow>;
   birth: { year: number; month: number; day: number; hour: number; minute: number; gender: 'M' | 'F'; calendar: 'solar' | 'lunar' };
@@ -124,9 +125,10 @@ async function YearReading({
   let text: string;
   let degraded: string | null = null;
   try {
-    const res = await generate({
-      promptId: 'bazi-year-detail',
+    const res = await getOrCreateReading({
       userId,
+      cacheKey: `bazi-year-${chartId}-${flow.year}@${BAZI_ENGINE_VERSION}`,
+      promptId: 'bazi-year-detail',
       vars: {
         birthSummary,
         age: flow.age,

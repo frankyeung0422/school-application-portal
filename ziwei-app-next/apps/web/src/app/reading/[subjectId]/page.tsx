@@ -9,7 +9,7 @@ import { MasterChat } from '@/components/chat/master-chat';
 import { VoiceMaster } from '@/components/chat/voice-master';
 import { requireSession } from '@/lib/auth/session';
 import { prisma } from '@/lib/db/prisma';
-import { generate } from '@/lib/ai/client';
+import { getOrCreateReading } from '@/lib/chart/reading-cache';
 import { deriveArchetype } from '@/lib/chart/archetype';
 import { buildUnifiedVars, type SubjectCharts } from '@/lib/chart/context';
 import { getMasterChatQuota } from '@/lib/billing/access';
@@ -116,7 +116,7 @@ export default async function SubjectPage({ params }: { params: Promise<{ subjec
                 </CardContent>
               </Card>
             }>
-              <SynthesisPanel charts={charts} userId={session.sub} label={label} birth={birth} />
+              <SynthesisPanel charts={charts} userId={session.sub} label={label} birth={birth} subjectId={subjectId} />
             </Suspense>
           </TabsContent>
 
@@ -256,19 +256,24 @@ function YearGrid({ id, basePath, title }: { id: string; basePath: 'chart' | 'ba
 }
 
 async function SynthesisPanel({
-  charts, userId, label, birth,
+  charts, userId, label, birth, subjectId,
 }: {
   charts: SubjectCharts;
   userId: string;
   label: string;
   birth: BirthInfo;
+  subjectId: string;
 }) {
   let text: string;
   let degraded: string | null = null;
   try {
-    const res = await generate({
-      promptId: 'unified-synthesis',
+    // Cached per (subject, engine version) — saved readings open instantly;
+    // engine upgrades invalidate the key and regenerate once.
+    const res = await getOrCreateReading({
       userId,
+      subjectId,
+      cacheKey: `synthesis@${ENGINE_VERSION}`,
+      promptId: 'unified-synthesis',
       vars: buildUnifiedVars(charts, { label, gender: birth.gender, birth }),
     });
     text = res.text;

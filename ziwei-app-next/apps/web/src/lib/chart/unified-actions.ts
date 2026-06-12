@@ -53,9 +53,57 @@ function birthParams(birth: BirthInfo): URLSearchParams {
 }
 
 /**
+ * Find-or-create the Subject + three Chart rows for a birth. Dedupes via the
+ * ziwei chart's (userId, chartHash) — repeated computes/saves of the same
+ * birth reuse the existing subject instead of stacking duplicates.
+ */
+async function persistUnifiedReading(
+  userId: string,
+  birth: BirthInfo,
+  all: ReturnType<typeof computeAllSystems>,
+  label: string | null,
+): Promise<string> {
+  const existing = await prisma.chart.findUnique({
+    where: { userId_chartHash: { userId, chartHash: all.ziwei.hash } },
+    select: { subjectId: true },
+  });
+  let subjectId = existing?.subjectId ?? null;
+  if (!subjectId) {
+    const subject = await prisma.subject.create({
+      data: { userId, label, birthInfo: birth as unknown as object },
+    });
+    subjectId = subject.id;
+  } else if (label) {
+    await prisma.subject.update({ where: { id: subjectId }, data: { label } }).catch(() => {});
+  }
+
+  const systems = [all.ziwei, all.bazi, all.qizheng] as const;
+  await Promise.all(
+    systems.map((s) =>
+      prisma.chart.upsert({
+        where: { userId_chartHash: { userId, chartHash: s.hash } },
+        update: { subjectId, chartJson: s.chart as unknown as object, engineVersion: s.chart.engineVersion },
+        create: {
+          userId,
+          subjectId,
+          label,
+          birthInfo: birth as unknown as object,
+          chartHash: s.hash,
+          chartJson: s.chart as unknown as object,
+          engineVersion: s.chart.engineVersion,
+        },
+      }),
+    ),
+  );
+  return subjectId;
+}
+
+/**
  * Server action from /reading. Computes all three systems at once, warms the
  * caches (best-effort), and forwards birth data via URL so /reading/result can
- * recompute even without a DB (Path A). No persistence — that's the save step.
+ * recompute even without a DB (Path A). Logged-in users get their reading
+ * AUTO-SAVED to the account (and land on the saved subject page) — computing
+ * and then losing the result was the #1 "where did my chart go" complaint.
  */
 export async function calculateUnifiedAction(formData: FormData) {
   const parsed = parseBirth(formData);
@@ -63,6 +111,19 @@ export async function calculateUnifiedAction(formData: FormData) {
 
   const birth = parsed.data as BirthInfo;
   const all = computeAllSystems(birth);
+
+  // Auto-save for logged-in users → straight to the saved reading.
+  const session = await getSession();
+  if (session && dbAvailable()) {
+    try {
+      const subjectId = await persistUnifiedReading(session.sub, birth, all, null);
+      redirect(`/reading/${subjectId}`);
+    } catch (err) {
+      // redirect() throws NEXT_REDIRECT — never swallow it.
+      if ((err as { digest?: string }).digest?.startsWith('NEXT_REDIRECT')) throw err;
+      console.warn('[unified/calculate] auto-save failed, falling back to teaser:', (err as Error).message);
+    }
+  }
 
   if (dbAvailable()) {
     try {
@@ -114,29 +175,7 @@ export async function saveUnifiedReadingAction(formData: FormData) {
   const userId = session.sub;
   let subjectId: string | null = null;
   try {
-    const subject = await prisma.subject.create({
-      data: { userId, label, birthInfo: birth as unknown as object },
-    });
-    subjectId = subject.id;
-
-    const systems = [all.ziwei, all.bazi, all.qizheng] as const;
-    await Promise.all(
-      systems.map((s) =>
-        prisma.chart.upsert({
-          where: { userId_chartHash: { userId, chartHash: s.hash } },
-          update: { subjectId: subject.id, chartJson: s.chart as unknown as object, engineVersion: s.chart.engineVersion },
-          create: {
-            userId,
-            subjectId: subject.id,
-            label,
-            birthInfo: birth as unknown as object,
-            chartHash: s.hash,
-            chartJson: s.chart as unknown as object,
-            engineVersion: s.chart.engineVersion,
-          },
-        }),
-      ),
-    );
+    subjectId = await persistUnifiedReading(userId, birth, all, label);
   } catch (err) {
     console.warn('[unified/save] failed:', (err as Error).message);
     redirect(`/reading/result?${birthParams(birth).toString()}&save_error=1`);

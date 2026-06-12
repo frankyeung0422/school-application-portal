@@ -6,8 +6,8 @@ import { ReadingSections, InkDivider, PalaceCell } from '@/components/chart';
 import { SiteHeader } from '@/components/layout/site-header';
 import { requireSession } from '@/lib/auth/session';
 import { prisma } from '@/lib/db/prisma';
-import { generate } from '@/lib/ai/client';
-import { ziweiYearFlow } from '@ziwei/engine';
+import { getOrCreateReading } from '@/lib/chart/reading-cache';
+import { ziweiYearFlow, ENGINE_VERSION } from '@ziwei/engine';
 import type { Chart, PlacedStar } from '@ziwei/engine';
 
 export const metadata = { title: '流年詳解' };
@@ -100,7 +100,7 @@ export default async function ZiweiYearPage({
             </CardContent>
           </Card>
         }>
-          <YearReading chart={chart} userId={session.sub} flow={flow} birth={birth} />
+          <YearReading chart={chart} chartId={id} userId={session.sub} flow={flow} birth={birth} />
         </Suspense>
 
         <div className="text-center mt-12 flex flex-wrap gap-3 justify-center">
@@ -117,9 +117,10 @@ export default async function ZiweiYearPage({
 }
 
 async function YearReading({
-  chart, userId, flow, birth,
+  chart, chartId, userId, flow, birth,
 }: {
   chart: Chart;
+  chartId: string;
   userId: string;
   flow: ReturnType<typeof ziweiYearFlow>;
   birth: { year: number; month: number; day: number; hour: number; minute: number; gender: 'M' | 'F'; calendar: 'solar' | 'lunar' };
@@ -142,9 +143,10 @@ async function YearReading({
   let text: string;
   let degraded: string | null = null;
   try {
-    const res = await generate({
-      promptId: 'ziwei-year-detail',
+    const res = await getOrCreateReading({
       userId,
+      cacheKey: `ziwei-year-${chartId}-${flow.year}@${ENGINE_VERSION}`,
+      promptId: 'ziwei-year-detail',
       vars: {
         birthSummary,
         age: flow.age,

@@ -6,7 +6,7 @@ import { PalaceCell, ReadingSections } from '@/components/chart';
 import { SiteHeader } from '@/components/layout/site-header';
 import { requireSession } from '@/lib/auth/session';
 import { prisma } from '@/lib/db/prisma';
-import { generate } from '@/lib/ai/client';
+import { getOrCreateReading } from '@/lib/chart/reading-cache';
 import { deriveArchetype } from '@/lib/chart/archetype';
 import { getMasterChatQuota } from '@/lib/billing/access';
 import { loadLatestConversation } from '@/lib/chat/actions';
@@ -124,7 +124,7 @@ export default async function ChartPage({ params }: { params: Promise<{ id: stri
                 </CardContent>
               </Card>
             }>
-              <InterpretationPanel chart={chart} userId={session.sub} birthSummary={birthSummary} gender={birth.gender} />
+              <InterpretationPanel chart={chart} chartId={id} userId={session.sub} birthSummary={birthSummary} gender={birth.gender} />
             </Suspense>
           </TabsContent>
 
@@ -137,7 +137,7 @@ export default async function ChartPage({ params }: { params: Promise<{ id: stri
                 </CardContent>
               </Card>
             }>
-              <AnnualFortunePanel chart={chart} userId={session.sub} birthSummary={birthSummary} gender={birth.gender} birthYear={birth.year} />
+              <AnnualFortunePanel chart={chart} chartId={id} userId={session.sub} birthSummary={birthSummary} gender={birth.gender} birthYear={birth.year} />
             </Suspense>
           </TabsContent>
 
@@ -204,9 +204,10 @@ export default async function ChartPage({ params }: { params: Promise<{ id: stri
 }
 
 async function InterpretationPanel({
-  chart, userId, birthSummary, gender,
+  chart, chartId, userId, birthSummary, gender,
 }: {
   chart: Chart;
+  chartId: string;
   userId: string;
   birthSummary: string;
   gender: 'M' | 'F';
@@ -221,9 +222,10 @@ async function InterpretationPanel({
   let text: string;
   let degraded: string | null = null;
   try {
-    const res = await generate({
-      promptId: 'chart-interpretation',
+    const res = await getOrCreateReading({
       userId,
+      cacheKey: `chart-interp-${chartId}@${ENGINE_VERSION}`,
+      promptId: 'chart-interpretation',
       vars: {
         bureau: chart.bureau.bureau,
         yearGanzhi: chart.yearGanzhi,
@@ -250,9 +252,10 @@ async function InterpretationPanel({
 }
 
 async function AnnualFortunePanel({
-  chart, userId, birthSummary, gender, birthYear,
+  chart, chartId, userId, birthSummary, gender, birthYear,
 }: {
   chart: Chart;
+  chartId: string;
   userId: string;
   birthSummary: string;
   gender: 'M' | 'F';
@@ -271,9 +274,11 @@ async function AnnualFortunePanel({
   let text: string;
   let degraded: string | null = null;
   try {
-    const res = await generate({
-      promptId: 'chart-annual-fortune',
+    // Year-dependent — fold the start year into the key so it refreshes annually.
+    const res = await getOrCreateReading({
       userId,
+      cacheKey: `chart-annual-${chartId}-${currentYear}@${ENGINE_VERSION}`,
+      promptId: 'chart-annual-fortune',
       vars: {
         birthSummary,
         gender: gender === 'M' ? '男' : '女',

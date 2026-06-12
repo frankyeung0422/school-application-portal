@@ -2,7 +2,7 @@
 
 import { z } from 'zod';
 import { redirect } from 'next/navigation';
-import { computeBazi, baziHash, type BirthInfo } from '@ziwei/engine';
+import { computeBazi, baziHash, BAZI_ENGINE_VERSION, type BirthInfo } from '@ziwei/engine';
 import { prisma } from '@/lib/db/prisma';
 import { getSession } from '@/lib/auth/session';
 
@@ -51,13 +51,41 @@ export async function calculateSampleBaziAction(formData: FormData) {
           data: { chartHash: hash, chartJson: chart as unknown as object, engineVersion: chart.engineVersion },
         });
       } else {
+        // Refresh stale rows so engine upgrades propagate.
+        const fresh = cached.engineVersion !== BAZI_ENGINE_VERSION ? computeBazi(birth) : null;
         await prisma.chartCache.update({
           where: { chartHash: hash },
-          data: { hitCount: { increment: 1 }, lastAccessed: new Date() },
+          data: {
+            hitCount: { increment: 1 },
+            lastAccessed: new Date(),
+            ...(fresh ? { chartJson: fresh as unknown as object, engineVersion: fresh.engineVersion } : {}),
+          },
         });
       }
     } catch (err) {
       console.warn('[bazi/actions] chart_cache write skipped:', (err as Error).message);
+    }
+
+    // Auto-save for logged-in users — computed charts should appear in the
+    // dashboard without requiring the explicit 儲存 click.
+    try {
+      const session = await getSession();
+      if (session) {
+        const chart = computeBazi(birth);
+        await prisma.chart.upsert({
+          where: { userId_chartHash: { userId: session.sub, chartHash: hash } },
+          update: { chartJson: chart as unknown as object, engineVersion: chart.engineVersion },
+          create: {
+            userId: session.sub,
+            birthInfo: birth as unknown as object,
+            chartHash: hash,
+            chartJson: chart as unknown as object,
+            engineVersion: chart.engineVersion,
+          },
+        });
+      }
+    } catch (err) {
+      console.warn('[bazi/actions] auto-save skipped:', (err as Error).message);
     }
   }
 

@@ -6,9 +6,9 @@ import { InkDivider, ReadingSections } from '@/components/chart';
 import { SiteHeader } from '@/components/layout/site-header';
 import { requireSession } from '@/lib/auth/session';
 import { prisma } from '@/lib/db/prisma';
-import { generate } from '@/lib/ai/client';
+import { getOrCreateReading } from '@/lib/chart/reading-cache';
 import { baziMangpaiContext } from '@/lib/chart/context';
-import type { BaziChart } from '@ziwei/engine';
+import { BAZI_ENGINE_VERSION, type BaziChart } from '@ziwei/engine';
 
 export const metadata = { title: '八字命盤詳解' };
 
@@ -139,7 +139,7 @@ export default async function BaziChartPage({ params }: { params: Promise<{ id: 
             </CardContent>
           </Card>
         }>
-          <FullReading chart={chart} userId={session.sub} birthSummary={birthSummary} />
+          <FullReading chart={chart} chartId={id} userId={session.sub} birthSummary={birthSummary} />
         </Suspense>
 
         <div className="text-center mt-12">
@@ -153,9 +153,10 @@ export default async function BaziChartPage({ params }: { params: Promise<{ id: 
 }
 
 async function FullReading({
-  chart, userId, birthSummary,
+  chart, chartId, userId, birthSummary,
 }: {
   chart: BaziChart;
+  chartId: string;
   userId: string;
   birthSummary: string;
 }) {
@@ -166,9 +167,10 @@ async function FullReading({
   let text: string;
   let degraded: string | null = null;
   try {
-    const res = await generate({
-      promptId: 'bazi-full',
+    const res = await getOrCreateReading({
       userId,
+      cacheKey: `bazi-full-${chartId}@${BAZI_ENGINE_VERSION}`,
+      promptId: 'bazi-full',
       vars: {
         birthSummary,
         gender: chart.birthInfo.gender === 'M' ? '男' : '女',

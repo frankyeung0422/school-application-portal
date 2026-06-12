@@ -74,6 +74,28 @@ export async function calculateSampleQizhengAction(formData: FormData) {
     } catch (err) {
       console.warn('[qizheng/actions] qizheng_cache write skipped:', (err as Error).message);
     }
+
+    // Auto-save for logged-in users — computed charts should appear in the
+    // dashboard without requiring the explicit 儲存 click.
+    try {
+      const session = await getSession();
+      if (session) {
+        const chart = computeQizhengChart(birth);
+        await prisma.chart.upsert({
+          where: { userId_chartHash: { userId: session.sub, chartHash: hash } },
+          update: { chartJson: chart as unknown as object, engineVersion: chart.engineVersion },
+          create: {
+            userId: session.sub,
+            birthInfo: birth as unknown as object,
+            chartHash: hash,
+            chartJson: chart as unknown as object,
+            engineVersion: chart.engineVersion,
+          },
+        });
+      }
+    } catch (err) {
+      console.warn('[qizheng/actions] auto-save skipped:', (err as Error).message);
+    }
   }
 
   const q = new URLSearchParams({

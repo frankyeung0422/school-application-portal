@@ -7,9 +7,9 @@ import { SiteFooter } from '@/components/layout/site-footer';
 import { QizhengChartView } from '@/components/qizheng/qizheng-chart-view';
 import { requireSession } from '@/lib/auth/session';
 import { prisma } from '@/lib/db/prisma';
-import { generate } from '@/lib/ai/client';
+import { getOrCreateReading } from '@/lib/chart/reading-cache';
 import { buildQizhengReadingVars, ensureTeaser } from '@/lib/chart/qizheng-vars';
-import type { QizhengChart } from '@ziwei/engine';
+import { QIZHENG_ENGINE_VERSION, type QizhengChart } from '@ziwei/engine';
 
 export const metadata = { title: '果老星宗星盤詳解' };
 
@@ -55,7 +55,7 @@ export default async function QizhengChartPage({ params }: { params: Promise<{ i
             </CardContent>
           </Card>
         }>
-          <Reading chart={chart} userId={session.sub} />
+          <Reading chart={chart} chartId={id} userId={session.sub} />
         </Suspense>
       </main>
       <SiteFooter />
@@ -63,11 +63,16 @@ export default async function QizhengChartPage({ params }: { params: Promise<{ i
   );
 }
 
-async function Reading({ chart, userId }: { chart: QizhengChart; userId: string }) {
+async function Reading({ chart, chartId, userId }: { chart: QizhengChart; chartId: string; userId: string }) {
   let text: string;
   let degraded: string | null = null;
   try {
-    const res = await generate({ promptId: 'qizheng-reading', userId, vars: buildQizhengReadingVars(chart) });
+    const res = await getOrCreateReading({
+      userId,
+      cacheKey: `qizheng-${chartId}@${QIZHENG_ENGINE_VERSION}`,
+      promptId: 'qizheng-reading',
+      vars: buildQizhengReadingVars(chart),
+    });
     text = ensureTeaser(res.text);
   } catch (err) {
     degraded = (err as Error).message;
