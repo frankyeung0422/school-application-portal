@@ -26,9 +26,17 @@ import {
   detectPatterns,
   computeSelfTransformations,
   traceJiChains,
+  ziweiYearFlow,
+  ganzhiOfYear,
+  tenGodVsDayMaster,
+  decadeAtYear,
+  minorLimitAtYear,
+  branchRelation,
   type BirthInfo,
   type Chart,
   type BaziChart,
+  type EarthlyBranch,
+  type HeavenlyStem,
 } from '../../packages/engine/src/index';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -41,7 +49,7 @@ const flag = (name: string): string | undefined => {
 };
 const has = (name: string) => args.includes(`--${name}`);
 
-const MODE = (flag('mode') ?? 'engine') as 'none' | 'engine' | 'engine+';
+const MODE = (flag('mode') ?? 'engine') as 'none' | 'engine' | 'engine+' | 'engine-t';
 const MODEL = flag('model') ?? 'claude-haiku-4-5-20251001';
 const LIMIT = flag('limit') ? Number(flag('limit')) : Infinity;
 const CATEGORY = flag('category');
@@ -134,18 +142,61 @@ function baziBlock(chart: BaziChart): string {
   return lines.join('\n');
 }
 
+/** Years mentioned in the question/options — the timing mode computes flows for each. */
+function questionYears(q: BenchQuestion): number[] {
+  const text = q.question + ' ' + q.options.map((o) => o.text).join(' ');
+  const years = [...text.matchAll(/(19|20)\d{2}/g)].map((m) => Number(m[0]));
+  return [...new Set(years)].filter((y) => y > q.birth_info.year && y <= q.birth_info.year + 100).slice(0, 6);
+}
+
+/** Per-year timing block: 大限 + 流年落宮 + 小限 + 八字流年十神/沖合. */
+function timingBlock(ziwei: Chart, bazi: BaziChart, years: number[]): string {
+  const lines: string[] = [];
+  for (const year of years) {
+    const gz = ganzhiOfYear(year);
+    const zf = ziweiYearFlow(ziwei, year, ziwei.birthInfo.year);
+    const decade = ziwei.decades ? decadeAtYear(ziwei.decades, ziwei.birthInfo.year, year) : undefined;
+    const minor = minorLimitAtYear(ziwei, year);
+    const tg = tenGodVsDayMaster(gz[0] as HeavenlyStem, bazi.dayMaster);
+    const rel = branchRelation(gz[1] as EarthlyBranch, bazi.pillars.day.branch);
+    const flowStars = zf.hostPalace?.stars.map((s) => s.name).join('、') || '空宮';
+    lines.push(
+      `${year}年(${gz}, 虛歲${year - ziwei.birthInfo.year + 1}): ` +
+      `${decade ? `行${decade.palaceName}大限(限忌${decade.transformations.忌})；` : ''}` +
+      `流年入本命${zf.hostPalace?.name ?? '—'}宮[${flowStars}]；` +
+      `${minor ? `小限在${minor.palaceName}；` : ''}` +
+      `八字流年${tg}${rel ? `、${gz[1]}${rel}日支` : ''}`,
+    );
+  }
+  return lines.join('\n');
+}
+
 function buildPrompt(q: BenchQuestion): { system: string; user: string } {
-  const system = [
+  const systemLines = [
     '你是一位精通八字與紫微斗數的命理宗師，正在參加全球算命師大賽的選擇題測驗。',
-    '仔細推理後作答。最後一行必須是「答案：X」（X 為 A/B/C/D 其中一個字母），不得有其他結尾。',
-  ].join('\n');
+  ];
+  if (MODE === 'engine-t') {
+    systemLines.push(
+      '判斷某年吉凶時，依序推理：1) 該年所行大限宮與限忌所傷之領域；2) 流年落於本命何宮、宮中星曜吉凶；3) 八字流年十神與日支沖合對日主的壓力；4) 三層同指一個領域時才下重話。題目類別提示了答案所屬領域，先排除與該年運勢方向矛盾的選項。',
+    );
+  }
+  systemLines.push('仔細推理後作答。最後一行必須是「答案：X」（X 為 A/B/C/D 其中一個字母），不得有其他結尾。');
+  const system = systemLines.join('\n');
 
   const parts = [`命主: ${q.birth_info.raw}`];
-  if (MODE === 'engine' || MODE === 'engine+') {
+  if (MODE !== 'none') {
     const birth = toBirth(q.birth_info);
     try {
-      parts.push('', '【紫微斗數盤（引擎排定）】', ziweiBlock(computeChart(birth)));
-      parts.push('', '【八字盤（引擎排定）】', baziBlock(computeBazi(birth)));
+      const ziwei = computeChart(birth);
+      const bazi = computeBazi(birth);
+      parts.push('', '【紫微斗數盤（引擎排定）】', ziweiBlock(ziwei));
+      parts.push('', '【八字盤（引擎排定）】', baziBlock(bazi));
+      if (MODE === 'engine-t') {
+        const years = questionYears(q);
+        if (years.length) {
+          parts.push('', '【題目相關年份之行運（引擎排定）】', timingBlock(ziwei, bazi, years));
+        }
+      }
     } catch (err) {
       parts.push('', `（排盤失敗: ${(err as Error).message}，請自行排盤）`);
     }

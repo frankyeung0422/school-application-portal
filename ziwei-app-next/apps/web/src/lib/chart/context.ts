@@ -9,6 +9,11 @@ import {
   traceJiChains,
   decadeOverlay,
   decadeAtYear,
+  ziweiYearFlow,
+  ganzhiOfYear,
+  tenGodVsDayMaster,
+  minorLimitAtYear,
+  type HeavenlyStem,
 } from '@ziwei/engine';
 import { deriveArchetype, mingongStarsLine } from './archetype';
 
@@ -222,6 +227,35 @@ export interface SubjectCharts {
  * Var-bag for the unified-synthesis / master-chat-unified prompts. Missing
  * systems render as a short "(未排算)" placeholder so the prompt stays valid.
  */
+/**
+ * Rolling 流年 timing table (last year + next 8) — 大限/流年落宮/小限/流年十神
+ * per year, so the 師傅 can answer "X 年如何" by walking 限→流年→宮 instead of
+ * guessing. Needs ziwei (with decades) + bazi.
+ */
+export function timingTableContext(charts: SubjectCharts): string | null {
+  const { ziwei, bazi } = charts;
+  if (!ziwei?.decades?.length || !bazi) return null;
+  try {
+    const birthYear = ziwei.birthInfo.year;
+    const startYear = new Date().getFullYear() - 1;
+    const lines: string[] = [];
+    for (let year = startYear; year < startYear + 10; year++) {
+      const gz = ganzhiOfYear(year);
+      const zf = ziweiYearFlow(ziwei, year, birthYear);
+      const decade = decadeAtYear(ziwei.decades, birthYear, year);
+      const minor = minorLimitAtYear(ziwei, year);
+      const tg = tenGodVsDayMaster(gz[0] as HeavenlyStem, bazi.dayMaster);
+      const flowStars = zf.hostPalace?.stars.map((s) => s.name).slice(0, 4).join('、') || '空宮';
+      lines.push(
+        `${year}(${gz}): ${decade ? `${decade.palaceName}限/限忌${decade.transformations.忌}；` : ''}流年${zf.hostPalace?.name ?? '—'}[${flowStars}]${minor ? `；小限${minor.palaceName}` : ''}；十神${tg}`,
+      );
+    }
+    return lines.join('\n');
+  } catch {
+    return null;
+  }
+}
+
 /** 三盤合參 natal corroboration block — only when all three charts exist. */
 export function crossSystemContext(charts: SubjectCharts): string | null {
   if (!charts.ziwei || !charts.bazi || !charts.qizheng) return null;
@@ -245,6 +279,7 @@ export function buildUnifiedVars(
     baziMangpai: charts.bazi ? baziMangpaiContext(charts.bazi) : '(未排八字盤)',
     qizhengContext: charts.qizheng ? qizhengContext(charts.qizheng) : '(未排果老盤)',
     crossSystemContext: crossSystemContext(charts) ?? '(三盤未齊，未作合參比對)',
+    timingTable: timingTableContext(charts) ?? '(流年表暫缺 — 請依大限與年干支自行推算)',
   };
 }
 

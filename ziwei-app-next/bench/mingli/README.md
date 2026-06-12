@@ -22,7 +22,7 @@ npx tsx bench/mingli/run.mts --mode engine --model gemini-2.5-flash --limit 80
 npx tsx bench/mingli/run.mts --mode none   --model gemini-2.5-flash --limit 80
 ```
 
-Flags: `--mode none|engine`, `--model <id>` (claude*/gemini*/gpt* route to the
+Flags: `--mode none|engine|engine+|engine-t` (engine-t adds per-question-year 大限/流年/小限/十神 blocks + a timing methodology), `--model <id>` (claude*/gemini*/gpt* route to the
 matching provider key), `--limit N`, `--category 婚姻`, `--concurrency N`, `--dry`.
 
 Keys are read from the environment (`ANTHROPIC_API_KEY` / `GEMINI_API_KEY` /
