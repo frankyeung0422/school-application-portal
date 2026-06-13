@@ -160,14 +160,25 @@ export default async function AdminDashboardPage() {
         </div>
       </div>
 
-      <div className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-4 flex items-center justify-between">
-        <div>
-          <p className="text-sm font-semibold text-amber-800">Evidence Contributions</p>
-          <p className="text-xs text-amber-700 mt-0.5">Review researcher-submitted evidence entries pending approval.</p>
+      <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 flex items-center justify-between">
+          <div>
+            <p className="text-sm font-semibold text-amber-800">Evidence Contributions</p>
+            <p className="text-xs text-amber-700 mt-0.5">Review researcher-submitted evidence entries pending approval.</p>
+          </div>
+          <Link href="/admin/contributions" className="shrink-0 rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 transition-colors">
+            Review →
+          </Link>
         </div>
-        <Link href="/admin/contributions" className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 transition-colors">
-          Review contributions →
-        </Link>
+        <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 flex items-center justify-between">
+          <div>
+            <p className="text-sm font-semibold text-blue-800">Researcher Verification</p>
+            <p className="text-xs text-blue-700 mt-0.5">Verify or reject researcher profile applications.</p>
+          </div>
+          <Link href="/admin/researchers" className="shrink-0 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors">
+            Review →
+          </Link>
+        </div>
       </div>
     </div>
   );
