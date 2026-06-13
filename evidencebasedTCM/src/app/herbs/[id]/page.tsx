@@ -26,6 +26,7 @@ import {
   formulaRoleLabel,
   pregnancyCategoryLabel,
 } from "@/lib/i18n/data-labels";
+import { targetDruggabilityMap, druggabilityTitle } from "@/lib/research/network-pharmacology";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -39,7 +40,13 @@ export default async function HerbDetailPage({ params }: Props) {
   const herb = await prisma.herb.findUnique({
     where: { id },
     include: {
-      activeCompounds: true,
+      activeCompounds: {
+        include: {
+          targets: {
+            include: { target: true },
+          },
+        },
+      },
       formulaHerbs: {
         include: {
           formula: {
@@ -84,6 +91,20 @@ export default async function HerbDetailPage({ params }: Props) {
 
   if (!herb) notFound();
 
+  // Collect unique protein targets across all active compounds, keeping best source (curated > LLM)
+  const targetMap = new Map<string, { id: string; geneSymbol: string; uniprotId: string | null; name: string | null; bindingdbCount: number | null; bestAffinityNm: number | null; bestAffinityType: string | null; source: string }>();
+  for (const compound of herb.activeCompounds) {
+    for (const ct of compound.targets) {
+      const tgt = ct.target;
+      const existing = targetMap.get(tgt.id);
+      const better = !existing || (ct.source === "curated" && existing.source !== "curated");
+      if (better) targetMap.set(tgt.id, { ...tgt, source: ct.source });
+    }
+  }
+  const herbTargets = [...targetMap.values()].sort((a, b) => a.geneSymbol.localeCompare(b.geneSymbol));
+  const drugMap = herbTargets.length > 0 ? await targetDruggabilityMap() : new Map();
+
+  const zh = locale === "zh-Hant";
   const { primary: titlePrimary, secondary: titleSecondary } = tcmEntityTitles(herb, locale);
   const natureConfig = HERB_NATURE_CONFIG[herb.nature as keyof typeof HERB_NATURE_CONFIG];
   const flavorBadges = herb.flavor.map((f) => {
@@ -153,6 +174,41 @@ export default async function HerbDetailPage({ params }: Props) {
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {herbTargets.length > 0 && (
+        <div>
+          <div className="flex items-baseline gap-2 mb-3">
+            <h3 className="text-lg font-semibold">{zh ? "蛋白靶點 · 網絡藥理" : "Protein Targets · Network Pharmacology"}</h3>
+            <span className="text-xs text-muted">{herbTargets.length} {zh ? "個靶點" : "targets"}</span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {herbTargets.map((tgt) => {
+              const drugg = drugMap.get(tgt.geneSymbol);
+              const isLLM = tgt.source === "LLM";
+              const title = druggabilityTitle(drugg, zh);
+              return (
+                <span
+                  key={tgt.id}
+                  title={[tgt.name, title].filter(Boolean).join(" · ")}
+                  className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium ${
+                    isLLM
+                      ? "border-amber-300 border-dashed bg-amber-50 text-amber-800"
+                      : "border-emerald-300 bg-emerald-50 text-emerald-800"
+                  }`}
+                >
+                  {tgt.geneSymbol}
+                  {drugg && <span className="ml-0.5 text-blue-600">💊</span>}
+                </span>
+              );
+            })}
+          </div>
+          <p className="mt-2 text-[11px] text-muted">
+            {zh
+              ? "翠綠＝實驗室實測；琥珀虛線＝LLM預測（置信度0.4）。💊＝BindingDB有實驗結合數據。"
+              : "Emerald = curated experimental; amber dashed = LLM-predicted (confidence 0.4). 💊 = BindingDB experimental binding data."}
+          </p>
         </div>
       )}
 

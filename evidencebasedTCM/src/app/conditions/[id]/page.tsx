@@ -9,6 +9,8 @@ import { localizeDbText } from "@/lib/i18n/to-traditional";
 import { pathologyLabel, mappingFrequencyLabel } from "@/lib/i18n/data-labels";
 import { tcmEntityTitles } from "@/lib/i18n/entity-display";
 import { AcupointFrequencyMap, type FrequencyEntry } from "@/components/shared/AcupointFrequencyMap";
+import { DISEASE_CATALOG } from "@/lib/research/disease-catalog";
+import { diseaseKeywords, textMatchesDisease } from "@/lib/research/disease-match";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -69,6 +71,26 @@ export default async function ConditionDetailPage({ params }: Props) {
     });
   }
   const frequencyEntries = Array.from(freqMap.values());
+
+  // Match this condition to the research disease catalog by keyword
+  const searchText = [condition.westernName, condition.description ?? ""].join(" ");
+  const matchedDisease = DISEASE_CATALOG.find(d => textMatchesDisease(searchText, diseaseKeywords(d)));
+
+  // If matched, pull a quick evidence count + trial count for the research callout
+  const [researchEvidenceCount, researchTrialCount] = matchedDisease
+    ? await Promise.all([
+        prisma.evidenceEntry.count({
+          where: {
+            status: "PUBLISHED",
+            OR: [
+              { title: { contains: matchedDisease.keywordsEn[0], mode: "insensitive" } },
+              ...matchedDisease.keywordsZh.map(k => ({ title: { contains: k } })),
+            ],
+          },
+        }),
+        prisma.clinicalTrial.count({ where: { diseaseId: matchedDisease.id } }),
+      ])
+    : [0, 0];
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
@@ -206,6 +228,39 @@ export default async function ConditionDetailPage({ params }: Props) {
           </div>
         )}
       </div>
+
+      {matchedDisease && (
+        <div className="mt-8 rounded-xl border border-blue-200 bg-blue-50 p-5">
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div>
+              <p className="text-sm font-semibold text-blue-900">
+                🔬 {locale === "zh-Hant" ? "系統性研究證據" : "Systematic Research Evidence"}
+              </p>
+              <p className="text-sm text-blue-800 mt-1">
+                {locale === "zh-Hant"
+                  ? `本症對應「${matchedDisease.nameZh}」研究模塊，收錄 ${researchEvidenceCount} 項研究、${researchTrialCount} 個已登記臨床試驗、網絡藥理靶點分析及配方重定向評分。`
+                  : `This condition maps to the "${matchedDisease.nameEn}" research module — ${researchEvidenceCount} evidence entries, ${researchTrialCount} registered clinical trials, network pharmacology target analysis, and formula repurposing scores.`}
+              </p>
+              <div className="mt-2 flex flex-wrap gap-3 text-xs text-blue-700">
+                {researchEvidenceCount > 0 && (
+                  <span>📄 {researchEvidenceCount} {locale === "zh-Hant" ? "篇研究" : "studies"}</span>
+                )}
+                {researchTrialCount > 0 && (
+                  <span>🧪 {researchTrialCount} {locale === "zh-Hant" ? "臨床試驗" : "clinical trials"}</span>
+                )}
+                <span>🔬 {locale === "zh-Hant" ? "網絡藥理" : "Network pharmacology"}</span>
+                <span>⭐ {locale === "zh-Hant" ? "可信度評分" : "Credibility scoring"}</span>
+              </div>
+            </div>
+            <Link
+              href={`/research/${matchedDisease.id}`}
+              className="shrink-0 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
+            >
+              {locale === "zh-Hant" ? "查看研究 →" : "View research →"}
+            </Link>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
