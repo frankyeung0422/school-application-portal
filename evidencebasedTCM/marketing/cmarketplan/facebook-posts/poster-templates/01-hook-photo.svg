@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Template 01 — Hook + Big Statement
+  Best for: origin stories, attention-grabbing facts, warnings
+  Customize: text in <!-- EDIT --> tags, optional background color, accent stripe color
+  Export: open in browser → right-click → Save As Image, or use online SVG-to-PNG converter at 1080×1080
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1080" width="1080" height="1080">
+  <!-- Background -->
+  <rect width="1080" height="1080" fill="#fefce8"/>
+
+  <!-- Top accent stripe -->
+  <rect x="0" y="0" width="1080" height="12" fill="#10b981"/>
+
+  <!-- Small label -->
+  <text x="80" y="160" font-family="'Source Han Sans TC','Noto Sans TC',sans-serif" font-size="28" fill="#10b981" font-weight="600" letter-spacing="6">
+    <!-- EDIT: SMALL LABEL -->實證中醫 · 知識分享
+  </text>
+
+  <!-- Big hook text — wrap manually to 2-3 lines -->
+  <text x="80" y="320" font-family="'Source Han Sans TC','Noto Sans TC',sans-serif" font-size="88" fill="#0f172a" font-weight="800" letter-spacing="-2">
+    <!-- EDIT: LINE 1 -->你以為「中藥
+  </text>
+  <text x="80" y="430" font-family="'Source Han Sans TC','Noto Sans TC',sans-serif" font-size="88" fill="#0f172a" font-weight="800" letter-spacing="-2">
+    <!-- EDIT: LINE 2 -->比較溫和」？
+  </text>
+
+  <!-- Divider -->
+  <line x1="80" y1="500" x2="280" y2="500" stroke="#10b981" stroke-width="6"/>
+
+  <!-- Subtitle -->
+  <text x="80" y="600" font-family="'Source Han Sans TC','Noto Sans TC',sans-serif" font-size="44" fill="#475569" font-weight="500">
+    <!-- EDIT: SUB LINE 1 -->其實丹參與 warfarin 同服，
+  </text>
+  <text x="80" y="660" font-family="'Source Han Sans TC','Noto Sans TC',sans-serif" font-size="44" fill="#475569" font-weight="500">
+    <!-- EDIT: SUB LINE 2 -->可能讓 INR 飆到 8 以上。
+  </text>
+
+  <!-- CTA block -->
+  <rect x="80" y="790" width="920" height="180" rx="20" fill="#10b981"/>
+  <text x="540" y="850" font-family="'Source Han Sans TC','Noto Sans TC',sans-serif" font-size="34" fill="#ffffff" font-weight="600" text-anchor="middle">
+    <!-- EDIT: CTA LINE 1 -->免費查詢中藥-西藥交互
+  </text>
+  <text x="540" y="910" font-family="Inter,system-ui,sans-serif" font-size="32" fill="#ffffff" font-weight="700" text-anchor="middle">
+    <!-- EDIT: URL -->evidencebasedtcm.com/interactions
+  </text>
+
+  <!-- Bottom brand strip -->
+  <text x="80" y="1030" font-family="Inter,system-ui,sans-serif" font-size="22" fill="#94a3b8" font-weight="500">
+    <!-- EDIT: BRAND -->實證中醫 EBTCM · 707 條 GRADE 評級證據
+  </text>
+  <text x="1000" y="1030" font-family="Inter,system-ui,sans-serif" font-size="22" fill="#94a3b8" font-weight="500" text-anchor="end">
+    evidencebasedtcm.com
+  </text>
+</svg>

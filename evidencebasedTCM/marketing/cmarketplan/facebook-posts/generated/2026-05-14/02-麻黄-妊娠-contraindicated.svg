@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Template 05 — Big Data Statistic
+  Best for: build-in-public milestones, impressive numbers
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1080" width="1080" height="1080">
+  <!-- Background -->
+  <defs>
+    <linearGradient id="g5" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#10b981"/>
+      <stop offset="100%" stop-color="#047857"/>
+    </linearGradient>
+  </defs>
+  <rect width="1080" height="1080" fill="url(#g5)"/>
+
+  <!-- Top label -->
+  <text x="540" y="180" font-family="'Source Han Sans TC',sans-serif" font-size="32" fill="#a7f3d0" font-weight="600" text-anchor="middle" letter-spacing="8">
+    <!-- EDIT: TOP LABEL -->實證中醫 · 知識分享</text>
+
+  <!-- Massive number -->
+  <text x="540" y="540" font-family="Inter,sans-serif" font-size="380" fill="#ffffff" font-weight="900" text-anchor="middle" letter-spacing="-10">
+    <!-- EDIT: BIG NUMBER -->5</text>
+
+  <!-- Number label -->
+  <text x="540" y="650" font-family="'Source Han Sans TC',sans-serif" font-size="56" fill="#fefce8" font-weight="700" text-anchor="middle">
+    <!-- EDIT: NUMBER LABEL -->週數</text>
+
+  <!-- Subtitle -->
+  <text x="540" y="720" font-family="'Source Han Sans TC',sans-serif" font-size="32" fill="#a7f3d0" font-weight="400" text-anchor="middle">
+    <!-- EDIT: SUBTITLE -->禁忌藥材：麻黃</text>
+
+  <!-- 3-stat row at bottom -->
+  <line x1="120" y1="800" x2="960" y2="800" stroke="#a7f3d0" stroke-width="2"/>
+
+  <text x="280" y="870" font-family="Inter,sans-serif" font-size="64" fill="#ffffff" font-weight="800" text-anchor="middle">
+    <!-- EDIT: STAT 1 NUMBER -->100%</text>
+  <text x="280" y="910" font-family="'Source Han Sans TC',sans-serif" font-size="22" fill="#a7f3d0" font-weight="500" text-anchor="middle">
+    <!-- EDIT: STAT 1 LABEL -->孕婦禁用</text>
+
+  <text x="540" y="870" font-family="Inter,sans-serif" font-size="64" fill="#ffffff" font-weight="800" text-anchor="middle">
+    <!-- EDIT: STAT 2 NUMBER -->1</text>
+  <text x="540" y="910" font-family="'Source Han Sans TC',sans-serif" font-size="22" fill="#a7f3d0" font-weight="500" text-anchor="middle">
+    <!-- EDIT: STAT 2 LABEL -->個例</text>
+
+  <text x="800" y="870" font-family="Inter,sans-serif" font-size="64" fill="#ffffff" font-weight="800" text-anchor="middle">
+    <!-- EDIT: STAT 3 NUMBER -->0</text>
+  <text x="800" y="910" font-family="'Source Han Sans TC',sans-serif" font-size="22" fill="#a7f3d0" font-weight="500" text-anchor="middle">
+    <!-- EDIT: STAT 3 LABEL -->安全用藥</text>
+
+  <!-- Bottom CTA -->
+  <rect x="180" y="970" width="720" height="80" rx="40" fill="#ffffff"/>
+  <text x="540" y="1023" font-family="Inter,sans-serif" font-size="30" fill="#047857" font-weight="700" text-anchor="middle">
+    evidencebasedtcm.com
+  </text>
+</svg>

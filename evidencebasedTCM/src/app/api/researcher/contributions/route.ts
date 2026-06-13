@@ -1,0 +1,67 @@
+import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/db/prisma";
+import { auth } from "@/lib/auth/authOptions";
+
+async function getResearcherProfile(userId: string) {
+  return prisma.researcherProfile.findUnique({ where: { userId } });
+}
+
+export async function GET() {
+  const session = await auth();
+  const user = session?.user as { id?: string } | undefined;
+  if (!user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const rp = await getResearcherProfile(user.id);
+  if (!rp) return NextResponse.json([]);
+
+  const contributions = await prisma.evidenceContribution.findMany({
+    where: { researcherProfileId: rp.id },
+    orderBy: { createdAt: "desc" },
+  });
+  return NextResponse.json(contributions);
+}
+
+export async function POST(request: NextRequest) {
+  const session = await auth();
+  const user = session?.user as { id?: string; role?: string } | undefined;
+  if (!user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (user.role !== "RESEARCHER" && user.role !== "ADMIN") {
+    return NextResponse.json({ error: "Researcher account required" }, { status: 403 });
+  }
+
+  const rp = await getResearcherProfile(user.id);
+  if (!rp) return NextResponse.json({ error: "Complete your researcher profile first" }, { status: 400 });
+
+  const body = await request.json();
+  const {
+    title, authors, journal, year, doi, pmid,
+    studyType, pico, results, conclusions, proposedGrade,
+    relatedHerbIds, relatedFormulaIds, relatedPatternIds, relatedConditionIds,
+  } = body;
+
+  if (!title || !authors || !studyType || !results || !conclusions) {
+    return NextResponse.json({ error: "title, authors, studyType, results, conclusions required" }, { status: 400 });
+  }
+
+  const contribution = await prisma.evidenceContribution.create({
+    data: {
+      researcherProfileId: rp.id,
+      title,
+      authors,
+      journal: journal || null,
+      year: year ? Number(year) : null,
+      doi: doi || null,
+      pmid: pmid || null,
+      studyType,
+      pico: pico ? JSON.stringify(pico) : null,
+      results,
+      conclusions,
+      proposedGrade: proposedGrade || null,
+      relatedHerbIds: relatedHerbIds ?? [],
+      relatedFormulaIds: relatedFormulaIds ?? [],
+      relatedPatternIds: relatedPatternIds ?? [],
+      relatedConditionIds: relatedConditionIds ?? [],
+    },
+  });
+  return NextResponse.json(contribution, { status: 201 });
+}

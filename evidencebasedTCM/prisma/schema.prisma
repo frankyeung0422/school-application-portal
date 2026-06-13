@@ -1,0 +1,1555 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================
+// Domain 1: TCM Knowledge Base
+// ============================================
+
+enum HerbNature {
+  WARM
+  HOT
+  COOL
+  COLD
+  NEUTRAL
+}
+
+enum HerbStatus {
+  DRAFT
+  PUBLISHED
+}
+
+model Herb {
+  id                 String     @id @default(cuid())
+  pinyinName         String     @map("pinyin_name")
+  chineseName        String     @map("chinese_name")
+  latinName          String?    @map("latin_name")
+  englishName        String?    @map("english_name")
+  category           String
+  nature             HerbNature
+  flavor             String[]
+  meridianTropism    String[]   @map("meridian_tropism")
+  dosageRange        String?    @map("dosage_range")
+  description        String?    @db.Text
+  modernPharmacology String?    @map("modern_pharmacology") @db.Text
+  imageUrl           String?    @map("image_url")
+  status             HerbStatus @default(PUBLISHED)
+  createdAt          DateTime   @default(now()) @map("created_at")
+  updatedAt          DateTime   @updatedAt @map("updated_at")
+
+  activeCompounds       HerbActiveCompound[]
+  formulaHerbs          FormulaHerb[]
+  evidenceLinks         EvidenceHerbLink[]
+  drugInteractions      HerbDrugInteraction[]
+  herbInteractionsA     HerbHerbInteraction[] @relation("HerbA")
+  herbInteractionsB     HerbHerbInteraction[] @relation("HerbB")
+  contraindications     HerbContraindication[]
+  consultationRxHerbs   ConsultationPrescriptionHerb[]
+
+  @@map("herbs")
+}
+
+model HerbActiveCompound {
+  id                String  @id @default(cuid())
+  herbId            String  @map("herb_id")
+  compoundName      String  @map("compound_name")
+  casNumber         String? @map("cas_number")
+  pubchemCid        String? @map("pubchem_cid")
+  mechanismOfAction String? @map("mechanism_of_action") @db.Text
+
+  herb    Herb            @relation(fields: [herbId], references: [id], onDelete: Cascade)
+  targets CompoundTarget[]
+
+  @@map("herb_active_compounds")
+}
+
+// ============================================
+// Network Pharmacology graph
+// herb → active compound → protein target → pathway, plus disease → gene.
+// Powers shared-target scoring, formula repurposing, and data-grounded
+// mechanism reports. See src/lib/research/network-pharmacology.ts.
+// ============================================
+
+model ProteinTarget {
+  id         String  @id @default(cuid())
+  geneSymbol String  @unique @map("gene_symbol")
+  uniprotId  String? @map("uniprot_id")
+  name       String?
+  // Experimental druggability from BindingDB (target-level, by UniProt):
+  // how many measured ligands bind it and the best (lowest) affinity. A target
+  // with many nM-range binders is experimentally validated, raising confidence
+  // in graph edges that touch it. See src/lib/research/bindingdb.ts.
+  bindingdbCount  Int?    @map("bindingdb_count")
+  bestAffinityNm  Float?  @map("best_affinity_nm")
+  bestAffinityType String? @map("best_affinity_type") // Ki | Kd | IC50 | EC50
+
+  compoundLinks CompoundTarget[]
+  pathwayLinks  TargetPathway[]
+
+  @@map("protein_targets")
+}
+
+model CompoundTarget {
+  id         String  @id @default(cuid())
+  compoundId String  @map("compound_id")
+  targetId   String  @map("target_id")
+  source     String // "TCMSP" | "HERB" | "SymMap" | "SwissTP" | "LLM"
+  confidence Float?
+
+  compound HerbActiveCompound @relation(fields: [compoundId], references: [id], onDelete: Cascade)
+  target   ProteinTarget      @relation(fields: [targetId], references: [id], onDelete: Cascade)
+
+  @@unique([compoundId, targetId])
+  @@index([targetId])
+  @@map("compound_targets")
+}
+
+model Pathway {
+  id       String  @id @default(cuid())
+  code     String  @unique // KEGG (e.g. hsa04151) or Reactome id
+  name     String
+  source   String // "KEGG" | "Reactome"
+  category String?
+
+  targetLinks TargetPathway[]
+
+  @@map("pathways")
+}
+
+model TargetPathway {
+  id        String @id @default(cuid())
+  targetId  String @map("target_id")
+  pathwayId String @map("pathway_id")
+
+  target  ProteinTarget @relation(fields: [targetId], references: [id], onDelete: Cascade)
+  pathway Pathway       @relation(fields: [pathwayId], references: [id], onDelete: Cascade)
+
+  @@unique([targetId, pathwayId])
+  @@index([pathwayId])
+  @@map("target_pathways")
+}
+
+model DiseaseGene {
+  id          String  @id @default(cuid())
+  diseaseId   String  @map("disease_id") // matches DISEASE_CATALOG[].id
+  diseaseName String  @map("disease_name")
+  geneSymbol  String  @map("gene_symbol")
+  source      String // "DisGeNET" | "OMIM" | "LLM"
+  score       Float?
+
+  @@unique([diseaseId, geneSymbol])
+  @@index([diseaseId])
+  @@map("disease_genes")
+}
+
+enum FormulaHerbRole {
+  JUN  // Emperor
+  CHEN // Minister
+  ZUO  // Assistant
+  SHI  // Envoy
+}
+
+model Formula {
+  id            String     @id @default(cuid())
+  pinyinName    String     @map("pinyin_name")
+  chineseName   String     @map("chinese_name")
+  englishName   String?    @map("english_name")
+  sourceText    String?    @map("source_text")
+  category      String
+  actions       String?    @db.Text
+  indications   String?    @db.Text
+  modifications String?    @db.Text
+  status        HerbStatus @default(PUBLISHED)
+  createdAt     DateTime   @default(now()) @map("created_at")
+  updatedAt     DateTime   @updatedAt @map("updated_at")
+
+  herbs                FormulaHerb[]
+  patternFormulas      PatternFormula[]
+  evidenceLinks        EvidenceFormulaLink[]
+  consultationPrescriptions ConsultationPrescription[]
+
+  @@map("formulas")
+}
+
+model FormulaHerb {
+  id        String          @id @default(cuid())
+  formulaId String          @map("formula_id")
+  herbId    String          @map("herb_id")
+  role      FormulaHerbRole
+  dosage    String?
+  notes     String?
+
+  formula Formula @relation(fields: [formulaId], references: [id], onDelete: Cascade)
+  herb    Herb    @relation(fields: [herbId], references: [id], onDelete: Cascade)
+
+  @@unique([formulaId, herbId])
+  @@map("formula_herbs")
+}
+
+model AcupuncturePoint {
+  id                String     @id @default(cuid())
+  code              String     @unique
+  pinyinName        String     @map("pinyin_name")
+  chineseName       String     @map("chinese_name")
+  englishName       String?    @map("english_name")
+  meridian          String
+  location          String?    @db.Text
+  depth             String?
+  actions           String?    @db.Text
+  indications       String?    @db.Text
+  contraindications String?    @db.Text
+  imageUrl          String?    @map("image_url")
+  status            HerbStatus @default(PUBLISHED)
+  createdAt         DateTime   @default(now()) @map("created_at")
+  updatedAt         DateTime   @updatedAt @map("updated_at")
+
+  patternAcupoints PatternAcupoint[]
+  evidenceLinks    EvidenceAcupointLink[]
+
+  @@map("acupuncture_points")
+}
+
+enum PathologyType {
+  DEFICIENCY
+  EXCESS
+  STAGNATION
+  HEAT
+  COLD
+  DAMPNESS
+  PHLEGM
+  WIND
+  BLOOD_STASIS
+  YIN_DEFICIENCY
+  YANG_DEFICIENCY
+  QI_DEFICIENCY
+  BLOOD_DEFICIENCY
+}
+
+model TcmPattern {
+  id                 String        @id @default(cuid())
+  pinyinName         String        @map("pinyin_name")
+  chineseName        String        @map("chinese_name")
+  englishName        String?       @map("english_name")
+  organSystem        String?       @map("organ_system")
+  pathologyType      PathologyType @map("pathology_type")
+  keySymptoms        String?       @map("key_symptoms") @db.Text
+  tongue             String?
+  pulse              String?
+  treatmentPrinciple String?       @map("treatment_principle") @db.Text
+  status             HerbStatus    @default(PUBLISHED)
+  createdAt          DateTime      @default(now()) @map("created_at")
+  updatedAt          DateTime      @updatedAt @map("updated_at")
+
+  patternFormulas    PatternFormula[]
+  patternAcupoints   PatternAcupoint[]
+  conditionMappings  ConditionPatternMapping[]
+  evidenceLinks      EvidencePatternLink[]
+  consultations      Consultation[]
+  foodTherapyRecipes FoodTherapyRecipe[]
+
+  @@map("tcm_patterns")
+}
+
+model PatternFormula {
+  id        String  @id @default(cuid())
+  patternId String  @map("pattern_id")
+  formulaId String  @map("formula_id")
+  isPrimary Boolean @default(false) @map("is_primary")
+  notes     String?
+
+  pattern TcmPattern @relation(fields: [patternId], references: [id], onDelete: Cascade)
+  formula Formula    @relation(fields: [formulaId], references: [id], onDelete: Cascade)
+
+  @@unique([patternId, formulaId])
+  @@map("pattern_formulas")
+}
+
+model PatternAcupoint {
+  id                String  @id @default(cuid())
+  patternId         String  @map("pattern_id")
+  acupointId        String  @map("acupoint_id")
+  stimulationMethod String? @map("stimulation_method")
+  notes             String?
+
+  pattern  TcmPattern       @relation(fields: [patternId], references: [id], onDelete: Cascade)
+  acupoint AcupuncturePoint @relation(fields: [acupointId], references: [id], onDelete: Cascade)
+
+  @@unique([patternId, acupointId])
+  @@map("pattern_acupoints")
+}
+
+// ============================================
+// Domain 2: Evidence Layer
+// ============================================
+
+enum StudyType {
+  SYSTEMATIC_REVIEW
+  META_ANALYSIS
+  RCT
+  COHORT
+  CASE_CONTROL
+  CASE_SERIES
+  CASE_REPORT
+  EXPERT_OPINION
+  TRADITIONAL_USE
+}
+
+enum EvidenceLevel {
+  LEVEL_1A
+  LEVEL_1B
+  LEVEL_2A
+  LEVEL_2B
+  LEVEL_3A
+  LEVEL_3B
+  LEVEL_4
+  LEVEL_5
+}
+
+enum EvidenceGrade {
+  A
+  B
+  C
+  D
+}
+
+enum RiskOfBias {
+  LOW
+  SOME_CONCERNS
+  HIGH
+}
+
+enum EvidenceStatus {
+  DRAFT
+  REVIEWED
+  PUBLISHED
+}
+
+model EvidenceEntry {
+  id             String         @id @default(cuid())
+  title          String
+  studyType      StudyType      @map("study_type")
+  evidenceLevel  EvidenceLevel  @map("evidence_level")
+  evidenceGrade  EvidenceGrade  @map("evidence_grade")
+  authors        String?
+  journal        String?
+  year           Int?
+  doi            String?
+  pubmedId       String?        @map("pubmed_id")
+  abstract       String?        @db.Text
+  summary        String?        @db.Text
+  sampleSize     Int?           @map("sample_size")
+  population     String?        @db.Text
+  intervention   String?        @db.Text
+  comparator     String?
+  primaryOutcome String?        @map("primary_outcome") @db.Text
+  resultsSummary String?        @map("results_summary") @db.Text
+  riskOfBias     RiskOfBias?    @map("risk_of_bias")
+  qualityScore   Float?         @map("quality_score")
+  qualityTool    String?        @map("quality_tool")
+  // Primary quantitative effect size (for meta-analysis pooling). effectMetric:
+  // OR | RR | HR (ratio, pooled in log space) | SMD | MD (difference). favorsTx:
+  // does a value below the no-effect line favour the intervention? (true for most
+  // harm/symptom outcomes where lower = better).
+  effectMetric   String?        @map("effect_metric")
+  effectValue    Float?         @map("effect_value")
+  ciLow          Float?         @map("ci_low")
+  ciHigh         Float?         @map("ci_high")
+  favorsTx       Boolean?       @map("favors_tx")
+  status         EvidenceStatus @default(PUBLISHED)
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+
+  herbLinks     EvidenceHerbLink[]
+  formulaLinks  EvidenceFormulaLink[]
+  acupointLinks EvidenceAcupointLink[]
+  patternLinks  EvidencePatternLink[]
+  annotations   EvidenceAnnotation[]
+
+  @@map("evidence_entries")
+}
+
+enum OutcomeType {
+  EFFICACY
+  SAFETY
+  PHARMACOKINETICS
+  MECHANISM
+}
+
+enum EffectDirection {
+  POSITIVE
+  NEGATIVE
+  NEUTRAL
+  MIXED
+}
+
+model EvidenceHerbLink {
+  id              String          @id @default(cuid())
+  evidenceId      String          @map("evidence_id")
+  herbId          String          @map("herb_id")
+  outcomeType     OutcomeType     @map("outcome_type")
+  effectDirection EffectDirection @map("effect_direction")
+
+  evidence EvidenceEntry @relation(fields: [evidenceId], references: [id], onDelete: Cascade)
+  herb     Herb          @relation(fields: [herbId], references: [id], onDelete: Cascade)
+
+  @@unique([evidenceId, herbId])
+  @@map("evidence_herb_links")
+}
+
+model EvidenceFormulaLink {
+  id              String          @id @default(cuid())
+  evidenceId      String          @map("evidence_id")
+  formulaId       String          @map("formula_id")
+  outcomeType     OutcomeType     @map("outcome_type")
+  effectDirection EffectDirection @map("effect_direction")
+
+  evidence EvidenceEntry @relation(fields: [evidenceId], references: [id], onDelete: Cascade)
+  formula  Formula       @relation(fields: [formulaId], references: [id], onDelete: Cascade)
+
+  @@unique([evidenceId, formulaId])
+  @@map("evidence_formula_links")
+}
+
+model EvidenceAcupointLink {
+  id              String          @id @default(cuid())
+  evidenceId      String          @map("evidence_id")
+  acupointId      String          @map("acupoint_id")
+  outcomeType     OutcomeType     @map("outcome_type")
+  effectDirection EffectDirection @map("effect_direction")
+
+  evidence EvidenceEntry    @relation(fields: [evidenceId], references: [id], onDelete: Cascade)
+  acupoint AcupuncturePoint @relation(fields: [acupointId], references: [id], onDelete: Cascade)
+
+  @@unique([evidenceId, acupointId])
+  @@map("evidence_acupoint_links")
+}
+
+model EvidencePatternLink {
+  id              String          @id @default(cuid())
+  evidenceId      String          @map("evidence_id")
+  patternId       String          @map("pattern_id")
+  outcomeType     OutcomeType     @map("outcome_type")
+  effectDirection EffectDirection @map("effect_direction")
+
+  evidence EvidenceEntry @relation(fields: [evidenceId], references: [id], onDelete: Cascade)
+  pattern  TcmPattern    @relation(fields: [patternId], references: [id], onDelete: Cascade)
+
+  @@unique([evidenceId, patternId])
+  @@map("evidence_pattern_links")
+}
+
+// ============================================
+// Domain 3: Safety / Interactions
+// ============================================
+
+enum InteractionSeverity {
+  MAJOR
+  MODERATE
+  MINOR
+  THEORETICAL
+}
+
+enum InteractionMechanism {
+  PHARMACOKINETIC
+  PHARMACODYNAMIC
+}
+
+enum SafetyEvidenceQuality {
+  ESTABLISHED
+  PROBABLE
+  SUSPECTED
+  THEORETICAL
+}
+
+model HerbDrugInteraction {
+  id              String               @id @default(cuid())
+  herbId          String               @map("herb_id")
+  drugName        String               @map("drug_name")
+  drugClass       String?              @map("drug_class")
+  interactionType InteractionMechanism @map("interaction_type")
+  severity        InteractionSeverity
+  mechanism       String?              @db.Text
+  clinicalEffect  String?              @map("clinical_effect") @db.Text
+  management      String?              @db.Text
+  evidenceQuality SafetyEvidenceQuality @map("evidence_quality")
+  references      String?              @db.Text
+  createdAt       DateTime             @default(now()) @map("created_at")
+  updatedAt       DateTime             @updatedAt @map("updated_at")
+
+  herb Herb @relation(fields: [herbId], references: [id], onDelete: Cascade)
+
+  @@map("herb_drug_interactions")
+}
+
+enum ClassicalInteractionType {
+  XIANG_FAN
+  XIANG_WEI
+  XIANG_XU
+  XIANG_SHA
+  XIANG_WU
+  XIANG_JI
+}
+
+model HerbHerbInteraction {
+  id              String                   @id @default(cuid())
+  herbAId         String                   @map("herb_a_id")
+  herbBId         String                   @map("herb_b_id")
+  interactionType ClassicalInteractionType @map("interaction_type")
+  classicalSource String?                  @map("classical_source")
+  severity        InteractionSeverity
+  description     String?                  @db.Text
+  createdAt       DateTime                 @default(now()) @map("created_at")
+  updatedAt       DateTime                 @updatedAt @map("updated_at")
+
+  herbA Herb @relation("HerbA", fields: [herbAId], references: [id], onDelete: Cascade)
+  herbB Herb @relation("HerbB", fields: [herbBId], references: [id], onDelete: Cascade)
+
+  @@unique([herbAId, herbBId])
+  @@map("herb_herb_interactions")
+}
+
+enum PregnancyCategory {
+  SAFE
+  CAUTION
+  CONTRAINDICATED
+  UNKNOWN
+}
+
+enum LactationSafety {
+  SAFE
+  CAUTION
+  CONTRAINDICATED
+  UNKNOWN
+}
+
+enum PediatricSafety {
+  SAFE
+  CAUTION_OVER_2     // safe over 2 years old with caution
+  CAUTION_OVER_6     // safe over 6 years old with caution
+  CONTRAINDICATED
+  UNKNOWN
+}
+
+model HerbContraindication {
+  id                String             @id @default(cuid())
+  herbId            String             @map("herb_id")
+  condition         String
+  severity          InteractionSeverity
+  description       String?            @db.Text
+  pregnancyCategory PregnancyCategory? @map("pregnancy_category")
+  lactationSafety   LactationSafety?   @map("lactation_safety")
+  pediatricSafety   PediatricSafety?   @map("pediatric_safety")
+  createdAt         DateTime           @default(now()) @map("created_at")
+  updatedAt         DateTime           @updatedAt @map("updated_at")
+
+  herb Herb @relation(fields: [herbId], references: [id], onDelete: Cascade)
+
+  @@map("herb_contraindications")
+}
+
+// ============================================
+// Domain 4: TCM-Western Medicine Bridge
+// ============================================
+
+model ConditionMapping {
+  id          String   @id @default(cuid())
+  westernName String   @map("western_name")
+  icd10Code   String?  @map("icd10_code")
+  icd11Code   String?  @map("icd11_code")
+  snomedCode  String?  @map("snomed_code")
+  description String?  @db.Text
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  patternMappings    ConditionPatternMapping[]
+  foodTherapyLinks   FoodTherapyConditionLink[]
+
+  @@map("condition_mappings")
+}
+
+enum MappingFrequency {
+  COMMON
+  OCCASIONAL
+  RARE
+}
+
+model ConditionPatternMapping {
+  id          String           @id @default(cuid())
+  conditionId String           @map("condition_id")
+  patternId   String           @map("pattern_id")
+  frequency   MappingFrequency
+  notes       String?
+
+  condition ConditionMapping @relation(fields: [conditionId], references: [id], onDelete: Cascade)
+  pattern   TcmPattern       @relation(fields: [patternId], references: [id], onDelete: Cascade)
+
+  @@unique([conditionId, patternId])
+  @@map("condition_pattern_mappings")
+}
+
+// ============================================
+// Domain 5: User / Auth
+// ============================================
+
+enum UserRole {
+  ADMIN
+  EDITOR
+  PRACTITIONER
+  PUBLIC
+  PATIENT     // end-user self-tracking (disease history, symptom diary, constitution)
+  RESEARCHER  // academic/clinical researcher (data export, evidence contribution, annotation)
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String?
+  passwordHash String   @map("password_hash")
+  role         UserRole @default(PUBLIC)
+  credentials  String?
+  totpSecret   String?  @map("totp_secret")            // base32 secret, encrypted at rest if EBTCM_TOTP_KEY set
+  totpEnabled  Boolean  @default(false) @map("totp_enabled")
+  totpRecoveryCodes String? @map("totp_recovery_codes") @db.Text // newline-separated hashes
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  bookmarks         Bookmark[]
+  subscription      Subscription?
+  patients          Patient[]          @relation("PatientPractitioner")
+  consultations     Consultation[]     @relation("ConsultationPractitioner")
+  clinicMemberships ClinicMember[]
+  auditLogs         AuditLog[]
+  referralsSent     ReferralRequest[]  @relation("ReferralFrom")
+  referralsReceived ReferralRequest[]  @relation("ReferralTo")
+  healthProfile     UserHealthProfile?
+  researcherProfile ResearcherProfile?
+
+  @@map("users")
+}
+
+model Subscription {
+  id                   String    @id @default(cuid())
+  userId               String    @unique @map("user_id")
+  stripeCustomerId     String?   @unique @map("stripe_customer_id")
+  stripeSubscriptionId String?   @unique @map("stripe_subscription_id")
+  stripePriceId        String?   @map("stripe_price_id")
+  tier                 String    // "professional" | "clinic"
+  status               String    // "active" | "trialing" | "past_due" | "canceled" | "incomplete"
+  currentPeriodEnd     DateTime? @map("current_period_end")
+  cancelAtPeriodEnd    Boolean   @default(false) @map("cancel_at_period_end")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("subscriptions")
+}
+
+enum BookmarkEntityType {
+  HERB
+  FORMULA
+  ACUPOINT
+  PATTERN
+  EVIDENCE
+  CONDITION
+}
+
+model Bookmark {
+  id         String             @id @default(cuid())
+  userId     String             @map("user_id")
+  entityType BookmarkEntityType @map("entity_type")
+  entityId   String             @map("entity_id")
+  notes      String?
+  createdAt  DateTime           @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, entityType, entityId])
+  @@map("bookmarks")
+}
+
+// ============================================
+// Domain 6: Auto-Research Engine
+// ============================================
+
+model ResearchReport {
+  id           String   @id @default(cuid())
+  diseaseId    String   @map("disease_id")
+  diseaseName  String   @map("disease_name")
+  reportType   String   @map("report_type") // "proposal" | "innovation" | "formula"
+  formulaName  String?  @map("formula_name")
+  content      String   @db.Text // JSON blob
+  score        Float?   // overall quality score
+  version      Int      @default(1)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@index([diseaseId, reportType])
+  @@map("research_reports")
+}
+
+// ClinicalTrials.gov registry records, fetched per catalog disease (TCM-filtered).
+// Bridges bench hypotheses to live/completed clinical trials. See
+// src/lib/research/clinicaltrials.ts + scripts/import-trials.ts.
+model ClinicalTrial {
+  id             String   @id @default(cuid())
+  nctId          String   @unique @map("nct_id")
+  title          String   @db.Text
+  status         String // overallStatus: RECRUITING / COMPLETED / ...
+  phase          String? // PHASE1 / PHASE2 / NA / ...
+  studyType      String?  @map("study_type")
+  enrollment     Int?
+  conditions     String[]
+  interventions  String[]
+  leadSponsor    String?  @map("lead_sponsor")
+  startDate      String?  @map("start_date")
+  completionDate String?  @map("completion_date")
+  url            String
+  diseaseId      String   @map("disease_id") // catalog disease this was fetched for
+  diseaseName    String   @map("disease_name")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@index([diseaseId])
+  @@map("clinical_trials")
+}
+
+// ============================================
+// Domain 7: Course Knowledge Base
+// ============================================
+
+model CourseLesson {
+  id          String   @id @default(cuid())
+  courseId    String   @map("course_id")   // e.g. "class6"
+  courseName  String   @map("course_name") // e.g. "中藥學"
+  instructor  String?
+  lessonNum   Int      @map("lesson_num")
+  title       String
+  category    String?  // e.g. "補氣藥", "解表劑"
+  content     String   @db.Text            // Full lecture content (markdown)
+  keyPoints   String?  @map("key_points") @db.Text // Bullet-pointed key takeaways
+  herbsMentioned    String?  @map("herbs_mentioned") @db.Text // JSON array of herb refs
+  formulasMentioned String?  @map("formulas_mentioned") @db.Text // JSON array of formula refs
+  clinicalPearls    String?  @map("clinical_pearls") @db.Text // Professor's clinical insights
+  source      String   @default("theqi.com")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@unique([courseId, lessonNum])
+  @@index([courseId])
+  @@map("course_lessons")
+}
+
+// ============================================
+// Domain 8: Auto-Improvement Engine
+// ============================================
+
+model ImprovementLog {
+  id          String   @id @default(cuid())
+  runDate     DateTime @map("run_date") @default(now())
+  runType     String   @map("run_type") // "daily" | "manual" | "scheduled"
+  category    String   // "audit" | "fix" | "research" | "content" | "feature"
+  action      String   // What was done
+  details     String?  @db.Text // Detailed description
+  itemsAffected Int    @map("items_affected") @default(0)
+  status      String   @default("completed") // "completed" | "failed" | "skipped"
+  duration    Int?     // milliseconds
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([runDate])
+  @@index([category])
+  @@map("improvement_logs")
+}
+
+// ============================================
+// Domain 9: Practitioner — Patient Records
+// Each patient is owned by exactly one practitioner (User with role
+// PRACTITIONER or above). Consultations record the 四診 (four exams),
+// pattern diagnosis, prescription, and outcome.
+// ============================================
+
+enum PatientGender {
+  MALE
+  FEMALE
+  OTHER
+  UNDISCLOSED
+}
+
+model Patient {
+  id                String   @id @default(cuid())
+  practitionerId    String   @map("practitioner_id")          // owning practitioner
+  clinicId          String?  @map("clinic_id")                // shared within clinic if set
+  name              String
+  gender            PatientGender @default(UNDISCLOSED)
+  dateOfBirth       DateTime?     @map("date_of_birth")
+  contactPhone      String?       @map("contact_phone")
+  contactEmail      String?       @map("contact_email")
+  occupation        String?
+  // Legacy free-text fields kept for backwards compatibility. New data
+  // should be written to PatientAllergy[] and PatientMedication[].
+  allergies         String?       @db.Text
+  chronicConditions String?       @map("chronic_conditions") @db.Text
+  westernMeds       String?       @map("western_meds") @db.Text
+  notes             String?       @db.Text
+  archived          Boolean       @default(false)
+  createdAt         DateTime      @default(now()) @map("created_at")
+  updatedAt         DateTime      @updatedAt @map("updated_at")
+
+  practitioner       User                  @relation("PatientPractitioner", fields: [practitionerId], references: [id], onDelete: Cascade)
+  clinic             Clinic?               @relation(fields: [clinicId], references: [id], onDelete: SetNull)
+  consultations      Consultation[]
+  allergyEntries     PatientAllergy[]
+  medicationEntries  PatientMedication[]
+  constitutions      PatientConstitution[]
+  referrals          ReferralRequest[]
+
+  @@index([practitionerId, updatedAt])
+  @@index([practitionerId, archived])
+  @@index([clinicId])
+  @@map("patients")
+}
+
+/**
+ * 王琦 9-Constitution result. One row per assessment instance — keep history
+ * so practitioners can see constitutional shift over time.
+ * Scores are 0-100 (CCMI transformed score). Type strings use the pinyin key
+ * from CONSTITUTION_TYPES in src/lib/clinical/constitution-survey.ts.
+ */
+model PatientConstitution {
+  id             String   @id @default(cuid())
+  patientId      String?  @map("patient_id")           // null = anonymous take or PATIENT-role user
+  userId         String?  @map("user_id")              // set when taken by a PATIENT-role user (UserHealthProfile link)
+  practitionerId String?  @map("practitioner_id")      // null = patient self-test
+  scorePingHe    Int      @map("score_ping_he")        // 平和質
+  scoreQiXu      Int      @map("score_qi_xu")          // 氣虛質
+  scoreYangXu    Int      @map("score_yang_xu")        // 陽虛質
+  scoreYinXu     Int      @map("score_yin_xu")         // 陰虛質
+  scoreTanShi    Int      @map("score_tan_shi")        // 痰濕質
+  scoreShiRe     Int      @map("score_shi_re")         // 濕熱質
+  scoreXueYu     Int      @map("score_xue_yu")         // 血瘀質
+  scoreQiYu      Int      @map("score_qi_yu")          // 氣鬱質
+  scoreTeBing    Int      @map("score_te_bing")        // 特稟質
+  primary        String                                 // dominant type
+  secondary      String?                                // second-most type if also ≥ 30
+  notes          String?  @db.Text
+  takenAt        DateTime @default(now()) @map("taken_at")
+
+  patient Patient? @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([patientId, takenAt])
+  @@map("patient_constitutions")
+}
+
+enum AllergyType {
+  DRUG
+  FOOD
+  ENVIRONMENTAL
+  HERB
+  OTHER
+}
+
+enum AllergySeverity {
+  MILD
+  MODERATE
+  SEVERE
+  ANAPHYLAXIS
+  UNKNOWN
+}
+
+model PatientAllergy {
+  id          String          @id @default(cuid())
+  patientId   String          @map("patient_id")
+  type        AllergyType     @default(DRUG)
+  allergen    String                                  // e.g. "Penicillin" / "Peanut" / "Pollen"
+  reaction    String?                                 // e.g. "rash" / "anaphylaxis"
+  severity    AllergySeverity @default(UNKNOWN)
+  notes       String?         @db.Text
+  createdAt   DateTime        @default(now()) @map("created_at")
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([patientId])
+  @@map("patient_allergies")
+}
+
+model PatientMedication {
+  id            String    @id @default(cuid())
+  patientId     String    @map("patient_id")
+  drugGeneric   String    @map("drug_generic")                // matches RxNorm subset key
+  displayName   String    @map("display_name")                // human-friendly form
+  drugClass     String?   @map("drug_class")
+  dose          String?                                       // e.g. "5mg daily"
+  route         String?                                       // PO / SC / IV / topical
+  prn           Boolean   @default(false)
+  startDate     DateTime? @map("start_date")
+  endDate       DateTime? @map("end_date")                    // null = still active
+  notes         String?   @db.Text
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([patientId, endDate])
+  @@map("patient_medications")
+}
+
+enum ConsultationNoteFormat {
+  TCM_FOUR_EXAM     // 四診 (default for TCM practitioners)
+  SOAP              // Western SOAP format
+}
+
+model Consultation {
+  id              String                 @id @default(cuid())
+  patientId       String                 @map("patient_id")
+  practitionerId  String                 @map("practitioner_id")
+  visitDate       DateTime               @default(now()) @map("visit_date")
+  noteFormat      ConsultationNoteFormat @default(TCM_FOUR_EXAM) @map("note_format")
+
+  // Always required regardless of format
+  chiefComplaint  String   @map("chief_complaint") @db.Text
+
+  // 四診 — Four exams (used when noteFormat = TCM_FOUR_EXAM)
+  inquiry         String?  @db.Text                                // 問
+  inspection      String?  @db.Text                                // 望
+  auscultation    String?  @db.Text                                // 聞
+  tongueBody      String?  @map("tongue_body")                     // 切舌：舌質
+  tongueCoat      String?  @map("tongue_coat")                     // 切舌：舌苔
+  tongueNotes     String?  @map("tongue_notes") @db.Text
+  tonguePhotoUrl  String?  @map("tongue_photo_url")
+  pulseLeft       String?  @map("pulse_left")                      // 左寸關尺
+  pulseRight      String?  @map("pulse_right")                     // 右寸關尺
+  pulseNotes      String?  @map("pulse_notes") @db.Text
+
+  // SOAP fields (used when noteFormat = SOAP). Free text — clinician's discretion.
+  soapSubjective String? @map("soap_subjective") @db.Text
+  soapObjective  String? @map("soap_objective") @db.Text
+  soapAssessment String? @map("soap_assessment") @db.Text
+  soapPlan       String? @map("soap_plan") @db.Text
+
+  // Diagnosis
+  patternId          String? @map("pattern_id")
+  patternFreeText    String? @map("pattern_free_text")             // when no DB pattern matches
+  westernDiagnosis   String? @map("western_diagnosis") @db.Text    // optional ICD-style dx alongside the TCM pattern
+  treatmentPrinciple String? @map("treatment_principle") @db.Text
+
+  // Outcome — typically filled at the next visit
+  symptomScoreBefore Int?    @map("symptom_score_before")          // 0–10 VAS
+  symptomScoreAfter  Int?    @map("symptom_score_after")
+  outcomeNotes       String? @map("outcome_notes") @db.Text
+  adverseEffects     String? @map("adverse_effects") @db.Text
+
+  // Follow-up
+  nextVisitDate DateTime? @map("next_visit_date")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  patient      Patient                   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  practitioner User                      @relation("ConsultationPractitioner", fields: [practitionerId], references: [id], onDelete: Cascade)
+  pattern      TcmPattern?               @relation(fields: [patternId], references: [id])
+  prescription ConsultationPrescription?
+  vitals       ConsultationVital[]
+  labs         ConsultationLab[]
+
+  @@index([patientId, visitDate])
+  @@index([practitionerId, visitDate])
+  @@map("consultations")
+}
+
+model ConsultationVital {
+  id                String   @id @default(cuid())
+  consultationId    String   @map("consultation_id")
+  bpSystolic        Int?     @map("bp_systolic")           // mmHg
+  bpDiastolic       Int?     @map("bp_diastolic")          // mmHg
+  heartRate         Int?     @map("heart_rate")            // bpm
+  temperatureC      Float?   @map("temperature_c")         // ℃
+  respirationRate   Int?     @map("respiration_rate")      // breaths/min
+  spo2              Int?                                   // %
+  weightKg          Float?   @map("weight_kg")
+  heightCm          Float?   @map("height_cm")
+  bmi               Float?
+  fastingGlucose    Float?   @map("fasting_glucose")       // mmol/L
+  randomGlucose     Float?   @map("random_glucose")        // mmol/L
+  hba1c             Float?                                  // %
+  notes             String?  @db.Text
+  measuredAt        DateTime @default(now()) @map("measured_at")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  consultation Consultation @relation(fields: [consultationId], references: [id], onDelete: Cascade)
+
+  @@index([consultationId, measuredAt])
+  @@map("consultation_vitals")
+}
+
+model ConsultationLab {
+  id              String   @id @default(cuid())
+  consultationId  String   @map("consultation_id")
+  testName        String   @map("test_name")             // free text or LOINC label
+  loincCode       String?  @map("loinc_code")            // optional, future-proof
+  value           String                                  // free text (numeric or qualitative)
+  unit            String?
+  refRangeLow     Float?   @map("ref_range_low")
+  refRangeHigh    Float?   @map("ref_range_high")
+  abnormal        Boolean? @default(false)               // computed at save time
+  resultDate      DateTime @default(now()) @map("result_date")
+  notes           String?  @db.Text
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  consultation Consultation @relation(fields: [consultationId], references: [id], onDelete: Cascade)
+
+  @@index([consultationId, resultDate])
+  @@map("consultation_labs")
+}
+
+model ConsultationPrescription {
+  id                  String   @id @default(cuid())
+  consultationId      String   @unique @map("consultation_id")
+  formulaId           String?  @map("formula_id")                   // optional base formula
+  dosesPerDay         Int      @default(1) @map("doses_per_day")
+  daysSupply          Int      @default(7) @map("days_supply")
+  preparation         String?  @db.Text                              // 水煎服 / 沖服 / 飯前 / 飯後
+  notes               String?  @db.Text
+  interactionWarnings String?  @map("interaction_warnings") @db.Text // JSON snapshot of warnings at save time
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  consultation Consultation                  @relation(fields: [consultationId], references: [id], onDelete: Cascade)
+  baseFormula  Formula?                      @relation(fields: [formulaId], references: [id])
+  herbs        ConsultationPrescriptionHerb[]
+
+  @@map("consultation_prescriptions")
+}
+
+model ConsultationPrescriptionHerb {
+  id             String  @id @default(cuid())
+  prescriptionId String  @map("prescription_id")
+  herbId         String  @map("herb_id")
+  dosage         String                                              // "9g" / "三錢" / "15g"
+  preparation    String?                                             // 先煎 / 後下 / 沖服 / 包煎
+  notes          String?
+  ordinal        Int     @default(0)
+
+  prescription ConsultationPrescription @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+  herb         Herb                     @relation(fields: [herbId], references: [id])
+
+  @@index([prescriptionId, ordinal])
+  @@map("consultation_prescription_herbs")
+}
+
+// ============================================
+// Domain 10: Food Therapy (食療)
+// Classical TCM food-as-medicine recipes — public-domain formulas like
+// 四神湯、銀耳蓮子湯、當歸生薑羊肉湯. Each recipe declares indication +
+// optionally links to a TCM pattern and 0..N modern conditions.
+// ============================================
+
+model FoodTherapyRecipe {
+  id                 String   @id @default(cuid())
+  chineseName        String
+  pinyinName         String
+  englishName        String?  @map("english_name")
+  category           String   // "Soup" / "Porridge" / "Tea" / "Tonic" / "Dessert" / "Stew" / "Drink"
+  difficulty         String?  // "easy" / "medium" / "hard"
+  servings           Int      @default(2)
+  prepTimeMinutes    Int?     @map("prep_time_minutes")
+  cookTimeMinutes    Int?     @map("cook_time_minutes")
+  ingredients        String   @db.Text             // markdown list, e.g. "- 山藥 30g\n- 蓮子 20g"
+  preparation        String   @db.Text             // step-by-step
+  indication         String   @db.Text             // 適用症狀
+  treatmentPrinciple String?  @map("treatment_principle") @db.Text // 健脾益氣、滋陰潤肺
+  season             String?                       // "spring" / "summer" / "autumn" / "winter" / "all-season"
+  contraindications  String?  @db.Text
+  notes              String?  @db.Text
+  source             String?                       // 《金匱要略》、《飲膳正要》or "公有領域"
+  patternId          String?  @map("pattern_id")
+  status             String   @default("PUBLISHED")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  pattern        TcmPattern?                @relation(fields: [patternId], references: [id])
+  conditionLinks FoodTherapyConditionLink[]
+
+  @@unique([pinyinName])
+  @@index([category])
+  @@index([patternId])
+  @@map("food_therapy_recipes")
+}
+
+model FoodTherapyConditionLink {
+  id          String @id @default(cuid())
+  recipeId    String @map("recipe_id")
+  conditionId String @map("condition_id")
+
+  recipe    FoodTherapyRecipe @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  condition ConditionMapping  @relation(fields: [conditionId], references: [id], onDelete: Cascade)
+
+  @@unique([recipeId, conditionId])
+  @@map("food_therapy_condition_links")
+}
+
+// ============================================
+// Domain 11: Clinic Mode — Multi-Practitioner Collaboration
+// ============================================
+
+enum ClinicRole {
+  OWNER         // can manage members + view audit log
+  PRACTITIONER  // clinical access to all clinic patients
+  RECEPTIONIST  // limited: schedule + demographics only
+}
+
+model Clinic {
+  id        String   @id @default(cuid())
+  name      String
+  address   String?  @db.Text
+  phone     String?
+  email     String?
+  notes     String?  @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  members  ClinicMember[]
+  patients Patient[]
+
+  @@map("clinics")
+}
+
+model ClinicMember {
+  id        String     @id @default(cuid())
+  clinicId  String     @map("clinic_id")
+  userId    String     @map("user_id")
+  role      ClinicRole @default(PRACTITIONER)
+  joinedAt  DateTime   @default(now()) @map("joined_at")
+
+  clinic Clinic @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([clinicId, userId])
+  @@index([userId])
+  @@map("clinic_members")
+}
+
+// ============================================
+// Domain 12: Audit Log (HIPAA-style data-access trail)
+// ============================================
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  actorUserId String   @map("actor_user_id")
+  actorRole   String   @map("actor_role")           // snapshot at access time
+  action      String                                 // "patient.view" / "patient.create" / "consultation.create" / "rx.print" / "audit.view" etc.
+  entityType  String   @map("entity_type")           // "patient" / "consultation" / "clinic"
+  entityId    String?  @map("entity_id")
+  meta        String?  @db.Text                       // JSON blob for extra context
+  ipAddress   String?  @map("ip_address")
+  userAgent   String?  @map("user_agent")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  actor User @relation(fields: [actorUserId], references: [id], onDelete: Cascade)
+
+  @@index([actorUserId, createdAt])
+  @@index([entityType, entityId, createdAt])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// ============================================
+// Domain 13: Referrals — Time-Boxed Patient Sharing
+// ============================================
+
+enum ReferralStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  EXPIRED
+  REVOKED
+}
+
+model ReferralRequest {
+  id           String         @id @default(cuid())
+  patientId    String         @map("patient_id")
+  fromUserId   String         @map("from_user_id")
+  toUserId     String         @map("to_user_id")
+  reason       String?        @db.Text
+  status       ReferralStatus @default(PENDING)
+  expiresAt    DateTime       @map("expires_at")               // hard stop on access
+  acceptedAt   DateTime?      @map("accepted_at")
+  declinedAt   DateTime?      @map("declined_at")
+  revokedAt    DateTime?      @map("revoked_at")
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+
+  patient  Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  fromUser User    @relation("ReferralFrom", fields: [fromUserId], references: [id], onDelete: Cascade)
+  toUser   User    @relation("ReferralTo", fields: [toUserId], references: [id], onDelete: Cascade)
+
+  @@index([toUserId, status, expiresAt])
+  @@index([patientId, status])
+  @@map("referral_requests")
+}
+
+// ============================================
+// Domain 14: Marketing — Email subscribers from lead magnets
+// ============================================
+
+model EmailSubscriber {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  source       String                                 // "cheatsheet-herb-drug-2026" / "newsletter-footer" / etc.
+  name         String?
+  profession   String?                                // "TCM Practitioner" / "MD" / "Student" / "Other"
+  locale       String?                                // "zh-Hant" / "en"
+  confirmed    Boolean  @default(true)               // double-opt-in stub for future
+  unsubscribedAt DateTime? @map("unsubscribed_at")
+  notes        String?  @db.Text
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([source, createdAt])
+  @@index([createdAt])
+  @@map("email_subscribers")
+}
+
+// ============================================
+// Domain 15: Marketing — Certified Clinic applications
+// ============================================
+
+enum ClinicApplicationStatus {
+  PENDING
+  REVIEWING
+  ACCEPTED
+  REJECTED
+  TRAINING
+  CERTIFIED
+  EXPIRED
+}
+
+model CertifiedClinicApplication {
+  id                  String                  @id @default(cuid())
+  clinicName          String                  @map("clinic_name")
+  contactName         String                  @map("contact_name")
+  email               String
+  phone               String?
+  practitionerCount   Int                     @default(1) @map("practitioner_count")
+  district            String?
+  specialties         String?                 @db.Text
+  existingEbtcmAccount Boolean                @default(false) @map("existing_ebtcm_account")
+  ebtcmAccountEmail   String?                 @map("ebtcm_account_email")
+  notes               String?                 @db.Text
+  status              ClinicApplicationStatus @default(PENDING)
+  reviewedAt          DateTime?               @map("reviewed_at")
+  reviewerNotes       String?                 @map("reviewer_notes") @db.Text
+  createdAt           DateTime                @default(now()) @map("created_at")
+  updatedAt           DateTime                @updatedAt @map("updated_at")
+
+  @@index([status, createdAt])
+  @@map("certified_clinic_applications")
+}
+
+// ============================================
+// Domain 16: Famous Doctor / 名醫推薦
+// Curated directory of notable TCM + integrative practitioners by specialty,
+// with biographies, credentials, and documented success cases.
+// ============================================
+
+enum DoctorTier {
+  MASTER      // 國醫大師、傳承大師
+  EXPERT      // 教授級、學科帶頭人
+  SPECIALIST  // 專科專家
+  CERTIFIED   // EBTCM 認證執業者
+}
+
+model FamousDoctor {
+  id              String     @id @default(cuid())
+  // Bilingual identity
+  chineseName     String     @map("chinese_name")
+  englishName     String?    @map("english_name")
+  honorificTitle  String?    @map("honorific_title")           // e.g. "國醫大師" / "終身教授"
+  // Tier + classification
+  tier            DoctorTier @default(SPECIALIST)
+  region          String?                                       // e.g. "Hong Kong" / "Mainland (Beijing)" / "Taiwan"
+  affiliation     String?    @db.Text                            // hospital / university / clinic
+  // Specialty (one primary + tags for cross-listing)
+  primarySpecialty String    @map("primary_specialty")          // canonical key e.g. "internal_medicine"
+  specialtyTags   String[]   @default([]) @map("specialty_tags") // searchable cross-tags
+  // Content
+  bioZh           String     @db.Text @map("bio_zh")
+  bioEn           String?    @db.Text @map("bio_en")
+  philosophyZh    String?    @db.Text @map("philosophy_zh")     // treatment philosophy / signature approach
+  philosophyEn    String?    @db.Text @map("philosophy_en")
+  signatureFormulas String[] @default([]) @map("signature_formulas") // pinyin names of frequently-used formulas
+  // Credentials (one row each, displayed as a list)
+  credentialsJson String?    @db.Text @map("credentials_json")  // JSON: [{year, type, institution, detail}]
+  publicationsJson String?   @db.Text @map("publications_json") // JSON: top 5 papers
+  // Contact (optional, if practitioner consents)
+  consultUrl      String?    @map("consult_url")                // booking link
+  clinicAddress   String?    @map("clinic_address") @db.Text
+  // Media
+  portraitUrl     String?    @map("portrait_url")
+  yearsOfPractice Int?       @map("years_of_practice")
+  // Editorial
+  featured        Boolean    @default(false)
+  status          String     @default("PUBLISHED")              // DRAFT / PUBLISHED / ARCHIVED
+  source          String?                                       // citation for the entry
+  createdAt       DateTime   @default(now()) @map("created_at")
+  updatedAt       DateTime   @updatedAt @map("updated_at")
+
+  successCases   DoctorSuccessCase[]
+
+  @@index([primarySpecialty, tier])
+  @@index([featured, tier])
+  @@map("famous_doctors")
+}
+
+model DoctorSuccessCase {
+  id              String   @id @default(cuid())
+  doctorId        String   @map("doctor_id")
+  // Case identity
+  titleZh         String   @map("title_zh")
+  titleEn         String?  @map("title_en")
+  conditionZh     String?  @map("condition_zh")                // 中醫病名 / 西醫病名
+  conditionEn     String?  @map("condition_en")
+  // Patient summary (anonymized)
+  patientSummary  String?  @db.Text @map("patient_summary")    // "55F, 5-year hx HTN..."
+  // Case narrative
+  presentationZh  String?  @db.Text @map("presentation_zh")
+  presentationEn  String?  @db.Text @map("presentation_en")
+  patternDx       String?  @map("pattern_dx")                  // 辨證
+  treatmentZh     String?  @db.Text @map("treatment_zh")       // 治法 + 處方
+  treatmentEn     String?  @db.Text @map("treatment_en")
+  outcomeZh       String?  @db.Text @map("outcome_zh")         // 隨訪結果
+  outcomeEn       String?  @db.Text @map("outcome_en")
+  // Quantified outcome
+  followUpMonths  Int?     @map("follow_up_months")
+  symptomBefore   String?  @map("symptom_before")              // e.g. "VAS 8/10"
+  symptomAfter    String?  @map("symptom_after")               // e.g. "VAS 1/10"
+  // Evidence cross-ref
+  relatedEvidenceIds String[] @default([]) @map("related_evidence_ids")
+  // Source / consent
+  publishedYear   Int?     @map("published_year")
+  citationSource  String?  @map("citation_source") @db.Text    // 「《XX 學報》2024」 or DOI
+  consentObtained Boolean  @default(false) @map("consent_obtained")
+  // Editorial
+  featured        Boolean  @default(false)
+  status          String   @default("PUBLISHED")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  doctor FamousDoctor @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+
+  @@index([doctorId, featured])
+  @@index([conditionZh])
+  @@map("doctor_success_cases")
+}
+
+// ============================================
+// Domain 17: Marketing — Facebook scheduled posts
+// ============================================
+
+enum FacebookPostStatus {
+  DRAFT
+  SCHEDULED
+  PUBLISHED
+  FAILED
+  CANCELLED
+}
+
+model FacebookScheduledPost {
+  id            String             @id @default(cuid())
+  sourceFile    String             @map("source_file")
+  title         String
+  body          String             @db.Text
+  imagePath     String?            @map("image_path")
+  scheduledFor  DateTime?          @map("scheduled_for")
+  fbPostId      String?            @map("fb_post_id")
+  fbPermalink   String?            @map("fb_permalink")
+  status        FacebookPostStatus @default(DRAFT)
+  errorMessage  String?            @map("error_message") @db.Text
+  publishedAt   DateTime?          @map("published_at")
+  createdAt     DateTime           @default(now()) @map("created_at")
+  updatedAt     DateTime           @updatedAt @map("updated_at")
+
+  @@index([status, scheduledFor])
+  @@index([sourceFile])
+  @@map("facebook_scheduled_posts")
+}
+
+// ============================================
+// Domain 18: Patient Self-Tracking (PATIENT role)
+// Public end-users log their own disease history, symptoms, and periodic
+// health check-ins. Consenting users contribute anonymised data to RWE pool.
+// ============================================
+
+model UserHealthProfile {
+  id                   String    @id @default(cuid())
+  userId               String    @unique @map("user_id")
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dateOfBirth          DateTime? @map("date_of_birth")
+  gender               String?
+  chronicConditions    String[]  @map("chronic_conditions")
+  knownAllergies       String[]  @map("known_allergies")
+  researchConsent      Boolean   @default(false) @map("research_consent")
+  consentedAt          DateTime? @map("consented_at")
+  consentVersion       String?   @map("consent_version")
+  linkedPractitionerId String?   @map("linked_practitioner_id") // practitioner who invited them
+  linkedPatientId      String?   @map("linked_patient_id")      // EMR Patient record
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+
+  symptomLogs   SymptomLog[]
+  conditionLogs UserConditionLog[]
+  checkIns      HealthCheckIn[]
+
+  @@map("user_health_profiles")
+}
+
+model SymptomLog {
+  id          String           @id @default(cuid())
+  profileId   String           @map("profile_id")
+  profile     UserHealthProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  logDate     DateTime         @map("log_date")
+  symptoms    String           @db.Text // JSON: [{name, severity, tcmTag?}]
+  tongueNotes String?          @map("tongue_notes") @db.Text
+  energyLevel Int?             @map("energy_level")   // 1-10
+  sleepQuality Int?            @map("sleep_quality")  // 1-10
+  stressLevel Int?             @map("stress_level")   // 1-10
+  notes       String?          @db.Text
+  createdAt   DateTime         @default(now()) @map("created_at")
+
+  @@index([profileId, logDate])
+  @@map("symptom_logs")
+}
+
+model UserConditionLog {
+  id             String           @id @default(cuid())
+  profileId      String           @map("profile_id")
+  profile        UserHealthProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  conditionId    String?          @map("condition_id")     // FK to ConditionMapping (optional)
+  westernName    String           @map("western_name")
+  icd10Code      String?          @map("icd10_code")
+  tcmPatternId   String?          @map("tcm_pattern_id")   // FK to TcmPattern (optional)
+  tcmPatternFree String?          @map("tcm_pattern_free") // free-text TCM pattern
+  startDate      DateTime?        @map("start_date")
+  endDate        DateTime?        @map("end_date")          // null = still active
+  status         String           @default("ACTIVE")        // ACTIVE / RESOLVED / MANAGED
+  severity       Int?                                        // 1-5
+  notes          String?          @db.Text
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+
+  @@index([profileId, status])
+  @@map("user_condition_logs")
+}
+
+model HealthCheckIn {
+  id               String           @id @default(cuid())
+  profileId        String           @map("profile_id")
+  profile          UserHealthProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  checkInDate      DateTime         @map("check_in_date")
+  overallScore     Int              @map("overall_score")     // VAS 0-10
+  energyScore      Int?             @map("energy_score")
+  painScore        Int?             @map("pain_score")
+  sleepScore       Int?             @map("sleep_score")
+  stressScore      Int?             @map("stress_score")
+  digestiveScore   Int?             @map("digestive_score")
+  activeConditions String?          @map("active_conditions") @db.Text // JSON snapshot
+  notes            String?          @db.Text
+  createdAt        DateTime         @default(now()) @map("created_at")
+
+  @@index([profileId, checkInDate])
+  @@map("health_check_ins")
+}
+
+// ============================================
+// Domain 19: Researcher Platform (RESEARCHER role)
+// Academic/clinical researchers contribute evidence, annotate existing entries,
+// and download anonymised datasets. Profiles require admin verification.
+// ============================================
+
+model ResearcherProfile {
+  id                 String   @id @default(cuid())
+  userId             String   @unique @map("user_id")
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  institution        String?
+  department         String?
+  orcidId            String?  @map("orcid_id")
+  researchAreas      String[] @map("research_areas")
+  publicationsJson   String?  @map("publications_json") @db.Text // JSON array of top publications
+  verificationStatus String   @default("PENDING") @map("verification_status") // PENDING / VERIFIED / REJECTED
+  verifiedAt         DateTime? @map("verified_at")
+  verifiedBy         String?   @map("verified_by")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  contributions EvidenceContribution[]
+  annotations   EvidenceAnnotation[]
+
+  @@map("researcher_profiles")
+}
+
+model EvidenceContribution {
+  id                  String            @id @default(cuid())
+  researcherProfileId String            @map("researcher_profile_id")
+  researcher          ResearcherProfile @relation(fields: [researcherProfileId], references: [id], onDelete: Cascade)
+  title               String
+  authors             String
+  journal             String?
+  year                Int?
+  doi                 String?
+  pmid                String?
+  studyType           StudyType         @map("study_type")
+  pico                String?           @db.Text // JSON: {population, intervention, comparator, outcome}
+  results             String            @db.Text
+  conclusions         String            @db.Text
+  proposedGrade       EvidenceGrade?    @map("proposed_grade")
+  relatedHerbIds      String[]          @map("related_herb_ids")
+  relatedFormulaIds   String[]          @map("related_formula_ids")
+  relatedPatternIds   String[]          @map("related_pattern_ids")
+  relatedConditionIds String[]          @map("related_condition_ids")
+  status              String            @default("PENDING") // PENDING / REVIEWING / ACCEPTED / REJECTED
+  reviewNotes         String?           @map("review_notes") @db.Text
+  reviewedAt          DateTime?         @map("reviewed_at")
+  reviewedBy          String?           @map("reviewed_by")
+  createdAt           DateTime          @default(now()) @map("created_at")
+  updatedAt           DateTime          @updatedAt @map("updated_at")
+
+  @@index([researcherProfileId, status])
+  @@index([status, createdAt])
+  @@map("evidence_contributions")
+}
+
+model EvidenceAnnotation {
+  id             String            @id @default(cuid())
+  evidenceId     String            @map("evidence_id")
+  evidence       EvidenceEntry     @relation(fields: [evidenceId], references: [id], onDelete: Cascade)
+  authorId       String            @map("author_id")
+  author         ResearcherProfile @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  body           String            @db.Text
+  annotationType String            @map("annotation_type") // COMMENT / CRITIQUE / METHODOLOGY_NOTE / CLINICAL_NOTE
+  parentId       String?           @map("parent_id")
+  parent         EvidenceAnnotation?  @relation("AnnotationReplies", fields: [parentId], references: [id])
+  replies        EvidenceAnnotation[] @relation("AnnotationReplies")
+  upvotes        Int               @default(0)
+  createdAt      DateTime          @default(now()) @map("created_at")
+  updatedAt      DateTime          @updatedAt @map("updated_at")
+
+  @@index([evidenceId, createdAt])
+  @@index([authorId])
+  @@map("evidence_annotations")
+}
+
+model DataExportLog {
+  id          String   @id @default(cuid())
+  userId      String   @map("user_id")
+  exportType  String   @map("export_type") // RWE / EVIDENCE / NETWORK_PHARMACOLOGY / CONDITION_OUTCOMES
+  format      String                        // CSV / JSON
+  filters     String?  @db.Text            // JSON
+  recordCount Int?     @map("record_count")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([userId, createdAt])
+  @@map("data_export_logs")
+}

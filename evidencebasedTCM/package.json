@@ -1,0 +1,42 @@
+{
+  "name": "evidence-based-tcm",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "node --require ./scripts/lock-title.js ./node_modules/next/dist/bin/next dev --port 4343",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "seed": "npx tsx prisma/seed.ts",
+    "test:nav-smoke": "node scripts/nav-dropdown-smoke.mjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.93.0",
+    "@prisma/adapter-pg": "^7.6.0",
+    "@prisma/client": "^7.6.0",
+    "bcryptjs": "^3.0.3",
+    "dotenv": "^17.4.0",
+    "next": "16.2.2",
+    "next-auth": "^5.0.0-beta.30",
+    "opencc-js": "^1.0.5",
+    "pg": "^8.20.0",
+    "prisma": "^7.6.0",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "resend": "^6.12.3",
+    "stripe": "^22.1.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.2",
+    "playwright": "^1.50.1",
+    "tailwindcss": "^4",
+    "tsx": "^4.21.0",
+    "typescript": "^5"
+  }
+}

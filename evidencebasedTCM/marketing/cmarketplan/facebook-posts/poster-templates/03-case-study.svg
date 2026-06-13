@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Template 03 — Case Study / Before-After
+  Best for: 真實案例、成功故事、效果對比
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1080" width="1080" height="1080">
+  <!-- Background split -->
+  <rect width="540" height="1080" fill="#fef2f2"/>
+  <rect x="540" width="540" height="1080" fill="#ecfdf5"/>
+
+  <!-- Top label -->
+  <rect x="80" y="80" width="920" height="80" rx="40" fill="#0f172a"/>
+  <text x="540" y="135" font-family="'Source Han Sans TC',sans-serif" font-size="36" fill="#ffffff" font-weight="700" text-anchor="middle">
+    <!-- EDIT: TITLE -->真實案例分享
+  </text>
+
+  <!-- BEFORE column -->
+  <text x="270" y="250" font-family="'Source Han Sans TC',sans-serif" font-size="40" fill="#dc2626" font-weight="800" text-anchor="middle">
+    BEFORE 治療前
+  </text>
+  <line x1="120" y1="280" x2="420" y2="280" stroke="#dc2626" stroke-width="4"/>
+  <text x="270" y="380" font-family="'Source Han Sans TC',sans-serif" font-size="32" fill="#0f172a" font-weight="500" text-anchor="middle">
+    <!-- EDIT: BEFORE 1 -->頭痛 2 週
+  </text>
+  <text x="270" y="440" font-family="'Source Han Sans TC',sans-serif" font-size="32" fill="#0f172a" font-weight="500" text-anchor="middle">
+    <!-- EDIT: BEFORE 2 -->VAS 8/10
+  </text>
+  <text x="270" y="500" font-family="'Source Han Sans TC',sans-serif" font-size="32" fill="#0f172a" font-weight="500" text-anchor="middle">
+    <!-- EDIT: BEFORE 3 -->入睡需 2 小時
+  </text>
+  <text x="270" y="560" font-family="'Source Han Sans TC',sans-serif" font-size="32" fill="#0f172a" font-weight="500" text-anchor="middle">
+    <!-- EDIT: BEFORE 4 -->藥物無效
+  </text>
+
+  <!-- Arrow / transition -->
+  <text x="540" y="640" font-family="Inter,sans-serif" font-size="60" fill="#0f172a" font-weight="800" text-anchor="middle">→</text>
+
+  <!-- AFTER column -->
+  <text x="810" y="250" font-family="'Source Han Sans TC',sans-serif" font-size="40" fill="#10b981" font-weight="800" text-anchor="middle">
+    AFTER 治療後
+  </text>
+  <line x1="660" y1="280" x2="960" y2="280" stroke="#10b981" stroke-width="4"/>
+  <text x="810" y="380" font-family="'Source Han Sans TC',sans-serif" font-size="32" fill="#0f172a" font-weight="500" text-anchor="middle">
+    <!-- EDIT: AFTER 1 -->頭痛緩解
+  </text>
+  <text x="810" y="440" font-family="'Source Han Sans TC',sans-serif" font-size="32" fill="#0f172a" font-weight="500" text-anchor="middle">
+    <!-- EDIT: AFTER 2 -->VAS 1/10
+  </text>
+  <text x="810" y="500" font-family="'Source Han Sans TC',sans-serif" font-size="32" fill="#0f172a" font-weight="500" text-anchor="middle">
+    <!-- EDIT: AFTER 3 -->30 分鐘入睡
+  </text>
+  <text x="810" y="560" font-family="'Source Han Sans TC',sans-serif" font-size="32" fill="#0f172a" font-weight="500" text-anchor="middle">
+    <!-- EDIT: AFTER 4 -->4 週療程
+  </text>
+
+  <!-- Pattern dx -->
+  <rect x="80" y="720" width="920" height="120" rx="15" fill="#ffffff" stroke="#0f172a" stroke-width="3"/>
+  <text x="540" y="765" font-family="'Source Han Sans TC',sans-serif" font-size="24" fill="#64748b" font-weight="500" text-anchor="middle">
+    辨證 · TCM Pattern Diagnosis
+  </text>
+  <text x="540" y="815" font-family="'Source Han Sans TC',sans-serif" font-size="38" fill="#0f172a" font-weight="700" text-anchor="middle">
+    <!-- EDIT: PATTERN -->肝陽上亢 · 治法：平肝潛陽
+  </text>
+
+  <!-- Footer -->
+  <text x="540" y="930" font-family="'Source Han Sans TC',sans-serif" font-size="22" fill="#64748b" font-weight="400" text-anchor="middle">
+    <!-- EDIT: CITATION -->案例來源：《中醫雜誌》2010 年 · 病人資料已去識別化
+  </text>
+  <text x="540" y="990" font-family="Inter,sans-serif" font-size="22" fill="#10b981" font-weight="600" text-anchor="middle">
+    更多案例 → evidencebasedtcm.com/doctors
+  </text>
+  <text x="540" y="1040" font-family="Inter,sans-serif" font-size="18" fill="#94a3b8" font-weight="400" text-anchor="middle">
+    EBTCM · 實證中醫
+  </text>
+</svg>

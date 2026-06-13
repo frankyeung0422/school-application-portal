@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Template 04 — Doctor Spotlight
+  Best for: 12 famous doctors, weekly spotlight series
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1080" width="1080" height="1080">
+  <!-- Background -->
+  <rect width="1080" height="1080" fill="#fefce8"/>
+
+  <!-- Decorative side bar -->
+  <rect x="0" y="0" width="80" height="1080" fill="#0f172a"/>
+  <rect x="0" y="0" width="80" height="180" fill="#f59e0b"/>
+
+  <!-- "名醫推薦" vertical label -->
+  <text transform="rotate(-90 40 540)" x="40" y="540" font-family="'Source Han Sans TC',sans-serif" font-size="32" fill="#fefce8" font-weight="700" text-anchor="middle" letter-spacing="10">
+    名醫推薦
+  </text>
+
+  <!-- Doctor photo circle (placeholder) — replace with actual portrait -->
+  <circle cx="540" cy="320" r="180" fill="#0f172a" stroke="#f59e0b" stroke-width="8"/>
+  <text x="540" y="380" font-family="'Source Han Sans TC',sans-serif" font-size="180" fill="#f59e0b" font-weight="800" text-anchor="middle">
+    <!-- EDIT: SURNAME -->張
+  </text>
+
+  <!-- Doctor name -->
+  <text x="540" y="600" font-family="'Source Han Sans TC',sans-serif" font-size="84" fill="#0f172a" font-weight="800" text-anchor="middle">
+    <!-- EDIT: FULL NAME -->張仲景
+  </text>
+
+  <!-- Honorific -->
+  <text x="540" y="660" font-family="'Source Han Sans TC',sans-serif" font-size="36" fill="#f59e0b" font-weight="600" text-anchor="middle">
+    <!-- EDIT: HONORIFIC -->醫聖 · 東漢
+  </text>
+
+  <!-- Quote box -->
+  <rect x="160" y="730" width="880" height="200" rx="20" fill="#0f172a"/>
+  <text x="600" y="790" font-family="'Source Han Sans TC',sans-serif" font-size="40" fill="#f59e0b" font-weight="700" text-anchor="middle">
+    "
+  </text>
+  <text x="600" y="850" font-family="'Source Han Sans TC',sans-serif" font-size="34" fill="#ffffff" font-weight="500" text-anchor="middle">
+    <!-- EDIT: QUOTE LINE 1 -->觀其脈證，知犯何逆，
+  </text>
+  <text x="600" y="900" font-family="'Source Han Sans TC',sans-serif" font-size="34" fill="#ffffff" font-weight="500" text-anchor="middle">
+    <!-- EDIT: QUOTE LINE 2 -->隨證治之。
+  </text>
+
+  <!-- Bottom CTA -->
+  <text x="600" y="990" font-family="'Source Han Sans TC',sans-serif" font-size="26" fill="#0f172a" font-weight="600" text-anchor="middle">
+    了解更多 12 位名醫故事
+  </text>
+  <text x="600" y="1030" font-family="Inter,sans-serif" font-size="22" fill="#10b981" font-weight="700" text-anchor="middle">
+    evidencebasedtcm.com/doctors
+  </text>
+</svg>

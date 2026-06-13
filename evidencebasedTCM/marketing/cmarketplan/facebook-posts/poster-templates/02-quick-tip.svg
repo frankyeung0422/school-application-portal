@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Template 02 — Quick Tip / Food Therapy Card
+  Best for: 食療提示、日常小貼士、季節養生
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1080" width="1080" height="1080">
+  <!-- Background gradient -->
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ecfdf5"/>
+      <stop offset="100%" stop-color="#fefce8"/>
+    </linearGradient>
+  </defs>
+  <rect width="1080" height="1080" fill="url(#bgGrad)"/>
+
+  <!-- Top badge -->
+  <rect x="80" y="100" width="280" height="60" rx="30" fill="#10b981"/>
+  <text x="220" y="142" font-family="'Source Han Sans TC',sans-serif" font-size="30" fill="#ffffff" font-weight="700" text-anchor="middle">
+    <!-- EDIT: TAG -->🍵 食療小貼士
+  </text>
+
+  <!-- Headline -->
+  <text x="80" y="280" font-family="'Source Han Sans TC',sans-serif" font-size="72" fill="#0f172a" font-weight="800">
+    <!-- EDIT: HEADLINE LINE 1 -->銀耳蓮子湯
+  </text>
+  <text x="80" y="370" font-family="'Source Han Sans TC',sans-serif" font-size="44" fill="#10b981" font-weight="600">
+    <!-- EDIT: HEADLINE LINE 2 -->秋季養肺潤燥首選
+  </text>
+
+  <!-- Decorative emoji circle (replace with image if you have one) -->
+  <circle cx="540" cy="540" r="100" fill="#fef3c7" stroke="#f59e0b" stroke-width="6"/>
+  <text x="540" y="580" font-size="120" text-anchor="middle">
+    <!-- EDIT: EMOJI -->🥣
+  </text>
+
+  <!-- Three benefits -->
+  <text x="80" y="730" font-family="'Source Han Sans TC',sans-serif" font-size="34" fill="#0f172a" font-weight="600">
+    <!-- EDIT: BENEFIT 1 -->✓ 滋陰潤肺，止燥咳
+  </text>
+  <text x="80" y="790" font-family="'Source Han Sans TC',sans-serif" font-size="34" fill="#0f172a" font-weight="600">
+    <!-- EDIT: BENEFIT 2 -->✓ 養胃生津，潤腸通便
+  </text>
+  <text x="80" y="850" font-family="'Source Han Sans TC',sans-serif" font-size="34" fill="#0f172a" font-weight="600">
+    <!-- EDIT: BENEFIT 3 -->✓ 清心安神，改善失眠
+  </text>
+
+  <!-- Bottom note -->
+  <rect x="80" y="920" width="920" height="100" rx="15" fill="#0f172a"/>
+  <text x="540" y="965" font-family="'Source Han Sans TC',sans-serif" font-size="28" fill="#ffffff" font-weight="500" text-anchor="middle">
+    <!-- EDIT: BOTTOM NOTE -->⚠ 風寒咳嗽痰多者不宜
+  </text>
+  <text x="540" y="1000" font-family="Inter,sans-serif" font-size="22" fill="#94a3b8" font-weight="400" text-anchor="middle">
+    evidencebasedtcm.com/food-therapy
+  </text>
+</svg>

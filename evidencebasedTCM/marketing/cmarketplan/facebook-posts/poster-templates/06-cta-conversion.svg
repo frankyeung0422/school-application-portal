@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Template 06 — Direct Call-to-Action
+  Best for: free trial, certification application, demo booking
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1080" width="1080" height="1080">
+  <!-- Background -->
+  <rect width="1080" height="1080" fill="#fefce8"/>
+
+  <!-- Decorative corner accents -->
+  <polygon points="0,0 200,0 0,200" fill="#10b981"/>
+  <polygon points="1080,1080 880,1080 1080,880" fill="#f59e0b"/>
+
+  <!-- Headline emoji -->
+  <text x="540" y="260" font-family="'Source Han Sans TC',sans-serif" font-size="120" text-anchor="middle">
+    <!-- EDIT: EMOJI -->🩺
+  </text>
+
+  <!-- Headline -->
+  <text x="540" y="380" font-family="'Source Han Sans TC',sans-serif" font-size="68" fill="#0f172a" font-weight="800" text-anchor="middle">
+    <!-- EDIT: HEADLINE LINE 1 -->14 天免費試用
+  </text>
+  <text x="540" y="470" font-family="'Source Han Sans TC',sans-serif" font-size="68" fill="#10b981" font-weight="800" text-anchor="middle">
+    <!-- EDIT: HEADLINE LINE 2 -->EBTCM Pro
+  </text>
+
+  <!-- Value props -->
+  <text x="540" y="580" font-family="'Source Han Sans TC',sans-serif" font-size="32" fill="#0f172a" font-weight="500" text-anchor="middle">
+    <!-- EDIT: VALUE 1 -->✅ 病人病歷管理（無限制）
+  </text>
+  <text x="540" y="640" font-family="'Source Han Sans TC',sans-serif" font-size="32" fill="#0f172a" font-weight="500" text-anchor="middle">
+    <!-- EDIT: VALUE 2 -->✅ 中藥-西藥自動配伍警示
+  </text>
+  <text x="540" y="700" font-family="'Source Han Sans TC',sans-serif" font-size="32" fill="#0f172a" font-weight="500" text-anchor="middle">
+    <!-- EDIT: VALUE 3 -->✅ AI 處方拍照辨識
+  </text>
+  <text x="540" y="760" font-family="'Source Han Sans TC',sans-serif" font-size="32" fill="#0f172a" font-weight="500" text-anchor="middle">
+    <!-- EDIT: VALUE 4 -->✅ 四診 / SOAP 雙模式
+  </text>
+
+  <!-- Price strip -->
+  <text x="540" y="850" font-family="Inter,sans-serif" font-size="40" fill="#64748b" font-weight="600" text-anchor="middle">
+    試用後 HK$280/月 · 可隨時取消
+  </text>
+
+  <!-- Big CTA button -->
+  <rect x="180" y="900" width="720" height="120" rx="60" fill="#10b981"/>
+  <text x="540" y="978" font-family="'Source Han Sans TC',sans-serif" font-size="44" fill="#ffffff" font-weight="800" text-anchor="middle">
+    <!-- EDIT: CTA -->立即註冊 → evidencebasedtcm.com
+  </text>
+
+  <!-- Bottom note -->
+  <text x="540" y="1055" font-family="'Source Han Sans TC',sans-serif" font-size="20" fill="#94a3b8" font-weight="400" text-anchor="middle">
+    無需信用卡 · 註冊後即時開通
+  </text>
+</svg>
