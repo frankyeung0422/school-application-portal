@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
+import { DISEASE_CATALOG } from "@/lib/research/disease-catalog";
 import { prisma } from "@/lib/db/prisma";
 import { getLocale } from "@/lib/i18n/locale-server";
 import { getMessages } from "@/lib/i18n/messages";
@@ -74,25 +75,33 @@ const featureDefs = [
 
 async function getLiveStats() {
   try {
-    const [herbs, formulas, acupoints, patterns, evidence] = await Promise.all([
+    const [herbs, formulas, acupoints, evidence, targets, trials, researchers] = await Promise.all([
       prisma.herb.count({ where: { status: "PUBLISHED" } }),
       prisma.formula.count({ where: { status: "PUBLISHED" } }),
       prisma.acupuncturePoint.count({ where: { status: "PUBLISHED" } }),
-      prisma.tcmPattern.count({ where: { status: "PUBLISHED" } }),
       prisma.evidenceEntry.count({ where: { status: "PUBLISHED" } }),
+      prisma.proteinTarget.count(),
+      prisma.clinicalTrial.count(),
+      prisma.researcherProfile.count({ where: { verificationStatus: "VERIFIED" } }),
     ]);
     return [
-      { value: herbs || "50+", labelKey: "home.statsHerbs" as const },
-      { value: formulas || "20+", labelKey: "home.statsFormulas" as const },
-      { value: acupoints || "30+", labelKey: "home.statsAcu" as const },
-      { value: evidence || "30+", labelKey: "home.statsEvidence" as const },
+      { value: herbs || "500+", labelKey: "home.statsHerbs" as const },
+      { value: formulas || "50+", labelKey: "home.statsFormulas" as const },
+      { value: acupoints || "50+", labelKey: "home.statsAcu" as const },
+      { value: evidence || "300+", labelKey: "home.statsEvidence" as const },
+      { value: targets || "200+", labelKey: "home.statsTargets" as const },
+      { value: trials || "100+", labelKey: "home.statsTrials" as const },
+      { value: researchers || "0", labelKey: "home.statsResearchers" as const },
     ];
   } catch {
     return [
-      { value: "50+", labelKey: "home.statsHerbs" as const },
-      { value: "20+", labelKey: "home.statsFormulas" as const },
-      { value: "30+", labelKey: "home.statsAcu" as const },
-      { value: "30+", labelKey: "home.statsEvidence" as const },
+      { value: "500+", labelKey: "home.statsHerbs" as const },
+      { value: "50+", labelKey: "home.statsFormulas" as const },
+      { value: "50+", labelKey: "home.statsAcu" as const },
+      { value: "300+", labelKey: "home.statsEvidence" as const },
+      { value: "200+", labelKey: "home.statsTargets" as const },
+      { value: "100+", labelKey: "home.statsTrials" as const },
+      { value: "0", labelKey: "home.statsResearchers" as const },
     ];
   }
 }
@@ -150,14 +159,16 @@ const EXPLAINER_STYLE: Record<string, { color: string; dot: string }> = {
 export default async function HomePage() {
   const locale = await getLocale();
   const messages = getMessages(locale);
-  const [stats, gradeDistribution, studyTypeDistribution] = await Promise.all([
+  const [stats, gradeDistribution, studyTypeDistribution, trialsByDisease] = await Promise.all([
     getLiveStats(),
     getGradeDistribution(),
     getStudyTypeDistribution(),
+    prisma.clinicalTrial.groupBy({ by: ["diseaseId"], _count: true }).catch(() => [] as { diseaseId: string; _count: number }[]),
   ]);
 
   const totalEvidence = gradeDistribution.reduce((sum, g) => sum + g._count, 0);
   const totalStudies = studyTypeDistribution.reduce((sum, s) => sum + s._count, 0);
+  const trialCountById = new Map(trialsByDisease.map(r => [r.diseaseId, r._count]));
 
   return (
     <div>
@@ -200,11 +211,11 @@ export default async function HomePage() {
       </section>
 
       <section className="border-b border-border bg-surface py-8 px-4">
-        <div className="mx-auto max-w-4xl grid grid-cols-2 sm:grid-cols-4 gap-8 text-center">
+        <div className="mx-auto max-w-5xl grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-6 text-center">
           {stats.map((stat) => (
             <div key={stat.labelKey}>
-              <div className="text-3xl font-bold text-primary">{stat.value}</div>
-              <div className="mt-1 text-sm text-muted">{t(messages, stat.labelKey)}</div>
+              <div className="text-2xl font-bold text-primary">{stat.value}</div>
+              <div className="mt-1 text-xs text-muted">{t(messages, stat.labelKey)}</div>
             </div>
           ))}
         </div>
@@ -231,6 +242,41 @@ export default async function HomePage() {
                 </p>
               </Link>
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Disease research modules */}
+      <section className="border-t border-border py-16 px-4">
+        <div className="mx-auto max-w-6xl">
+          <h2 className="text-2xl font-bold text-center mb-2">{t(messages, "home.diseaseResearchHeading")}</h2>
+          <p className="text-center text-muted mb-10 max-w-2xl mx-auto">{t(messages, "home.diseaseResearchLead")}</p>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+            {DISEASE_CATALOG.map(d => {
+              const trials = trialCountById.get(d.id) ?? 0;
+              const isZh = locale === "zh-Hant";
+              return (
+                <Link key={d.id} href={`/research/${d.id}`}
+                  className="rounded-xl border border-border bg-surface p-4 hover:shadow-md hover:border-primary transition-all group">
+                  <p className="font-semibold text-foreground group-hover:text-primary transition-colors text-sm">
+                    {isZh ? d.nameZh : d.nameEn}
+                  </p>
+                  {!isZh && <p className="text-xs text-muted mt-0.5">{d.nameZh}</p>}
+                  <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+                    {trials > 0 && (
+                      <span className="text-[11px] text-muted">🧪 {trials} {isZh ? "試驗" : "trials"}</span>
+                    )}
+                    <span className="text-[11px] text-muted">🔬 {isZh ? "網絡藥理" : "Network pharm."}</span>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+          <div className="text-center mt-6">
+            <Link href="/research/dashboard"
+              className="text-sm text-primary hover:underline font-medium">
+              {locale === "zh-Hant" ? "查看完整研究儀表板 →" : "Open full research dashboard →"}
+            </Link>
           </div>
         </div>
       </section>
