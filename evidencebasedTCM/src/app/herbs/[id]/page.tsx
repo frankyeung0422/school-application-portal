@@ -151,6 +151,30 @@ export default async function HerbDetailPage({ params }: Props) {
         </div>
       )}
 
+      {(herb.classicalFunctions || herb.classicalIndications || herb.processingMethods) && (
+        <div className="rounded-lg border border-border bg-surface p-4 space-y-3">
+          <h3 className="text-base font-semibold">{zh ? "《中藥學》傳統功效" : "Classical Herb Data (TCM Materia Medica)"}</h3>
+          {herb.classicalFunctions && (
+            <div>
+              <span className="text-xs font-semibold text-muted uppercase tracking-wider">{zh ? "功效" : "Functions"}</span>
+              <p className="mt-1 text-sm leading-relaxed">{herb.classicalFunctions}</p>
+            </div>
+          )}
+          {herb.classicalIndications && (
+            <div>
+              <span className="text-xs font-semibold text-muted uppercase tracking-wider">{zh ? "主治" : "Indications"}</span>
+              <p className="mt-1 text-sm leading-relaxed">{herb.classicalIndications}</p>
+            </div>
+          )}
+          {herb.processingMethods && (
+            <div>
+              <span className="text-xs font-semibold text-muted uppercase tracking-wider">{zh ? "炮製" : "Processing"}</span>
+              <p className="mt-1 text-sm leading-relaxed">{herb.processingMethods}</p>
+            </div>
+          )}
+        </div>
+      )}
+
       {herb.activeCompounds.length > 0 && (
         <div>
           <h3 className="text-lg font-semibold mb-3">{t(messages, "herbDetail.activeCompounds")}</h3>
@@ -523,6 +547,19 @@ export default async function HerbDetailPage({ params }: Props) {
             color="bg-emerald-100 text-emerald-800"
             size="md"
           />
+          {herb.toxicityClass && herb.toxicityClass !== "無毒" && (
+            <Badge
+              label={herb.toxicityClass}
+              color={
+                herb.toxicityClass === "大毒"
+                  ? "bg-red-100 text-red-800 border-red-400"
+                  : herb.toxicityClass === "有毒"
+                    ? "bg-orange-100 text-orange-800 border-orange-400"
+                    : "bg-yellow-100 text-yellow-800 border-yellow-400"
+              }
+              size="md"
+            />
+          )}
           <SafetyBadges herbId={herb.id} locale={locale} />
         </div>
       </div>

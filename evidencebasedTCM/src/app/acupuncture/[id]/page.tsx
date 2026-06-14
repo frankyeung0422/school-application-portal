@@ -53,6 +53,38 @@ export default async function AcupointDetailPage({ params }: Props) {
   const titleSecondary = locale === "zh-Hant" ? acupoint.pinyinName : chineseTc;
   const breadcrumbTitle = `${acupoint.code} ${titlePrimary}`;
 
+  const zh = locale === "zh-Hant";
+
+  const FUNC_CAT_LABEL: Record<string, string> = {
+    "Jing-Well": zh ? "井穴" : "Jing-Well",
+    "Ying-Spring": zh ? "滎穴" : "Ying-Spring",
+    "Shu-Stream": zh ? "輸穴" : "Shu-Stream",
+    "Jing-River": zh ? "經穴" : "Jing-River",
+    "He-Sea": zh ? "合穴" : "He-Sea",
+    "Yuan-Source": zh ? "原穴" : "Yuan-Source",
+    "Luo-Connecting": zh ? "絡穴" : "Luo-Connecting",
+    "Xi-Cleft": zh ? "郄穴" : "Xi-Cleft",
+    "Back-Shu": zh ? "背俞穴" : "Back-Shu",
+    "Front-Mu": zh ? "募穴" : "Front-Mu",
+    "Confluent": zh ? "八脈交會穴" : "Confluent (8 Extra Vessels)",
+    "Hui-Meeting": zh ? "八會穴" : "Hui-Meeting",
+    "Command": zh ? "四總穴" : "Command",
+    "Four-Command": zh ? "四總穴" : "Four-Command",
+    "Lower-He-Sea": zh ? "下合穴" : "Lower He-Sea",
+    "Ghost-Point": zh ? "十三鬼穴" : "Ghost Point",
+    "Window-of-Heaven": zh ? "天窗穴" : "Window of Heaven",
+    "Three-Yin-Intersection": zh ? "三陰交" : "Three Yin Intersection",
+    "Sea-of-Blood": zh ? "血海" : "Sea of Blood",
+    "Major-Luo": zh ? "大絡" : "Major Luo",
+    "Hundred-Convergences": zh ? "百會" : "Hundred Convergences",
+    "Gate-of-Life": zh ? "命門" : "Gate of Life",
+    "Sea-of-Yang": zh ? "陽脈之海" : "Sea of Yang",
+    "Three-Yang-Intersection": zh ? "三陽交會" : "Three Yang Intersection",
+    "Sea-of-Qi": zh ? "氣海" : "Sea of Qi",
+    "Life-Gate-Navel": zh ? "神闕（禁針）" : "Life-Gate Navel (no needle)",
+    "Dai-Mai": zh ? "帶脈" : "Dai Mai",
+  };
+
   const overviewTab = (
     <div className="space-y-8">
       <div className="grid gap-4 sm:grid-cols-2">
@@ -76,7 +108,41 @@ export default async function AcupointDetailPage({ params }: Props) {
             <p className="font-medium">{localizeDbText(acupoint.depth, locale)}</p>
           </div>
         )}
+        {acupoint.needleAngle && (
+          <div className="rounded-lg border border-border p-4">
+            <h4 className="text-xs font-semibold text-muted uppercase tracking-wider mb-1">
+              {zh ? "進針角度" : "Needle Angle"}
+            </h4>
+            <p className="font-medium text-sm">{acupoint.needleAngle}</p>
+          </div>
+        )}
       </div>
+
+      {/* Moxa / Pregnancy safety badges */}
+      {(acupoint.moxaApplicable !== null || acupoint.pregnancyContraindicated !== null || (acupoint.functionalCategories ?? []).length > 0) && (
+        <div className="flex flex-wrap gap-2">
+          {acupoint.moxaApplicable === true && !acupoint.moxaContraindicated && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-800">
+              🔥 {zh ? "可灸" : "Moxa OK"}
+            </span>
+          )}
+          {acupoint.moxaContraindicated && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-red-300 bg-red-50 px-3 py-1 text-xs font-medium text-red-700">
+              🚫 {zh ? "禁灸" : "No Moxa"}
+            </span>
+          )}
+          {acupoint.pregnancyContraindicated && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-pink-300 bg-pink-50 px-3 py-1 text-xs font-medium text-pink-700">
+              🤰 {zh ? "孕婦禁針" : "Pregnancy CI"}
+            </span>
+          )}
+          {(acupoint.functionalCategories ?? []).map((cat) => (
+            <span key={cat} className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-800">
+              {FUNC_CAT_LABEL[cat] ?? cat}
+            </span>
+          ))}
+        </div>
+      )}
 
       {acupoint.location && (
         <div>

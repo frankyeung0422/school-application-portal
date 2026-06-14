@@ -38,6 +38,11 @@ model Herb {
   description        String?    @db.Text
   modernPharmacology String?    @map("modern_pharmacology") @db.Text
   imageUrl           String?    @map("image_url")
+  // Classical herb data (《中藥學》 standard)
+  toxicityClass      String?    @map("toxicity_class")       // "無毒" | "小毒" | "有毒" | "大毒"
+  classicalFunctions String?    @map("classical_functions") @db.Text  // 功效 (primary therapeutic actions)
+  classicalIndications String?  @map("classical_indications") @db.Text // 主治 (classical indications)
+  processingMethods  String?    @map("processing_methods") @db.Text    // 炮製 (processing/preparation methods)
   status             HerbStatus @default(PUBLISHED)
   createdAt          DateTime   @default(now()) @map("created_at")
   updatedAt          DateTime   @updatedAt @map("updated_at")
@@ -155,25 +160,48 @@ enum FormulaHerbRole {
 }
 
 model Formula {
-  id            String     @id @default(cuid())
-  pinyinName    String     @map("pinyin_name")
-  chineseName   String     @map("chinese_name")
-  englishName   String?    @map("english_name")
-  sourceText    String?    @map("source_text")
-  category      String
-  actions       String?    @db.Text
-  indications   String?    @db.Text
-  modifications String?    @db.Text
-  status        HerbStatus @default(PUBLISHED)
-  createdAt     DateTime   @default(now()) @map("created_at")
-  updatedAt     DateTime   @updatedAt @map("updated_at")
+  id                 String     @id @default(cuid())
+  pinyinName         String     @map("pinyin_name")
+  chineseName        String     @map("chinese_name")
+  englishName        String?    @map("english_name")
+  sourceText         String?    @map("source_text")
+  category           String
+  actions            String?    @db.Text
+  indications        String?    @db.Text
+  modifications      String?    @db.Text
+  contraindications  String?    @map("contraindications") @db.Text  // 禁忌
+  dosageInstructions String?    @map("dosage_instructions") @db.Text // 用法用量
+  status             HerbStatus @default(PUBLISHED)
+  createdAt          DateTime   @default(now()) @map("created_at")
+  updatedAt          DateTime   @updatedAt @map("updated_at")
 
   herbs                FormulaHerb[]
   patternFormulas      PatternFormula[]
   evidenceLinks        EvidenceFormulaLink[]
   consultationPrescriptions ConsultationPrescription[]
+  lineages             FormulaLineage[]               @relation("SourceFormula")
+  derivedLineages      FormulaLineage[]               @relation("DerivedFormula")
 
   @@map("formulas")
+}
+
+// Formula lineage — tracks classical derivations and modifications.
+// e.g. 六味地黃丸 → 知柏地黃丸 (加知母、黃柏), 桂枝湯 → 桂枝加芍藥湯
+model FormulaLineage {
+  id              String  @id @default(cuid())
+  sourceFormulaId String  @map("source_formula_id")
+  derivedFormulaId String @map("derived_formula_id")
+  relationship    String  // "modification" | "reduction" | "expansion" | "combination"
+  changeDescription String? @map("change_description") @db.Text // 加減說明
+  classicalSource String? @map("classical_source")             // 《傷寒論》/ 《溫病條辨》
+
+  sourceFormula  Formula @relation("SourceFormula", fields: [sourceFormulaId], references: [id], onDelete: Cascade)
+  derivedFormula Formula @relation("DerivedFormula", fields: [derivedFormulaId], references: [id], onDelete: Cascade)
+
+  @@unique([sourceFormulaId, derivedFormulaId])
+  @@index([sourceFormulaId])
+  @@index([derivedFormulaId])
+  @@map("formula_lineages")
 }
 
 model FormulaHerb {
@@ -192,21 +220,26 @@ model FormulaHerb {
 }
 
 model AcupuncturePoint {
-  id                String     @id @default(cuid())
-  code              String     @unique
-  pinyinName        String     @map("pinyin_name")
-  chineseName       String     @map("chinese_name")
-  englishName       String?    @map("english_name")
-  meridian          String
-  location          String?    @db.Text
-  depth             String?
-  actions           String?    @db.Text
-  indications       String?    @db.Text
-  contraindications String?    @db.Text
-  imageUrl          String?    @map("image_url")
-  status            HerbStatus @default(PUBLISHED)
-  createdAt         DateTime   @default(now()) @map("created_at")
-  updatedAt         DateTime   @updatedAt @map("updated_at")
+  id                      String     @id @default(cuid())
+  code                    String     @unique
+  pinyinName              String     @map("pinyin_name")
+  chineseName             String     @map("chinese_name")
+  englishName             String?    @map("english_name")
+  meridian                String
+  location                String?    @db.Text
+  depth                   String?
+  needleAngle             String?    @map("needle_angle")        // "直刺" | "斜刺" | "平刺" | angle in degrees
+  actions                 String?    @db.Text
+  indications             String?    @db.Text
+  contraindications       String?    @db.Text
+  moxaApplicable          Boolean?   @map("moxa_applicable")     // 可灸
+  moxaContraindicated     Boolean?   @map("moxa_contraindicated") // 禁灸
+  pregnancyContraindicated Boolean?  @map("pregnancy_contraindicated") // 孕婦禁針
+  functionalCategories    String[]   @default([]) @map("functional_categories") // e.g. ["Yuan-Source","He-Sea","Confluent"]
+  imageUrl                String?    @map("image_url")
+  status                  HerbStatus @default(PUBLISHED)
+  createdAt               DateTime   @default(now()) @map("created_at")
+  updatedAt               DateTime   @updatedAt @map("updated_at")
 
   patternAcupoints PatternAcupoint[]
   evidenceLinks    EvidenceAcupointLink[]
@@ -241,6 +274,7 @@ model TcmPattern {
   tongue             String?
   pulse              String?
   treatmentPrinciple String?       @map("treatment_principle") @db.Text
+  contraindications  String?       @map("contraindications") @db.Text // 禁忌（如虛寒者忌用清熱法）
   status             HerbStatus    @default(PUBLISHED)
   createdAt          DateTime      @default(now()) @map("created_at")
   updatedAt          DateTime      @updatedAt @map("updated_at")

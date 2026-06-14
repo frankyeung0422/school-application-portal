@@ -61,6 +61,16 @@ export default async function FormulaDetailPage({ params }: Props) {
       evidenceLinks: {
         include: { evidence: true },
       },
+      lineages: {
+        include: {
+          derivedFormula: { select: { id: true, pinyinName: true, chineseName: true } },
+        },
+      },
+      derivedLineages: {
+        include: {
+          sourceFormula: { select: { id: true, pinyinName: true, chineseName: true } },
+        },
+      },
     },
   });
 
@@ -292,6 +302,68 @@ export default async function FormulaDetailPage({ params }: Props) {
           </div>
         )}
       </div>
+
+      {formula.dosageInstructions && (
+        <div>
+          <h3 className="text-lg font-semibold mb-2">{zh ? "用法用量" : "Dosage & Administration"}</h3>
+          <p className="text-sm text-muted leading-relaxed whitespace-pre-line">
+            {formula.dosageInstructions}
+          </p>
+        </div>
+      )}
+
+      {formula.contraindications && (
+        <div className="rounded-lg border border-orange-200 bg-orange-50 p-4">
+          <h3 className="text-base font-semibold text-orange-900 mb-1">
+            {zh ? "⚠ 禁忌" : "⚠ Contraindications"}
+          </h3>
+          <p className="text-sm text-orange-800 leading-relaxed whitespace-pre-line">
+            {formula.contraindications}
+          </p>
+        </div>
+      )}
+
+      {(formula.lineages.length > 0 || formula.derivedLineages.length > 0) && (
+        <div>
+          <h3 className="text-lg font-semibold mb-3">{zh ? "方劑源流" : "Formula Lineage"}</h3>
+          {formula.derivedLineages.length > 0 && (
+            <div className="mb-3">
+              <p className="text-xs text-muted mb-2">{zh ? "本方源自" : "Derived from"}</p>
+              <div className="flex flex-wrap gap-2">
+                {formula.derivedLineages.map((l) => (
+                  <Link
+                    key={l.id}
+                    href={`/formulas/${l.sourceFormula.id}`}
+                    className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm hover:border-primary-light"
+                    title={l.changeDescription ?? undefined}
+                  >
+                    {zh ? l.sourceFormula.chineseName : l.sourceFormula.pinyinName}
+                    <span className="ml-1 text-[10px] text-muted">↑ {l.relationship}</span>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
+          {formula.lineages.length > 0 && (
+            <div>
+              <p className="text-xs text-muted mb-2">{zh ? "衍生方劑" : "Derived formulas"}</p>
+              <div className="flex flex-wrap gap-2">
+                {formula.lineages.map((l) => (
+                  <Link
+                    key={l.id}
+                    href={`/formulas/${l.derivedFormula.id}`}
+                    className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm hover:border-primary-light"
+                    title={l.changeDescription ?? undefined}
+                  >
+                    {zh ? l.derivedFormula.chineseName : l.derivedFormula.pinyinName}
+                    <span className="ml-1 text-[10px] text-muted">↓ {l.relationship}</span>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {formula.patternFormulas.length > 0 && (
         <div>

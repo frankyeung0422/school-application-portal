@@ -134,6 +134,17 @@ export default async function PatternDetailPage({ params }: Props) {
         </div>
       )}
 
+      {pattern.contraindications && (
+        <div className="rounded-lg border border-orange-200 bg-orange-50 p-4">
+          <h3 className="text-base font-semibold text-orange-900 mb-1">
+            {locale === "zh-Hant" ? "⚠ 禁忌" : "⚠ Contraindications"}
+          </h3>
+          <p className="text-sm text-orange-800 leading-relaxed whitespace-pre-line">
+            {pattern.contraindications}
+          </p>
+        </div>
+      )}
+
       {pattern.patternFormulas.length > 0 && (
         <div>
           <h3 className="text-lg font-semibold mb-3">{t(messages, "detail.pattern.recommendedFormulas")}</h3>
@@ -320,7 +331,7 @@ export default async function PatternDetailPage({ params }: Props) {
           </TermPopover>
         </h1>
         <p className="text-lg text-muted mt-1">{header.secondary}</p>
-        <div className="mt-2 flex flex-wrap gap-2">
+        <div className="mt-2 flex flex-wrap items-center gap-2">
           <Badge
             label={pathologyLabel(locale, pattern.pathologyType)}
             color="bg-purple-100 text-purple-800"
@@ -333,6 +344,12 @@ export default async function PatternDetailPage({ params }: Props) {
               size="md"
             />
           )}
+          <Link
+            href={`/patterns/${id}/protocol`}
+            className="rounded-md border border-border bg-surface hover:bg-primary/5 hover:border-primary-light px-3 py-1 text-xs font-medium transition-colors"
+          >
+            📋 {locale === "zh-Hant" ? "臨床方案" : "Clinical Protocol"}
+          </Link>
         </div>
       </div>
 
