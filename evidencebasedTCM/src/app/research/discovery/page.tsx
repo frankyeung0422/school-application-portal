@@ -1,4 +1,4 @@
-import Link from "next/link";
+﻿import Link from "next/link";
 import { buildDiscoveryBoard, type DiscoveryPair } from "@/lib/research/discovery";
 import { targetSourceMap, geneChipClass, type TargetSource } from "@/lib/research/network-pharmacology";
 import { CredibilityBadge } from "@/components/research/CredibilityBadge";
@@ -26,17 +26,17 @@ function PairRow({ p, S, src, locale }: { p: DiscoveryPair; S: (zh: string, en: 
       <td className="px-3 py-2">
         <div className="flex items-center gap-1.5">
           <CredibilityBadge tier={p.credibility.tier} score={p.credibility.score} locale={locale} title={p.credibility.rationale} />
-          {p.novel && <span className="text-[10px] text-amber-700">{S("新候選", "novel")}</span>}
+          {p.novel && <span className="text-xs text-amber-700">{S("新候選", "novel")}</span>}
         </div>
       </td>
       <td className="px-3 py-2">
         <div className="flex flex-wrap gap-1">
           {p.sharedGenes.slice(0, 8).map((g) => (
-            <span key={g} className={`rounded px-1.5 py-0.5 text-[11px] font-mono ${geneChipClass(src.get(g))}`}>
+            <span key={g} className={`rounded px-1.5 py-0.5 text-xs font-mono ${geneChipClass(src.get(g))}`}>
               {g}
             </span>
           ))}
-          {p.sharedGenes.length > 8 && <span className="text-[11px] text-muted">+{p.sharedGenes.length - 8}</span>}
+          {p.sharedGenes.length > 8 && <span className="text-xs text-muted">+{p.sharedGenes.length - 8}</span>}
         </div>
       </td>
     </tr>

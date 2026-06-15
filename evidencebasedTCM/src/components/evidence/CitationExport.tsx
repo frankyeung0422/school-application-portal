@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import { toBibTeX, toRIS, type CiteSource } from "@/lib/evidence/citation";
@@ -61,7 +61,7 @@ export function CitationExport({ source }: { source: CiteSource }) {
           </button>
         </div>
       </div>
-      <pre className="max-h-40 overflow-auto rounded bg-background p-2 text-[10px] font-mono whitespace-pre-wrap">
+      <pre className="max-h-40 overflow-auto rounded bg-background p-2 text-xs font-mono whitespace-pre-wrap">
         {text}
       </pre>
     </div>

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import Link from "next/link";
@@ -57,7 +57,7 @@ export function CourseSearch({ locale }: { locale: "zh-Hant" | "en" }) {
                 <span className="text-xs font-medium text-primary">{r.courseName}</span>
                 <span className="text-xs text-muted">#{r.lessonNum}</span>
                 {r.category && (
-                  <span className="text-[10px] rounded bg-primary/10 text-primary px-1.5 py-0.5">{r.category}</span>
+                  <span className="text-xs rounded bg-primary/10 text-primary px-1.5 py-0.5">{r.category}</span>
                 )}
               </div>
               <p className="text-sm font-medium mb-0.5">{r.title}</p>

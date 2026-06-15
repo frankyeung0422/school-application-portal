@@ -59,13 +59,13 @@ export default async function InnovatePage({ params }: Props) {
                     </Link>
                     <span className="font-mono text-xs">{h.roleDosage}</span>
                   </div>
-                  <p className="text-[11px] text-muted/70 italic">{h.roleRationale}</p>
+                  <p className="text-xs text-muted/70 italic">{h.roleRationale}</p>
                   <div className="flex gap-1 mt-0.5">
-                    <span className="text-[10px] rounded bg-white/60 px-1">{h.nature}</span>
+                    <span className="text-xs rounded bg-white/60 px-1">{h.nature}</span>
                     {h.flavor.map((fl) => (
-                      <span key={fl} className="text-[10px] rounded bg-white/60 px-1">{fl}</span>
+                      <span key={fl} className="text-xs rounded bg-white/60 px-1">{fl}</span>
                     ))}
-                    <span className="text-[10px] text-muted ml-auto">
+                    <span className="text-xs text-muted ml-auto">
                       {S("分", "Score")}: {h.score} (action:{h.scoreBreakdown.actionMatch} ev:{h.scoreBreakdown.evidenceWeight} meridian:{h.scoreBreakdown.meridianFit} cat:{h.scoreBreakdown.categoryFit})
                     </span>
                   </div>

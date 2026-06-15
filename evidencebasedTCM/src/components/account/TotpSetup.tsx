@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -194,13 +194,13 @@ export function TotpSetup({ locale, initiallyEnabled, email }: Props) {
               <pre className="mt-1 rounded bg-background border border-border p-2 text-xs font-mono break-all select-all">
                 {secret}
               </pre>
-              <p className="text-[10px] text-muted mt-1">
+              <p className="text-xs text-muted mt-1">
                 {T("帳戶：", "Account: ")}{email}{T("　發行者：EBTCM", " · Issuer: EBTCM")}
               </p>
             </li>
             <li>
               {T("或將以下 URI 貼到支援的應用中：", "Or paste this URI into a TOTP-capable app:")}
-              <pre className="mt-1 rounded bg-background border border-border p-2 text-[10px] font-mono break-all select-all">{otpauthUri}</pre>
+              <pre className="mt-1 rounded bg-background border border-border p-2 text-xs font-mono break-all select-all">{otpauthUri}</pre>
             </li>
             <li>
               {T("應用啟用後，輸入當前顯示的 6 位數碼：", "Once added, enter the current 6-digit code:")}

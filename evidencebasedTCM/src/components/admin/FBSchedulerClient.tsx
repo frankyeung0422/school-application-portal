@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import type { Locale } from "@/lib/i18n/types";
@@ -287,7 +287,7 @@ export function FBSchedulerClient({ locale }: { locale: Locale }) {
             <summary className="text-xs text-muted cursor-pointer">
               🔄 {T("PubMed 進度", "PubMed progress")} {pubmedRunning && <span className="text-indigo-600">({T("執行中", "running")})</span>}
             </summary>
-            <pre className="text-[10px] whitespace-pre-wrap text-muted bg-background border border-border rounded p-2 mt-1 max-h-48 overflow-y-auto">{pubmedLogTail}</pre>
+            <pre className="text-xs whitespace-pre-wrap text-muted bg-background border border-border rounded p-2 mt-1 max-h-48 overflow-y-auto">{pubmedLogTail}</pre>
           </details>
         )}
         <span className="ml-auto text-xs text-muted">
@@ -339,35 +339,35 @@ export function FBSchedulerClient({ locale }: { locale: Locale }) {
               <div className="flex items-start justify-between gap-3 mb-2">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="text-[10px] uppercase tracking-wider text-muted font-mono">
+                    <span className="text-xs uppercase tracking-wider text-muted font-mono">
                       {p.source === "generated" ? "GEN" : `W${p.week}`} · {p.day.toUpperCase()}
                     </span>
                     {p.source === "generated" && (
-                      <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">✨ AI</span>
+                      <span className="text-xs px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">✨ AI</span>
                     )}
-                    <span className={`text-[10px] px-2 py-0.5 rounded ${STATUS_CLS[p.status] ?? STATUS_CLS.DRAFT}`}>
+                    <span className={`text-xs px-2 py-0.5 rounded ${STATUS_CLS[p.status] ?? STATUS_CLS.DRAFT}`}>
                       {p.status}
                     </span>
                     {p.imageExists ? (
-                      <span className="text-[10px] text-emerald-700">🖼 {T("海報已渲染", "image ready")}</span>
+                      <span className="text-xs text-emerald-700">🖼 {T("海報已渲染", "image ready")}</span>
                     ) : (
-                      <span className="text-[10px] text-yellow-700">⚠ {T("無海報 PNG", "no image PNG")}</span>
+                      <span className="text-xs text-yellow-700">⚠ {T("無海報 PNG", "no image PNG")}</span>
                     )}
                   </div>
                   <h3 className="font-semibold mb-1 truncate">{p.title}</h3>
                   <p className="text-xs text-muted line-clamp-2">{p.bodyExcerpt}</p>
                   {p.scheduledFor && (
-                    <p className="text-[10px] text-blue-700 mt-1">
+                    <p className="text-xs text-blue-700 mt-1">
                       📅 {T("排程於", "Scheduled for")}: {new Date(p.scheduledFor).toLocaleString()}
                     </p>
                   )}
                   {p.fbPermalink && (
-                    <p className="text-[10px] text-emerald-700 mt-1">
+                    <p className="text-xs text-emerald-700 mt-1">
                       🔗 <a href={p.fbPermalink} target="_blank" rel="noopener noreferrer" className="underline">{p.fbPermalink}</a>
                     </p>
                   )}
                   {p.errorMessage && (
-                    <p className="text-[10px] text-red-700 mt-1">❌ {p.errorMessage}</p>
+                    <p className="text-xs text-red-700 mt-1">❌ {p.errorMessage}</p>
                   )}
                 </div>
                 <div className="flex flex-col gap-1.5 shrink-0">
@@ -391,7 +391,7 @@ export function FBSchedulerClient({ locale }: { locale: Locale }) {
                   </button>
                 </div>
               </div>
-              <div className="text-[10px] text-muted font-mono mt-2">{p.sourceFile}</div>
+              <div className="text-xs text-muted font-mono mt-2">{p.sourceFile}</div>
             </div>
           ))}
           {visiblePosts.length === 0 && (

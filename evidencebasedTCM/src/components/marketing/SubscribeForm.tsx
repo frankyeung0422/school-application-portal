@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -107,7 +107,7 @@ export function SubscribeForm({ locale, source }: Props) {
           : T("📄 立即取得 PDF", "📄 Get the PDF now")}
       </button>
 
-      <p className="text-[10px] text-muted text-center leading-relaxed">
+      <p className="text-xs text-muted text-center leading-relaxed">
         {T(
           "提交即表示同意接收 EBTCM 的證據摘要新聞信。可隨時取消訂閱。我們不會分享您的電郵。",
           "By submitting you agree to receive the EBTCM evidence digest. Unsubscribe anytime. We never share your email.",

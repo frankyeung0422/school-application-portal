@@ -1,4 +1,4 @@
-import Link from "next/link";
+﻿import Link from "next/link";
 import type { Locale } from "@/lib/i18n/types";
 import {
   deriveHerbActions,
@@ -137,7 +137,7 @@ export function HerbPrincipleBridge({
 
         {/* Layer 2 — derived action (heuristic) */}
         <Column title={colTitle(1)}>
-          <span className="mb-2 inline-block rounded border border-dashed border-amber-400 bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
+          <span className="mb-2 inline-block rounded border border-dashed border-amber-400 bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-700">
             {isZh ? "推導 · 示意" : "Derived · heuristic"}
           </span>
           {derived.length === 0 ? (
@@ -191,7 +191,7 @@ export function HerbPrincipleBridge({
                     href={`/patterns/${p.id}`}
                     className="flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1 text-xs hover:border-primary-light transition-colors"
                   >
-                    <span className="rounded bg-purple-100 px-1.5 py-0.5 text-[10px] font-medium text-purple-800">
+                    <span className="rounded bg-purple-100 px-1.5 py-0.5 text-xs font-medium text-purple-800">
                       {pathologyLabel(locale, p.pathologyType)}
                     </span>
                     <span className="font-medium">{isZh ? p.chineseName : p.pinyinName}</span>

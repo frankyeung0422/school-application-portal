@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
@@ -130,7 +130,7 @@ export function ConstitutionSurvey({ locale, patientId }: Props) {
                           }`}
                         >
                           <div className="font-semibold">{v}</div>
-                          <div className="text-[10px] opacity-80">{isZh ? lbl.zh : lbl.en}</div>
+                          <div className="text-xs opacity-80">{isZh ? lbl.zh : lbl.en}</div>
                         </button>
                       );
                     })}
@@ -233,7 +233,7 @@ function ResultView({ result, locale, patientId, onRetake }: { result: Result; l
             );
           })}
         </div>
-        <p className="text-[10px] text-muted mt-3">
+        <p className="text-xs text-muted mt-3">
           {T(
             "判讀：≥ 60 為「平和質」典型；其他體質 ≥ 40 為「傾向」，30–39 為「輕度傾向」。",
             "Reading: 平和 ≥ 60 = balanced; other types ≥ 40 = present, 30–39 = tendency.",

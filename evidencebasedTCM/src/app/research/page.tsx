@@ -17,10 +17,10 @@ export default async function ResearchIndexPage() {
 
       <Link
         href="/research/rwe"
-        className="mb-6 flex items-center justify-between rounded-xl border border-emerald-500/40 bg-emerald-500/5 p-4 hover:border-emerald-500 transition-colors"
+        className="mb-6 flex items-center justify-between rounded-xl border border-emerald-300 bg-emerald-50 p-4 hover:border-emerald-500 transition-colors"
       >
         <div>
-          <h2 className="font-semibold text-emerald-700">
+          <h2 className="text-lg font-semibold text-emerald-700">
             {locale === "zh-Hant" ? "真實世界證據儀表板 →" : "Real-World Evidence Dashboard →"}
           </h2>
           <p className="text-xs text-muted mt-0.5">
@@ -34,10 +34,10 @@ export default async function ResearchIndexPage() {
 
       <Link
         href="/research/discovery"
-        className="mb-6 flex items-center justify-between rounded-xl border border-amber-500/40 bg-amber-500/5 p-4 hover:border-amber-500 transition-colors"
+        className="mb-6 flex items-center justify-between rounded-xl border border-amber-300 bg-amber-50 p-4 hover:border-amber-500 transition-colors"
       >
         <div>
-          <h2 className="font-semibold text-amber-700">
+          <h2 className="text-lg font-semibold text-amber-700">
             {locale === "zh-Hant" ? "中藥重定位探索板 →" : "Repurposing Discovery Board →"}
           </h2>
           <p className="text-xs text-muted mt-0.5">
@@ -51,10 +51,10 @@ export default async function ResearchIndexPage() {
 
       <Link
         href="/research/evidence-map"
-        className="mb-6 flex items-center justify-between rounded-xl border border-sky-500/40 bg-sky-500/5 p-4 hover:border-sky-500 transition-colors"
+        className="mb-6 flex items-center justify-between rounded-xl border border-sky-300 bg-sky-50 p-4 hover:border-sky-500 transition-colors"
       >
         <div>
-          <h2 className="font-semibold text-sky-700">
+          <h2 className="text-lg font-semibold text-sky-700">
             {locale === "zh-Hant" ? "實證地圖與文獻監測 →" : "Evidence Map & Literature Surveillance →"}
           </h2>
           <p className="text-xs text-muted mt-0.5">
@@ -68,10 +68,10 @@ export default async function ResearchIndexPage() {
 
       <Link
         href="/research/validation"
-        className="mb-6 flex items-center justify-between rounded-xl border border-violet-500/40 bg-violet-500/5 p-4 hover:border-violet-500 transition-colors"
+        className="mb-6 flex items-center justify-between rounded-xl border border-violet-300 bg-violet-50 p-4 hover:border-violet-500 transition-colors"
       >
         <div>
-          <h2 className="font-semibold text-violet-700">
+          <h2 className="text-lg font-semibold text-violet-700">
             {locale === "zh-Hant" ? "引擎驗證與可信度 →" : "Engine Validation & Credibility →"}
           </h2>
           <p className="text-xs text-muted mt-0.5">
@@ -99,7 +99,7 @@ export default async function ResearchIndexPage() {
                   {locale === "zh-Hant" ? d.nameEn : d.nameZh}
                 </p>
               </div>
-              <span className="font-mono text-[10px] text-muted bg-primary/5 rounded px-1.5 py-0.5">
+              <span className="font-mono text-xs text-muted bg-primary/5 rounded px-1.5 py-0.5">
                 ICD-11 {d.icd11}
               </span>
             </div>

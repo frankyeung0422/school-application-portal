@@ -277,7 +277,7 @@ export default async function DoctorDetailPage({ params }: RouteCtx) {
                 <div className="flex items-start justify-between gap-3 mb-2">
                   <h3 className="text-lg font-bold">{c.titleZh}</h3>
                   {c.featured && (
-                    <span className="text-[10px] uppercase tracking-wider text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/30 px-2 py-0.5 rounded-full whitespace-nowrap">
+                    <span className="text-xs uppercase tracking-wider text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/30 px-2 py-0.5 rounded-full whitespace-nowrap">
                       ⭐ {T("精選", "Featured")}
                     </span>
                   )}
@@ -291,7 +291,7 @@ export default async function DoctorDetailPage({ params }: RouteCtx) {
 
                 {c.patientSummary && (
                   <div className="mb-3">
-                    <div className="text-[10px] uppercase tracking-wider text-muted mb-1">
+                    <div className="text-xs uppercase tracking-wider text-muted mb-1">
                       {T("病人摘要", "Patient Summary")}
                     </div>
                     <p className="text-sm">{c.patientSummary}</p>
@@ -300,7 +300,7 @@ export default async function DoctorDetailPage({ params }: RouteCtx) {
 
                 {c.presentationZh && (
                   <div className="mb-3">
-                    <div className="text-[10px] uppercase tracking-wider text-muted mb-1">
+                    <div className="text-xs uppercase tracking-wider text-muted mb-1">
                       {T("臨床表現", "Presentation")}
                     </div>
                     <p className="text-sm leading-relaxed">{c.presentationZh}</p>
@@ -309,7 +309,7 @@ export default async function DoctorDetailPage({ params }: RouteCtx) {
 
                 {c.patternDx && (
                   <div className="mb-3 inline-block">
-                    <span className="text-[10px] uppercase tracking-wider text-muted mr-2">
+                    <span className="text-xs uppercase tracking-wider text-muted mr-2">
                       {T("辨證", "Pattern Dx")}:
                     </span>
                     <span className="rounded-full bg-primary/10 text-primary px-3 py-0.5 text-sm font-medium">
@@ -320,7 +320,7 @@ export default async function DoctorDetailPage({ params }: RouteCtx) {
 
                 {c.treatmentZh && (
                   <div className="mb-3">
-                    <div className="text-[10px] uppercase tracking-wider text-muted mb-1">
+                    <div className="text-xs uppercase tracking-wider text-muted mb-1">
                       💊 {T("治法 + 處方", "Treatment + Rx")}
                     </div>
                     <p className="text-sm leading-relaxed whitespace-pre-wrap">{c.treatmentZh}</p>
@@ -329,7 +329,7 @@ export default async function DoctorDetailPage({ params }: RouteCtx) {
 
                 {c.outcomeZh && (
                   <div className="mb-3 rounded-lg bg-emerald-50/50 dark:bg-emerald-900/15 border border-emerald-200 dark:border-emerald-900/40 p-3">
-                    <div className="text-[10px] uppercase tracking-wider text-emerald-700 dark:text-emerald-400 mb-1">
+                    <div className="text-xs uppercase tracking-wider text-emerald-700 dark:text-emerald-400 mb-1">
                       ✅ {T("治療結果", "Outcome")}
                     </div>
                     <p className="text-sm leading-relaxed">{c.outcomeZh}</p>
@@ -342,7 +342,7 @@ export default async function DoctorDetailPage({ params }: RouteCtx) {
                 )}
 
                 {c.citationSource && (
-                  <p className="text-[10px] text-muted italic mt-2">
+                  <p className="text-xs text-muted italic mt-2">
                     📖 {T("引用：", "Citation: ")}{c.citationSource}
                     {c.publishedYear && ` (${c.publishedYear})`}
                   </p>

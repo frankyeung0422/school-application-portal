@@ -1,4 +1,4 @@
-import Link from "next/link";
+﻿import Link from "next/link";
 import type { Locale } from "@/lib/i18n/types";
 import { MERIDIAN_THEME } from "./MeridianBadge";
 
@@ -74,13 +74,13 @@ export function AcupointFrequencyMap({ entries, locale = "en", title, limit = 12
                       className="absolute inset-y-0 left-0 rounded-l"
                       style={{ width: `${pct}%`, backgroundColor: theme.fg, opacity: 0.85 }}
                     />
-                    <span className="absolute inset-y-0 right-1 flex items-center text-[10px] font-semibold text-foreground">
+                    <span className="absolute inset-y-0 right-1 flex items-center text-xs font-semibold text-foreground">
                       {e.frequency}×
                     </span>
                   </div>
                   <span
                     aria-hidden
-                    className="text-[10px] font-mono font-semibold w-7 text-center px-1 rounded"
+                    className="text-xs font-mono font-semibold w-7 text-center px-1 rounded"
                     style={{ color: theme.fg, backgroundColor: theme.bg }}
                     title={e.meridian}
                   >

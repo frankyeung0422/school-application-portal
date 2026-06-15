@@ -1,4 +1,4 @@
-import { TIER_META, type CredibilityTier } from "@/lib/research/credibility";
+﻿import { TIER_META, type CredibilityTier } from "@/lib/research/credibility";
 
 /**
  * Credibility tier chip (HIGH / MODERATE / LOW / HYPOTHESIS). `title` carries
@@ -19,7 +19,7 @@ export function CredibilityBadge({
   return (
     <span
       title={title}
-      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${m.chip}`}
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${m.chip}`}
     >
       {locale === "zh-Hant" ? m.zh : m.en}
       {score != null && <span className="tabular-nums opacity-70">{Math.round(score)}</span>}

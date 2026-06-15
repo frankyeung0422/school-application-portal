@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -357,7 +357,7 @@ export function ConsultationForm({
             SOAP
           </button>
         </div>
-        <span className="text-[10px] text-muted ml-auto">
+        <span className="text-xs text-muted ml-auto">
           {T(
             "可隨時切換 — 已輸入的內容保留",
             "Switch any time — entered content is preserved",
@@ -684,7 +684,7 @@ export function ConsultationForm({
                   }`}
                 >
                   <div className="font-medium text-sm">{h.chineseName}</div>
-                  <div className="text-[10px] text-muted">
+                  <div className="text-xs text-muted">
                     {h.pinyinName} · {h.category}
                     {h.dosageRange && ` · ${h.dosageRange}`}
                   </div>
@@ -712,7 +712,7 @@ export function ConsultationForm({
                   <tr key={r.herbId} className="border-t border-border">
                     <td className="px-3 py-2">
                       <div className="font-medium">{r.chineseName}</div>
-                      <div className="text-[10px] text-muted">{r.pinyinName}</div>
+                      <div className="text-xs text-muted">{r.pinyinName}</div>
                     </td>
                     <td className="px-3 py-2">
                       <input

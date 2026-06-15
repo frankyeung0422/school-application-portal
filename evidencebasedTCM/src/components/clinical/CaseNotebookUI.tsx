@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { loadCases, saveCases, newCase, type CaseNotebook } from "@/lib/clinical/storage";
@@ -65,10 +65,10 @@ export function CaseNotebookUI({ locale }: { locale: "zh-Hant" | "en" }) {
                 <div className="font-medium">
                   {c.patientInitials || (locale === "zh-Hant" ? "未命名" : "Untitled")}
                 </div>
-                <div className="text-[10px] text-muted truncate">
+                <div className="text-xs text-muted truncate">
                   {c.chiefComplaint || "—"}
                 </div>
-                <div className="text-[10px] text-muted">
+                <div className="text-xs text-muted">
                   {new Date(c.updatedAt).toLocaleDateString()}
                 </div>
               </button>

@@ -82,7 +82,7 @@ export default async function ConsultationDetailPage({ params }: RouteCtx) {
                 <div>
                   <span className="font-semibold">{w.herbChineseName}</span> ({w.herbPinyinName}) ×{" "}
                   <span className="font-semibold">{w.drugMatched}</span>
-                  <span className="ml-2 px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-200 text-[10px] font-medium">
+                  <span className="ml-2 px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-200 text-xs font-medium">
                     {w.severity}
                   </span>
                 </div>

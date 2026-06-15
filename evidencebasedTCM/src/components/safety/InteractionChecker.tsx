@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
@@ -224,7 +224,7 @@ export function InteractionChecker({ locale }: { locale: Locale }) {
               herbsSelected.map((h) => (
                 <span key={h.id} className={chipCls}>
                   {h.chineseName}
-                  <span className="text-[10px] opacity-60">{h.pinyinName}</span>
+                  <span className="text-xs opacity-60">{h.pinyinName}</span>
                   <button onClick={() => removeHerb(h.id)} className="hover:text-red-500" aria-label="remove">✕</button>
                 </span>
               ))
@@ -260,7 +260,7 @@ export function InteractionChecker({ locale }: { locale: Locale }) {
                       <span className="font-medium">{d.display}</span>{" "}
                       <span className="text-xs text-muted">· {d.className}</span>
                       {d.chineseNames && d.chineseNames.length > 0 && (
-                        <div className="text-[10px] text-muted">{d.chineseNames.join("、")}</div>
+                        <div className="text-xs text-muted">{d.chineseNames.join("、")}</div>
                       )}
                     </button>
                   </li>
@@ -277,12 +277,12 @@ export function InteractionChecker({ locale }: { locale: Locale }) {
               drugsSelected.map((d) => (
                 <span key={d.generic} className={chipCls}>
                   {d.display}
-                  <span className="text-[10px] opacity-60">{d.className}</span>
+                  <span className="text-xs opacity-60">{d.className}</span>
                   <button onClick={() => removeDrug(d.generic)} className="hover:text-red-500">✕</button>
                 </span>
               ))
             )}
-            <p className="basis-full text-[10px] text-muted">
+            <p className="basis-full text-xs text-muted">
               {T(
                 `字典涵蓋 ${DRUGS.length} 種常用藥，包括抗凝、降壓、降糖、抗鬱、免疫抑制等。`,
                 `Dictionary covers ${DRUGS.length} common Rx incl. anticoagulants, antihypertensives, antidiabetics, antidepressants, immunosuppressants.`,
@@ -323,7 +323,7 @@ export function InteractionChecker({ locale }: { locale: Locale }) {
                         {i.herbChineseName} <span className="text-xs opacity-70">({i.herbPinyinName})</span>
                         {" × "}
                         {i.drugDisplay}
-                        <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded font-semibold uppercase">{i.severity}</span>
+                        <span className="ml-2 text-xs px-1.5 py-0.5 rounded font-semibold uppercase">{i.severity}</span>
                       </div>
                       {i.clinicalEffect && (
                         <p className="text-xs mt-1">
@@ -353,7 +353,7 @@ export function InteractionChecker({ locale }: { locale: Locale }) {
               <h3 className="text-sm font-semibold mb-1">
                 🧪 {T(`預測藥動學交互（CYP/轉運體）— ${result.predictedInteractions.length} 項`, `Predicted pharmacokinetic interactions (CYP/transporter) — ${result.predictedInteractions.length}`)}
               </h3>
-              <p className="text-[11px] text-muted mb-3">
+              <p className="text-xs text-muted mb-3">
                 {T(
                   "由酶代謝路徑推斷，非直接臨床記錄；用以提示需留意的代謝層面交互。",
                   "Inferred from enzyme-metabolism pathways (not direct clinical records) — flags metabolism-level interactions to watch.",
@@ -368,13 +368,13 @@ export function InteractionChecker({ locale }: { locale: Locale }) {
                         {" × "}
                         {p.drugDisplay}
                       </span>
-                      <span className="text-[10px] px-1.5 py-0.5 rounded font-semibold uppercase">{p.severity}</span>
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 font-mono">{p.enzyme}</span>
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded ${p.effect === "INCREASE" ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300" : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"}`}>
+                      <span className="text-xs px-1.5 py-0.5 rounded font-semibold uppercase">{p.severity}</span>
+                      <span className="text-xs px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 font-mono">{p.enzyme}</span>
+                      <span className={`text-xs px-1.5 py-0.5 rounded ${p.effect === "INCREASE" ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300" : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"}`}>
                         {p.effect === "INCREASE" ? T("↑ 藥物濃度", "↑ drug level") : T("↓ 藥物濃度", "↓ drug level")}
                       </span>
                       {p.basis === "network" && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded border border-dashed border-slate-400 text-slate-600 dark:text-slate-300">
+                        <span className="text-xs px-1.5 py-0.5 rounded border border-dashed border-slate-400 text-slate-600 dark:text-slate-300">
                           {T("網絡推斷·未驗證", "network · unverified")}
                         </span>
                       )}
@@ -399,11 +399,11 @@ export function InteractionChecker({ locale }: { locale: Locale }) {
                 {result.herbHerbConflicts.map((c, idx) => (
                   <li key={idx} className="border-l-2 border-orange-400 pl-3">
                     <span className="font-medium">{c.herbAChineseName} × {c.herbBChineseName}</span>
-                    <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-300">
+                    <span className="ml-2 text-xs px-1.5 py-0.5 rounded bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-300">
                       {c.interactionType} / {c.severity}
                     </span>
                     {c.description && <div className="text-muted">{c.description}</div>}
-                    {c.classicalSource && <div className="text-muted opacity-70 text-[10px]">出處：{c.classicalSource}</div>}
+                    {c.classicalSource && <div className="text-muted opacity-70 text-xs">出處：{c.classicalSource}</div>}
                   </li>
                 ))}
               </ul>
@@ -434,13 +434,13 @@ export function InteractionChecker({ locale }: { locale: Locale }) {
                           <Link href={`/herbs/${h.herbId}`} className="font-medium text-primary hover:underline">
                             {h.chineseName}
                           </Link>
-                          <span className="ml-1 text-[10px] text-muted">{h.pinyinName}</span>
+                          <span className="ml-1 text-xs text-muted">{h.pinyinName}</span>
                         </td>
                         <td className="px-2 py-2"><SafetyChip value={h.pregnancy} isZh={isZh} kind="preg" /></td>
                         <td className="px-2 py-2"><SafetyChip value={h.lactation} isZh={isZh} kind="lact" /></td>
                         <td className="px-2 py-2"><SafetyChip value={h.pediatric} isZh={isZh} kind="ped" /></td>
                         <td className="px-2 py-2 text-right">
-                          <Link href={`/herbs/${h.herbId}`} className="text-[10px] text-muted hover:text-primary">
+                          <Link href={`/herbs/${h.herbId}`} className="text-xs text-muted hover:text-primary">
                             {T("詳情 →", "Details →")}
                           </Link>
                         </td>
@@ -470,7 +470,7 @@ function SafetyChip({ value, isZh, kind }: { value: string | null; isZh: boolean
   const cls = SAFETY_CLASS[value] ?? SAFETY_CLASS.UNKNOWN;
   const lbl = labels[value] ?? { zh: value, en: value };
   return (
-    <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-medium ${cls}`} aria-label={kind}>
+    <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${cls}`} aria-label={kind}>
       {isZh ? lbl.zh : lbl.en}
     </span>
   );

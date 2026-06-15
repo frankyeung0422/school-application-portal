@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/db/prisma";
+﻿import { prisma } from "@/lib/db/prisma";
 import type { Locale } from "@/lib/i18n/types";
 
 interface Props {
@@ -123,7 +123,7 @@ function MiniChart({ series, isZh }: { series: Series; isZh: boolean }) {
         <span className="text-xs font-medium" style={{ color: series.color }}>{series.label}</span>
         <span className="text-xs">
           <span className="font-semibold">{latest.value}</span>
-          <span className="text-muted text-[10px] ml-1">{series.unit}</span>
+          <span className="text-muted text-xs ml-1">{series.unit}</span>
         </span>
       </div>
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto">
@@ -163,7 +163,7 @@ function MiniChart({ series, isZh }: { series: Series; isZh: boolean }) {
           </text>
         )}
       </svg>
-      <p className="text-[10px] text-muted mt-1">
+      <p className="text-xs text-muted mt-1">
         {series.points.length} {isZh ? "次測量" : "measurements"}
         {series.normalLow !== undefined && series.normalHigh !== undefined && (
           <> · {isZh ? "正常" : "normal"} {series.normalLow}–{series.normalHigh}</>

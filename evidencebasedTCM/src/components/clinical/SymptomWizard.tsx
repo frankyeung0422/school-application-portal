@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
@@ -210,7 +210,7 @@ export function SymptomWizard({ patterns, locale }: Props) {
                         </span>
                         <div className="flex items-center gap-2">
                           <span className="text-xs font-mono text-muted">{pct}%</span>
-                          <span className="text-[10px] text-muted">
+                          <span className="text-xs text-muted">
                             {isExpanded ? "▲" : "▼"}
                           </span>
                         </div>
@@ -218,7 +218,7 @@ export function SymptomWizard({ patterns, locale }: Props) {
                       <div className="h-1.5 bg-border rounded overflow-hidden mb-2">
                         <div className="h-full bg-primary" style={{ width: `${pct}%` }} />
                       </div>
-                      <div className="text-[11px] text-muted">
+                      <div className="text-xs text-muted">
                         {p.matched.slice(0, 6).map((m, j) => (
                           <span key={j} className="inline-block mr-1 rounded bg-primary/10 text-primary px-1">
                             {m}
@@ -226,12 +226,12 @@ export function SymptomWizard({ patterns, locale }: Props) {
                         ))}
                       </div>
                       {p.treatmentPrinciple && (
-                        <p className="mt-1 text-[11px] text-muted italic">
+                        <p className="mt-1 text-xs text-muted italic">
                           {S("治則", "Principle")}: {p.treatmentPrinciple}
                         </p>
                       )}
                       {p.formulas.length > 0 && (
-                        <p className="mt-1 text-[11px] text-primary">
+                        <p className="mt-1 text-xs text-primary">
                           {S(`推薦 ${p.formulas.length} 首方劑`, `${p.formulas.length} formula(s) recommended`)}
                           {p.acupoints.length > 0 && S(` · ${p.acupoints.length} 個穴位`, ` · ${p.acupoints.length} acupoints`)}
                         </p>
@@ -248,7 +248,7 @@ export function SymptomWizard({ patterns, locale }: Props) {
                               <div className="flex items-center justify-between mb-2">
                                 <Link href={`/formulas/${f.id}`} className="font-semibold text-sm hover:text-primary">
                                   {f.isPrimary && (
-                                    <span className="text-[10px] bg-primary text-white rounded px-1 py-0.5 mr-1.5">
+                                    <span className="text-xs bg-primary text-white rounded px-1 py-0.5 mr-1.5">
                                       {S("首選", "1st")}
                                     </span>
                                   )}
@@ -257,12 +257,12 @@ export function SymptomWizard({ patterns, locale }: Props) {
                                 </Link>
                               </div>
                               {f.source && (
-                                <p className="text-[11px] text-muted mb-1">
+                                <p className="text-xs text-muted mb-1">
                                   {S("出處", "Source")}: {f.source}
                                 </p>
                               )}
                               {f.actions && (
-                                <p className="text-[11px] text-muted mb-2 line-clamp-2">{f.actions}</p>
+                                <p className="text-xs text-muted mb-2 line-clamp-2">{f.actions}</p>
                               )}
 
                               {/* Herb composition table */}
@@ -279,7 +279,7 @@ export function SymptomWizard({ patterns, locale }: Props) {
                                   {f.herbs.map((h) => (
                                     <tr key={h.id} className="border-b border-border/50">
                                       <td className="py-1.5 pr-2">
-                                        <span className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold ${ROLE_COLORS[h.role] ?? ""}`}>
+                                        <span className={`inline-block rounded px-1.5 py-0.5 text-xs font-semibold ${ROLE_COLORS[h.role] ?? ""}`}>
                                           {ROLE_LABELS[h.role] ?? h.role}
                                         </span>
                                       </td>
@@ -303,7 +303,7 @@ export function SymptomWizard({ patterns, locale }: Props) {
                               </table>
 
                               {/* Decoction instructions */}
-                              <div className="mt-2 rounded bg-amber-50 p-2 text-[11px] text-amber-900">
+                              <div className="mt-2 rounded bg-amber-50 p-2 text-xs text-amber-900">
                                 {S(
                                   "煎服法：水煎服，每日1劑，分早晚2次溫服。先煎加水500ml煎至200ml，二煎加水400ml煎至150ml，混勻分服。",
                                   "Decoction: 1 daily dose, split AM/PM. First decoction: 500ml → 200ml; second: 400ml → 150ml. Mix and serve warm.",
@@ -328,7 +328,7 @@ export function SymptomWizard({ patterns, locale }: Props) {
                                 <Link
                                   key={a.id}
                                   href={`/acupuncture/${a.id}`}
-                                  className="inline-flex items-center gap-1 rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-[11px] text-teal-800 hover:border-teal-400"
+                                  className="inline-flex items-center gap-1 rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-xs text-teal-800 hover:border-teal-400"
                                 >
                                   <span className="font-mono font-semibold">{a.code}</span>
                                   <span>{a.name}</span>
@@ -344,7 +344,7 @@ export function SymptomWizard({ patterns, locale }: Props) {
                           <div>
                             <h4 className="text-xs font-semibold mb-1.5">
                               🎯 {S("可能對應西醫病症", "Possible Western Conditions")}
-                              <span className="text-[10px] text-muted font-normal ml-1">
+                              <span className="text-xs text-muted font-normal ml-1">
                                 ({S("基於證型 ↔ 病症映射", "based on pattern ↔ condition mapping")})
                               </span>
                             </h4>
@@ -358,7 +358,7 @@ export function SymptomWizard({ patterns, locale }: Props) {
                                   <Link
                                     key={c.id}
                                     href={`/conditions/${c.id}`}
-                                    className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] hover:opacity-80 ${freqColor}`}
+                                    className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs hover:opacity-80 ${freqColor}`}
                                   >
                                     <span className="font-medium">{c.chineseName ?? c.westernName}</span>
                                     {c.chineseName && c.westernName !== c.chineseName && (

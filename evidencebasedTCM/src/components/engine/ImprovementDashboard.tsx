@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 
@@ -89,7 +89,7 @@ export function ImprovementDashboard({ locale, totalRuns, dbStats, categoryCount
         ].map((s) => (
           <div key={s.label} className="rounded-lg border border-border bg-surface p-2 text-center">
             <div className={`text-lg font-bold ${s.color}`}>{s.value}</div>
-            <div className="text-[10px] text-muted">{s.label}</div>
+            <div className="text-xs text-muted">{s.label}</div>
           </div>
         ))}
       </div>
@@ -191,7 +191,7 @@ export function ImprovementDashboard({ locale, totalRuns, dbStats, categoryCount
                   {new Date(l.runDate).toLocaleDateString()}
                 </td>
                 <td className="p-2">
-                  <span className={`rounded px-1.5 py-0.5 text-[10px] ${CAT_COLORS[l.category] ?? "bg-gray-100"}`}>
+                  <span className={`rounded px-1.5 py-0.5 text-xs ${CAT_COLORS[l.category] ?? "bg-gray-100"}`}>
                     {l.category}
                   </span>
                 </td>
@@ -201,7 +201,7 @@ export function ImprovementDashboard({ locale, totalRuns, dbStats, categoryCount
                 </td>
                 <td className="p-2 text-right font-mono">{l.itemsAffected}</td>
                 <td className="p-2 text-right">
-                  <span className={`text-[10px] ${l.status === "completed" ? "text-green-700" : l.status === "failed" ? "text-red-700" : "text-muted"}`}>
+                  <span className={`text-xs ${l.status === "completed" ? "text-green-700" : l.status === "failed" ? "text-red-700" : "text-muted"}`}>
                     {l.status}
                   </span>
                 </td>

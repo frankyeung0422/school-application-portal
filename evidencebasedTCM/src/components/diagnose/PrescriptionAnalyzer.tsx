@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
@@ -315,7 +315,7 @@ export function PrescriptionAnalyzer({ locale, herbs, photoEnabled, providerLabe
                   }`}
                 >
                   <div className="font-medium text-sm">{h.chineseName}</div>
-                  <div className="text-[10px] text-muted">{h.pinyinName} · {h.category}</div>
+                  <div className="text-xs text-muted">{h.pinyinName} · {h.category}</div>
                 </button>
               );
             })}

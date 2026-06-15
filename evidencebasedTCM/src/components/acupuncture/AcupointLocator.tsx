@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import { ACUPOINT_COORDS, meridianColor, type AcupointCoord } from "@/lib/acupoints/coordinates";
@@ -368,7 +368,7 @@ function CunRuler({
 
       {/* 12-cun visual scale (classic forearm reference: elbow crease → wrist = 12 cun) */}
       <div className="mb-4">
-        <div className="flex items-end justify-between text-[10px] text-muted mb-1">
+        <div className="flex items-end justify-between text-xs text-muted mb-1">
           <span>肘橫紋</span>
           <span>12 寸</span>
           <span>腕橫紋</span>

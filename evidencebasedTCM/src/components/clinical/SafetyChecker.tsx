@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useMemo, useState } from "react";
 
@@ -185,8 +185,8 @@ export function SafetyChecker({ herbs, locale }: Props) {
                   className={`rounded-md border p-2 text-xs ${SEVERITY_COLOR[w.severity] ?? "border-border"}`}
                 >
                   <div className="flex items-center gap-2 mb-0.5">
-                    <span className="font-mono text-[10px] px-1 rounded bg-white/60">{w.severity}</span>
-                    <span className="text-[10px] uppercase tracking-wider">{w.type}</span>
+                    <span className="font-mono text-xs px-1 rounded bg-white/60">{w.severity}</span>
+                    <span className="text-xs uppercase tracking-wider">{w.type}</span>
                   </div>
                   <div>{w.message}</div>
                 </li>

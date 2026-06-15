@@ -228,7 +228,7 @@ export default async function HerbDetailPage({ params }: Props) {
               );
             })}
           </div>
-          <p className="mt-2 text-[11px] text-muted">
+          <p className="mt-2 text-xs text-muted">
             {zh
               ? "翠綠＝實驗室實測；琥珀虛線＝LLM預測（置信度0.4）。💊＝BindingDB有實驗結合數據。"
               : "Emerald = curated experimental; amber dashed = LLM-predicted (confidence 0.4). 💊 = BindingDB experimental binding data."}

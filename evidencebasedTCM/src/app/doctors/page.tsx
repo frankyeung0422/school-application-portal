@@ -1,4 +1,4 @@
-import Link from "next/link";
+﻿import Link from "next/link";
 import { prisma } from "@/lib/db/prisma";
 import { getLocale } from "@/lib/i18n/locale-server";
 import { SPECIALTIES, getSpecialtyByKey } from "@/lib/doctors/specialties";
@@ -93,7 +93,7 @@ export default async function DoctorsListPage({ searchParams }: SearchParams) {
               >
                 <div className="flex items-baseline justify-between mb-1">
                   <h3 className="text-xl font-bold">{d.chineseName}</h3>
-                  <span className={`text-[10px] px-2 py-0.5 rounded-full border ${TIER_LABEL[d.tier].cls}`}>
+                  <span className={`text-xs px-2 py-0.5 rounded-full border ${TIER_LABEL[d.tier].cls}`}>
                     {isZh ? TIER_LABEL[d.tier].zh : TIER_LABEL[d.tier].en}
                   </span>
                 </div>
@@ -205,7 +205,7 @@ export default async function DoctorsListPage({ searchParams }: SearchParams) {
                       {d.honorificTitle}
                     </p>
                   </div>
-                  <span className={`text-[10px] px-2 py-0.5 rounded-full border whitespace-nowrap ${tier.cls}`}>
+                  <span className={`text-xs px-2 py-0.5 rounded-full border whitespace-nowrap ${tier.cls}`}>
                     {isZh ? tier.zh : tier.en}
                   </span>
                 </div>

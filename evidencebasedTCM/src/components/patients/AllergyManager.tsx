@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -96,9 +96,9 @@ export function AllergyManager({ locale, patientId }: Props) {
             const lbl = TYPE_LABEL[a.type];
             return (
               <li key={a.id} className="flex items-center gap-2 text-sm">
-                <span className="text-[10px] text-muted w-12">{isZh ? lbl.zh : lbl.en}</span>
+                <span className="text-xs text-muted w-12">{isZh ? lbl.zh : lbl.en}</span>
                 <span className="font-medium">{a.allergen}</span>
-                <span className={`text-[10px] px-1.5 py-0.5 rounded ${SEV_CLS[a.severity]}`}>
+                <span className={`text-xs px-1.5 py-0.5 rounded ${SEV_CLS[a.severity]}`}>
                   {a.severity}
                 </span>
                 {a.reaction && <span className="text-xs text-muted">→ {a.reaction}</span>}

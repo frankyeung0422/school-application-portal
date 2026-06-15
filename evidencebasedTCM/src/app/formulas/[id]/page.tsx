@@ -113,7 +113,7 @@ export default async function FormulaDetailPage({ params }: Props) {
               ].map((c) => (
                 <div key={c.label} className="rounded-lg border border-border bg-surface p-3">
                   <div className="text-lg font-bold tabular-nums">{c.value}</div>
-                  <div className="text-[11px] text-muted mt-0.5">{c.label}</div>
+                  <div className="text-xs text-muted mt-0.5">{c.label}</div>
                 </div>
               ))}
             </div>
@@ -134,7 +134,7 @@ export default async function FormulaDetailPage({ params }: Props) {
                 {zh ? "查看完整真實世界證據儀表板 →" : "Open full RWE dashboard →"}
               </Link>
             </div>
-            <p className="mt-2 text-[11px] text-amber-700">
+            <p className="mt-2 text-xs text-amber-700">
               {zh
                 ? "⚠ 目前為標記【示範】之合成資料，接入真實門診紀錄後即反映實際療效。"
                 : "⚠ Currently synthetic demo data; reflects real outcomes once actual records accrue."}
@@ -162,13 +162,13 @@ export default async function FormulaDetailPage({ params }: Props) {
                 {net.targets.map((g) => {
                   const d = drugMap.get(g);
                   return (
-                    <span key={g} className={`rounded px-1.5 py-0.5 text-[11px] font-mono ${geneChipClass(targetSrc.get(g))}`} title={druggabilityTitle(d, zh)}>
+                    <span key={g} className={`rounded px-1.5 py-0.5 text-xs font-mono ${geneChipClass(targetSrc.get(g))}`} title={druggabilityTitle(d, zh)}>
                       {g}{d && <span className="ml-0.5" aria-label="experimentally druggable">💊</span>}
                     </span>
                   );
                 })}
               </div>
-              <div className="mt-2 flex flex-wrap items-center gap-3 text-[10px] text-muted">
+              <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-muted">
                 <span className="inline-flex items-center gap-1">
                   <span className="inline-block h-2.5 w-2.5 rounded bg-emerald-500/10" /> {zh ? "策展實證" : "curated"}
                 </span>
@@ -203,7 +203,7 @@ export default async function FormulaDetailPage({ params }: Props) {
                 <h4 className="text-sm font-semibold mb-1">
                   {zh ? "疾病靶點對位 (潛在適應症)" : "Disease Target Alignment (candidate indications)"}
                 </h4>
-                <p className="text-[11px] text-muted mb-2">
+                <p className="text-xs text-muted mb-2">
                   {zh
                     ? "依本方靶點與各疾病基因集的重疊排序，重疊高者提示潛在治療方向，須臨床與文獻驗證。"
                     : "Ranked by overlap between this formula's targets and each disease's gene set — high overlap suggests a candidate direction, pending clinical/literature validation."}
@@ -338,7 +338,7 @@ export default async function FormulaDetailPage({ params }: Props) {
                     title={l.changeDescription ?? undefined}
                   >
                     {zh ? l.sourceFormula.chineseName : l.sourceFormula.pinyinName}
-                    <span className="ml-1 text-[10px] text-muted">↑ {l.relationship}</span>
+                    <span className="ml-1 text-xs text-muted">↑ {l.relationship}</span>
                   </Link>
                 ))}
               </div>
@@ -356,7 +356,7 @@ export default async function FormulaDetailPage({ params }: Props) {
                     title={l.changeDescription ?? undefined}
                   >
                     {zh ? l.derivedFormula.chineseName : l.derivedFormula.pinyinName}
-                    <span className="ml-1 text-[10px] text-muted">↓ {l.relationship}</span>
+                    <span className="ml-1 text-xs text-muted">↓ {l.relationship}</span>
                   </Link>
                 ))}
               </div>
@@ -520,7 +520,7 @@ export default async function FormulaDetailPage({ params }: Props) {
             title={locale === "zh-Hant" ? "建構列印處方（Pro）" : "Build & print prescription (Pro)"}
           >
             🖨 {locale === "zh-Hant" ? "建構列印處方" : "Build Prescription"}
-            <span className="ml-1 text-[10px] text-amber-700 dark:text-amber-400">Pro</span>
+            <span className="ml-1 text-xs text-amber-700 dark:text-amber-400">Pro</span>
           </Link>
         </div>
       </div>

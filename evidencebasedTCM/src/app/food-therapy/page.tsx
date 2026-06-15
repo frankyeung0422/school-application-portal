@@ -1,4 +1,4 @@
-import Link from "next/link";
+﻿import Link from "next/link";
 import { prisma } from "@/lib/db/prisma";
 import { getLocale } from "@/lib/i18n/locale-server";
 
@@ -127,13 +127,13 @@ export default async function FoodTherapyListPage({ searchParams }: SearchParams
                   <p className="text-xs text-muted">{r.pinyinName}{r.englishName && ` · ${r.englishName}`}</p>
                 </div>
                 {r.season && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary whitespace-nowrap">
+                  <span className="text-xs px-1.5 py-0.5 rounded bg-primary/10 text-primary whitespace-nowrap">
                     {isZh ? SEASON_LABELS_ZH[r.season] : r.season}
                   </span>
                 )}
               </div>
               <p className="text-xs text-muted line-clamp-2 mb-2">{r.indication}</p>
-              <div className="flex flex-wrap items-center gap-2 text-[10px] text-muted">
+              <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
                 {r.pattern && (
                   <span className="rounded-full bg-background border border-border px-2 py-0.5">
                     {r.pattern.chineseName}

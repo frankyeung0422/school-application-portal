@@ -1,4 +1,4 @@
-import Link from "next/link";
+﻿import Link from "next/link";
 import { getLocale } from "@/lib/i18n/locale-server";
 import { PrintButton } from "@/components/marketing/PrintButton";
 import { INTERACTIONS, PREGNANCY_CONTRAINDICATED } from "@/lib/marketing/cheatsheet-data";
@@ -304,7 +304,7 @@ function SeverityLegend({ label, zh, cls }: { label: string; zh: string; cls: st
   return (
     <div className={`${cls} border-2 rounded-md px-2 py-1.5 text-center`}>
       <div className="font-bold">{label}</div>
-      <div className="text-[10px]">{zh}</div>
+      <div className="text-xs">{zh}</div>
     </div>
   );
 }
@@ -322,7 +322,7 @@ function InteractionRow({
     MINOR: "sev-minor",
   }[interaction.severity];
   return (
-    <div className={`border-l-4 ${cls} rounded-r pl-2.5 py-1.5 text-[11px] leading-snug`}>
+    <div className={`border-l-4 ${cls} rounded-r pl-2.5 py-1.5 text-xs leading-snug`}>
       <div className="flex items-baseline justify-between gap-2 mb-0.5">
         <div>
           <span className="font-bold text-sm">{interaction.herb.zh}</span>
@@ -330,7 +330,7 @@ function InteractionRow({
           <span className="mx-1.5 text-slate-400">×</span>
           <span className="font-semibold">{interaction.drug}</span>
         </div>
-        <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-white">
+        <span className="text-xs font-bold uppercase px-1.5 py-0.5 rounded bg-white">
           {interaction.severity}
         </span>
       </div>
@@ -354,7 +354,7 @@ function InteractionRow({
 
 function FooterStrip() {
   return (
-    <div className="mt-auto text-center text-[10px] text-slate-400 pt-6">
+    <div className="mt-auto text-center text-xs text-slate-400 pt-6">
       evidencebasedtcm.com · 中藥-西藥交互作用速查表 · v2026.05
     </div>
   );

@@ -1,4 +1,4 @@
-import type { MetaGroup } from "@/lib/research/meta-analysis";
+﻿import type { MetaGroup } from "@/lib/research/meta-analysis";
 
 /**
  * Compact forest plot for one pooled metric group. Ratio metrics (OR/RR/HR)
@@ -49,7 +49,7 @@ export function ForestPlot({ group, locale }: { group: MetaGroup; locale: string
           />
         )}
       </div>
-      <div className="w-28 shrink-0 text-right text-[11px] tabular-nums text-muted">
+      <div className="w-28 shrink-0 text-right text-xs tabular-nums text-muted">
         {value} [{ciLow}, {ciHigh}]
       </div>
     </div>
@@ -73,7 +73,7 @@ export function ForestPlot({ group, locale }: { group: MetaGroup; locale: string
       ))}
       <div className="my-1 border-t border-border" />
       <Row label={zh ? "合併估計（隨機效應）" : "Pooled (random-effects)"} value={pooled.pooledValue} ciLow={pooled.ciLow} ciHigh={pooled.ciHigh} pooledRow />
-      <p className="mt-1 text-[10px] text-muted">
+      <p className="mt-1 text-xs text-muted">
         {zh
           ? `無效線 = ${pooled.noEffectLine}；DerSimonian–Laird 隨機效應模型。`
           : `No-effect line = ${pooled.noEffectLine}; DerSimonian–Laird random-effects.`}

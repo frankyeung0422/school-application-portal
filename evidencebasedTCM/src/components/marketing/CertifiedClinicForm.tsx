@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import type { Locale } from "@/lib/i18n/types";
@@ -168,7 +168,7 @@ export function CertifiedClinicForm({ locale }: { locale: Locale }) {
         {busy ? T("提交中…", "Submitting…") : T("提交認證申請", "Submit Application")}
       </button>
 
-      <p className="text-[10px] text-muted text-center leading-relaxed">
+      <p className="text-xs text-muted text-center leading-relaxed">
         {T(
           "提交申請即表示同意接收後續 EBTCM 認證流程相關電郵。提交後 3 個工作日內收到首次回覆。",
           "By submitting you agree to receive EBTCM certification process emails. First reply within 3 business days.",

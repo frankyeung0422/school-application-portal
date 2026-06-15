@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useMemo, useState } from "react";
 
@@ -144,8 +144,8 @@ export function DosageCalculator({ dosageRange, herbName, labels }: Props) {
         </div>
       </div>
 
-      <p className="text-[11px] text-muted">{labels.pediatricNote}</p>
-      <p className="text-[11px] text-red-700/80">{labels.safetyNote}</p>
+      <p className="text-xs text-muted">{labels.pediatricNote}</p>
+      <p className="text-xs text-red-700/80">{labels.safetyNote}</p>
     </div>
   );
 }

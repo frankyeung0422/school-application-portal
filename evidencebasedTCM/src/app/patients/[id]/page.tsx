@@ -122,14 +122,14 @@ export default async function PatientDetailPage({ params }: RouteCtx) {
           <h3 className="text-xs font-semibold text-muted mb-2">{T("過敏史", "Allergies")}</h3>
           <AllergyManager locale={locale} patientId={p.id} />
           {p.allergies && (
-            <p className="text-[10px] text-muted mt-2 italic">{T("舊版備註：", "Legacy notes: ")}{p.allergies}</p>
+            <p className="text-xs text-muted mt-2 italic">{T("舊版備註：", "Legacy notes: ")}{p.allergies}</p>
           )}
         </div>
         <div className="rounded-lg border border-yellow-400/30 bg-yellow-50/30 dark:bg-yellow-900/5 p-4">
           <h3 className="text-xs font-semibold text-muted mb-2">{T("目前西藥", "Current Western Meds")}</h3>
           <MedicationManager locale={locale} patientId={p.id} />
           {p.westernMeds && (
-            <p className="text-[10px] text-muted mt-2 italic">{T("舊版備註：", "Legacy notes: ")}{p.westernMeds}</p>
+            <p className="text-xs text-muted mt-2 italic">{T("舊版備註：", "Legacy notes: ")}{p.westernMeds}</p>
           )}
         </div>
       </div>

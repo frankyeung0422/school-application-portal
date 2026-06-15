@@ -1,4 +1,4 @@
-import Link from "next/link";
+﻿import Link from "next/link";
 import type { Locale } from "@/lib/i18n/types";
 import { formulaRoleLabel, pathologyLabel } from "@/lib/i18n/data-labels";
 import { FORMULA_ROLE_CONFIG } from "@/lib/utils/tcm-constants";
@@ -75,7 +75,7 @@ export function FormulaTreatmentFlow({ locale = "en", actions, patterns, herbs }
                     href={`/patterns/${p.id}`}
                     className="flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1 text-xs hover:border-primary-light transition-colors"
                   >
-                    <span className="rounded bg-purple-100 px-1.5 py-0.5 text-[10px] font-medium text-purple-800">
+                    <span className="rounded bg-purple-100 px-1.5 py-0.5 text-xs font-medium text-purple-800">
                       {pathologyLabel(locale, p.pathologyType)}
                     </span>
                     <span className="font-medium">{isZh ? p.chineseName : p.pinyinName}</span>
@@ -108,7 +108,7 @@ export function FormulaTreatmentFlow({ locale = "en", actions, patterns, herbs }
           <div className="space-y-1.5">
             {ROLE_ORDER.filter((r) => grouped[r].length > 0).map((role) => (
               <div key={role} className="flex items-start gap-1.5 text-xs">
-                <span className={`shrink-0 rounded border px-1.5 py-0.5 text-[10px] font-medium ${FORMULA_ROLE_CONFIG[role].color}`}>
+                <span className={`shrink-0 rounded border px-1.5 py-0.5 text-xs font-medium ${FORMULA_ROLE_CONFIG[role].color}`}>
                   {formulaRoleLabel(locale, role)}
                 </span>
                 <span className="flex flex-wrap gap-1">

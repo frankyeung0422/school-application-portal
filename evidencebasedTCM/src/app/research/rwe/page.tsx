@@ -1,4 +1,4 @@
-import Link from "next/link";
+﻿import Link from "next/link";
 import { buildRWESummary, type OutcomeStats } from "@/lib/rwe/aggregate";
 import { getLocale } from "@/lib/i18n/locale-server";
 
@@ -133,7 +133,7 @@ export default async function RWEDashboardPage() {
                           {f.chineseName}
                         </Link>
                         {f.stats.n < SMALL_N && (
-                          <span className="ml-2 rounded bg-muted/15 px-1.5 py-0.5 text-[10px] text-muted">
+                          <span className="ml-2 rounded bg-muted/15 px-1.5 py-0.5 text-xs text-muted">
                             {S("小樣本", "small n")}
                           </span>
                         )}
@@ -185,7 +185,7 @@ export default async function RWEDashboardPage() {
                         <Link href={`/patterns/${p.patternId}`} className="font-medium hover:text-primary">
                           {p.chineseName}
                         </Link>
-                        <span className="ml-2 text-[10px] text-muted">{p.pathologyType}</span>
+                        <span className="ml-2 text-xs text-muted">{p.pathologyType}</span>
                       </td>
                       <StatCells stats={p.stats} S={S} />
                       <td className="px-3 py-2 text-xs text-muted">

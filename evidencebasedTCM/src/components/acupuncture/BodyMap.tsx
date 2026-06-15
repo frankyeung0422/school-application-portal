@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
@@ -195,7 +195,7 @@ export function BodyMap({
           if (!hp) return null;
           const name = locale === "zh-Hant" ? hp.chineseName : hp.pinyinName;
           return (
-            <div className="absolute left-2 top-2 rounded-md bg-black/80 px-2 py-1 text-[11px] text-white shadow">
+            <div className="absolute left-2 top-2 rounded-md bg-black/80 px-2 py-1 text-xs text-white shadow">
               <span className="font-mono font-semibold mr-1">{hp.code}</span>
               <span>{name}</span>
               <span className="ml-1 text-white/70">· {hp.meridian}</span>

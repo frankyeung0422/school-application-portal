@@ -117,7 +117,7 @@ export function PricingTiers({ locale, stripeReady }: Props) {
             }`}
           >
             {T("年付", "Annual")}
-            <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500 text-white">
+            <span className="ml-1.5 text-xs px-1.5 py-0.5 rounded-full bg-emerald-500 text-white">
               {T("省 15%", "Save 15%")}
             </span>
           </button>
@@ -182,7 +182,7 @@ export function PricingTiers({ locale, stripeReady }: Props) {
                 ))}
               </ul>
               {tier.missingHint && (
-                <p className="text-[11px] text-muted italic mb-3">{tier.missingHint}</p>
+                <p className="text-xs text-muted italic mb-3">{tier.missingHint}</p>
               )}
 
               {tier.tierKey && stripeReady ? (

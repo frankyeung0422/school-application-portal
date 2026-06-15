@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/db/prisma";
+﻿import { prisma } from "@/lib/db/prisma";
 
 interface Props {
   /** Single herb. Provide this OR herbIds. */
@@ -62,7 +62,7 @@ export async function SafetyBadges({ herbId, herbIds, locale, compact = false }:
   if (ped) items.push({ key: "ped", icon: "👶", label: T("兒童", "Pediatric"), value: ped });
   if (items.length === 0) return null;
 
-  const sizeCls = compact ? "text-[10px] px-1.5 py-0.5" : "text-xs px-2 py-1";
+  const sizeCls = compact ? "text-xs px-1.5 py-0.5" : "text-xs px-2 py-1";
   return (
     <div className="flex flex-wrap gap-1.5">
       {items.map((i) => {

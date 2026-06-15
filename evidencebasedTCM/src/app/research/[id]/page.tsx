@@ -186,7 +186,7 @@ export default async function ResearchDetailPage({ params }: Props) {
                     </div>
                     <div className="mt-1 flex flex-wrap gap-1">
                       {p.hitGenes.map((g) => (
-                        <span key={g} className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[11px] font-mono text-emerald-700">
+                        <span key={g} className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-xs font-mono text-emerald-700">
                           {g}
                         </span>
                       ))}
@@ -202,7 +202,7 @@ export default async function ResearchDetailPage({ params }: Props) {
                 <h3 className="text-sm font-semibold">
                   {S("靶點重疊中藥 (重定位候選)", "Herbs by Target Overlap (repurposing)")}
                 </h3>
-                <div className="flex items-center gap-3 text-[10px] text-muted">
+                <div className="flex items-center gap-3 text-xs text-muted">
                   <span className="inline-flex items-center gap-1">
                     <span className="inline-block h-2.5 w-2.5 rounded bg-emerald-500/10" /> {S("策展", "curated")}
                   </span>
@@ -226,7 +226,7 @@ export default async function ResearchDetailPage({ params }: Props) {
                             const c = credibilityFor(h.herbId, h.overlap, h.sharedGenes);
                             return <CredibilityBadge tier={c.tier} score={c.score} locale={locale} title={c.rationale} />;
                           })()}
-                          {novel && <span className="text-[10px] text-amber-700">{S("新候選", "novel")}</span>}
+                          {novel && <span className="text-xs text-amber-700">{S("新候選", "novel")}</span>}
                           <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
                             {h.overlap} {S("靶點", "targets")}
                           </span>
@@ -236,7 +236,7 @@ export default async function ResearchDetailPage({ params }: Props) {
                         {h.sharedGenes.map((g) => {
                           const d = drugMap.get(g);
                           return (
-                            <span key={g} className={`rounded px-1.5 py-0.5 text-[11px] font-mono ${geneChipClass(targetSrc.get(g))}`} title={druggabilityTitle(d, locale === "zh-Hant")}>
+                            <span key={g} className={`rounded px-1.5 py-0.5 text-xs font-mono ${geneChipClass(targetSrc.get(g))}`} title={druggabilityTitle(d, locale === "zh-Hant")}>
                               {g}{d && <span className="ml-0.5">💊</span>}
                             </span>
                           );
@@ -264,7 +264,7 @@ export default async function ResearchDetailPage({ params }: Props) {
                         </Link>
                         <span className="flex items-center gap-2">
                           {novel && (
-                            <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+                            <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-700">
                               {S("新候選·待驗證", "novel · validate")}
                             </span>
                           )}
@@ -435,7 +435,7 @@ export default async function ResearchDetailPage({ params }: Props) {
                 >
                   <div className="flex items-start justify-between gap-3">
                     <span className="text-sm font-medium">{t.title}</span>
-                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${recruiting ? "bg-emerald-500/15 text-emerald-700" : "bg-muted/15 text-muted"}`}>
+                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${recruiting ? "bg-emerald-500/15 text-emerald-700" : "bg-muted/15 text-muted"}`}>
                       {t.status.replace(/_/g, " ")}
                     </span>
                   </div>

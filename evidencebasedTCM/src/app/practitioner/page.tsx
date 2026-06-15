@@ -1,4 +1,4 @@
-import Link from "next/link";
+﻿import Link from "next/link";
 import { prisma } from "@/lib/db/prisma";
 import { getLocale } from "@/lib/i18n/locale-server";
 import { auth } from "@/lib/auth/authOptions";
@@ -171,7 +171,7 @@ export default async function PractitionerDashboard() {
             className="group rounded-xl border border-border bg-surface p-5 hover:border-primary-light hover:shadow-md transition-all relative"
           >
             {s.badge && (
-              <span className="absolute top-3 right-3 text-[10px] font-semibold rounded-full bg-amber-100 text-amber-800 px-2 py-0.5">
+              <span className="absolute top-3 right-3 text-xs font-semibold rounded-full bg-amber-100 text-amber-800 px-2 py-0.5">
                 {s.badge}
               </span>
             )}

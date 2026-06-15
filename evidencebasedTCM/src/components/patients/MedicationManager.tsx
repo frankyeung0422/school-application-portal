@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -100,14 +100,14 @@ export function MedicationManager({ locale, patientId }: Props) {
             const active = !m.endDate;
             return (
               <li key={m.id} className="flex items-center gap-2 text-sm">
-                <span className={`text-[10px] w-12 ${active ? "text-green-700" : "text-muted"}`}>
+                <span className={`text-xs w-12 ${active ? "text-green-700" : "text-muted"}`}>
                   {active ? T("使用中", "Active") : T("已停", "Past")}
                 </span>
                 <span className="font-medium">{m.displayName}</span>
-                {m.drugClass && <span className="text-[10px] text-muted">{m.drugClass}</span>}
+                {m.drugClass && <span className="text-xs text-muted">{m.drugClass}</span>}
                 {m.dose && <span className="text-xs">{m.dose}</span>}
-                {m.route && <span className="text-[10px] text-muted">{m.route}</span>}
-                {m.prn && <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">PRN</span>}
+                {m.route && <span className="text-xs text-muted">{m.route}</span>}
+                {m.prn && <span className="text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">PRN</span>}
                 <button onClick={() => remove(m.id)} className="ml-auto text-xs text-muted hover:text-red-500">✕</button>
               </li>
             );
@@ -119,7 +119,7 @@ export function MedicationManager({ locale, patientId }: Props) {
         {chosen ? (
           <div className="rounded-md border border-border bg-background p-2 flex flex-wrap items-center gap-2 mb-2">
             <span className="font-medium text-sm">{chosen.display}</span>
-            <span className="text-[10px] text-muted">{chosen.className}</span>
+            <span className="text-xs text-muted">{chosen.className}</span>
             <button onClick={() => setChosen(null)} className="text-xs text-muted hover:text-red-500">✕</button>
           </div>
         ) : (

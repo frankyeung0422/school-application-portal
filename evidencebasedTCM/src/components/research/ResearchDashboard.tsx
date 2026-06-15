@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import Link from "next/link";
@@ -197,7 +197,7 @@ export function ResearchDashboard({ locale, dbStats, reports }: Props) {
                   <span className="text-xs font-mono text-muted">v{r.version} · {r.score ?? 0}pt</span>
                 </div>
                 <p className="text-sm text-primary">{r.formulaName ?? "—"}</p>
-                <p className="text-[11px] text-muted mt-1">
+                <p className="text-xs text-muted mt-1">
                   {S("更新", "Updated")}: {new Date(r.updatedAt).toLocaleString()}
                 </p>
               </Link>
@@ -221,7 +221,7 @@ export function ResearchDashboard({ locale, dbStats, reports }: Props) {
                   <h4 className="font-semibold">{r.diseaseName}</h4>
                   <span className="text-xs font-mono text-muted">v{r.version} · {r.score ?? 0}pt</span>
                 </div>
-                <p className="text-[11px] text-muted mt-1">
+                <p className="text-xs text-muted mt-1">
                   {S("更新", "Updated")}: {new Date(r.updatedAt).toLocaleString()}
                 </p>
               </Link>

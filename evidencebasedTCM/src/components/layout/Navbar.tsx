@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState, useEffect } from "react";
+import { useState, useEffect, Fragment } from "react";
 import { createPortal } from "react-dom";
 import { useSession, signOut } from "next-auth/react";
 import { useI18n } from "@/components/i18n/I18nProvider";
@@ -10,7 +10,7 @@ import { LanguageSwitcher } from "@/components/i18n/LanguageSwitcher";
 
 interface NavGroup {
   labelKey: string;
-  links: { href: string; labelKey: string }[];
+  links: { href: string; labelKey: string; sectionLabelKey?: string }[];
 }
 
 export function Navbar() {
@@ -46,17 +46,17 @@ export function Navbar() {
     {
       labelKey: "nav.clinicalTools",
       links: [
-        { href: "/practitioner", labelKey: "nav.practitionerHome" },
+        { href: "/practitioner", labelKey: "nav.practitionerHome", sectionLabelKey: "nav.sectionPractice" },
         { href: "/patients", labelKey: "nav.patients" },
         { href: "/clinic", labelKey: "nav.clinic" },
         { href: "/certified-clinic", labelKey: "nav.certifiedClinic" },
         { href: "/referrals", labelKey: "nav.referrals" },
-        { href: "/diagnose/symptoms", labelKey: "nav.diagnose" },
+        { href: "/cases", labelKey: "nav.cases" },
+        { href: "/diagnose/symptoms", labelKey: "nav.diagnose", sectionLabelKey: "nav.sectionDiagnosis" },
         { href: "/diagnose/constitution", labelKey: "nav.constitution" },
         { href: "/diagnose/prescription", labelKey: "nav.prescriptionScan" },
-        { href: "/prescription", labelKey: "nav.prescription" },
+        { href: "/prescription", labelKey: "nav.prescription", sectionLabelKey: "nav.sectionDecision" },
         { href: "/safety/check", labelKey: "nav.safety" },
-        { href: "/cases", labelKey: "nav.cases" },
       ],
     },
     {
@@ -166,7 +166,7 @@ export function Navbar() {
                     className={`rounded-md px-3 py-2 text-sm font-medium transition-colors ${
                       isActive(link.href)
                         ? "bg-primary/10 text-primary"
-                        : "text-muted hover:text-foreground hover:bg-background"
+                        : "text-muted hover:text-foreground hover:bg-primary/5"
                     }`}
                   >
                     {t(link.labelKey)}
@@ -190,7 +190,7 @@ export function Navbar() {
                     className={`relative z-10 rounded-md px-3 py-2 text-sm font-medium transition-colors flex items-center gap-1 cursor-pointer ${
                       isGroupActive(group) || isOpen
                         ? "bg-primary/10 text-primary"
-                        : "text-muted hover:text-foreground hover:bg-background"
+                        : "text-muted hover:text-foreground hover:bg-primary/5"
                     }`}
                   >
                     {t(group.labelKey)}
@@ -202,22 +202,28 @@ export function Navbar() {
                   {isOpen && (
                     <div
                       role="menu"
-                      className="absolute top-full left-0 z-20 mt-1 w-48 rounded-lg border border-border bg-surface shadow-lg py-1"
+                      className="absolute top-full left-0 z-20 mt-1 w-56 rounded-lg border border-border bg-surface shadow-lg py-1"
                     >
-                      {group.links.map((link) => (
-                        <Link
-                          key={link.href}
-                          href={link.href}
-                          role="menuitem"
-                          onClick={closeAll}
-                          className={`block px-4 py-2 text-sm transition-colors ${
-                            isActive(link.href)
-                              ? "bg-primary/10 text-primary"
-                              : "text-muted hover:text-foreground hover:bg-background"
-                          }`}
-                        >
-                          {t(link.labelKey)}
-                        </Link>
+                      {group.links.map((link, idx) => (
+                        <Fragment key={link.href}>
+                          {link.sectionLabelKey && (
+                            <div className={`px-4 pb-1 text-xs font-semibold uppercase tracking-wider text-muted ${idx === 0 ? "pt-2" : "pt-3 mt-1 border-t border-border"}`}>
+                              {t(link.sectionLabelKey)}
+                            </div>
+                          )}
+                          <Link
+                            href={link.href}
+                            role="menuitem"
+                            onClick={closeAll}
+                            className={`block px-4 py-2 text-sm transition-colors ${
+                              isActive(link.href)
+                                ? "bg-primary/10 text-primary"
+                                : "text-muted hover:text-foreground hover:bg-primary/5"
+                            }`}
+                          >
+                            {t(link.labelKey)}
+                          </Link>
+                        </Fragment>
                       ))}
                     </div>
                   )}
@@ -236,7 +242,7 @@ export function Navbar() {
                   <Link
                     href="/my-health"
                     className={`rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-                      pathname.startsWith("/my-health") ? "bg-primary/10 text-primary" : "text-muted hover:text-foreground hover:bg-background"
+                      pathname.startsWith("/my-health") ? "bg-primary/10 text-primary" : "text-muted hover:text-foreground hover:bg-primary/5"
                     }`}
                   >
                     🌿 My Health
@@ -246,7 +252,7 @@ export function Navbar() {
                   <Link
                     href="/researcher"
                     className={`rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-                      pathname.startsWith("/researcher") ? "bg-primary/10 text-primary" : "text-muted hover:text-foreground hover:bg-background"
+                      pathname.startsWith("/researcher") ? "bg-primary/10 text-primary" : "text-muted hover:text-foreground hover:bg-primary/5"
                     }`}
                   >
                     🔬 Research Hub
@@ -256,7 +262,7 @@ export function Navbar() {
                   <>
                     <Link
                       href="/subscription"
-                      className="rounded-md px-2 py-2 text-sm text-muted hover:text-foreground hover:bg-background transition-colors"
+                      className="rounded-md px-2 py-2 text-sm text-muted hover:text-foreground hover:bg-primary/5 transition-colors"
                       title={t("nav.subscription")}
                     >
                       <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -267,7 +273,7 @@ export function Navbar() {
                 )}
                 <Link
                   href="/bookmarks"
-                  className="rounded-md px-2 py-2 text-sm text-muted hover:text-foreground hover:bg-background transition-colors"
+                  className="rounded-md px-2 py-2 text-sm text-muted hover:text-foreground hover:bg-primary/5 transition-colors"
                   title={t("nav.bookmarks")}
                 >
                   <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -280,7 +286,7 @@ export function Navbar() {
                     className={`rounded-md px-3 py-2 text-sm font-medium transition-colors ${
                       pathname.startsWith("/admin")
                         ? "bg-primary/10 text-primary"
-                        : "text-muted hover:text-foreground hover:bg-background"
+                        : "text-muted hover:text-foreground hover:bg-primary/5"
                     }`}
                   >
                     {t("nav.admin")}
@@ -288,7 +294,7 @@ export function Navbar() {
                 )}
                 <button
                   onClick={() => signOut({ callbackUrl: "/" })}
-                  className="rounded-md px-3 py-1.5 text-xs font-medium border border-border text-muted hover:text-foreground hover:bg-background transition-colors"
+                  className="rounded-md px-3 py-1.5 text-xs font-medium border border-border text-muted hover:text-foreground hover:bg-primary/5 transition-colors"
                 >
                   {t("nav.signOut")}
                 </button>
@@ -297,13 +303,13 @@ export function Navbar() {
               <div className="flex items-center gap-2">
                 <Link
                   href="/for-patients"
-                  className="rounded-md px-3 py-2 text-sm font-medium text-muted hover:text-foreground hover:bg-background transition-colors"
+                  className="rounded-md px-3 py-2 text-sm font-medium text-muted hover:text-foreground hover:bg-primary/5 transition-colors"
                 >
                   Track Health
                 </Link>
                 <Link
                   href="/for-researchers"
-                  className="rounded-md px-3 py-2 text-sm font-medium text-muted hover:text-foreground hover:bg-background transition-colors"
+                  className="rounded-md px-3 py-2 text-sm font-medium text-muted hover:text-foreground hover:bg-primary/5 transition-colors"
                 >
                   For Researchers
                 </Link>
@@ -320,7 +326,7 @@ export function Navbar() {
           {/* Mobile hamburger */}
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="lg:hidden rounded-md p-2 text-muted hover:text-foreground hover:bg-background"
+            className="lg:hidden rounded-md p-2 text-muted hover:text-foreground hover:bg-primary/5"
           >
             <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               {mobileMenuOpen ? (
@@ -366,7 +372,7 @@ export function Navbar() {
                   className={`block rounded-md px-3 py-2 text-sm font-medium ${
                     isActive(link.href)
                       ? "bg-primary/10 text-primary"
-                      : "text-muted hover:text-foreground hover:bg-background"
+                      : "text-muted hover:text-foreground hover:bg-primary/5"
                   }`}
                 >
                   {t(link.labelKey)}

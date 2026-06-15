@@ -202,7 +202,12 @@ export default async function HomePage() {
               {t(messages, "home.exploreDb")}
             </Link>
           </div>
-          <p className="mt-4 text-sm text-blue-100">
+          <p className="mt-4 text-xs text-white/60 tracking-widest uppercase">
+            {locale === "zh-Hant"
+              ? "適用對象：中醫師 · 研究人員 · 病患"
+              : "For Practitioners · Researchers · Patients"}
+          </p>
+          <p className="mt-3 text-sm text-blue-100">
             {locale === "zh-Hant"
               ? "✨ 14 天免費試用 · 無需信用卡 · 隨時取消"
               : "✨ 14-day free trial · No credit card required · Cancel anytime"}
@@ -214,7 +219,7 @@ export default async function HomePage() {
         <div className="mx-auto max-w-5xl grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-6 text-center">
           {stats.map((stat) => (
             <div key={stat.labelKey}>
-              <div className="text-2xl font-bold text-primary">{stat.value}</div>
+              <div className="text-3xl font-bold text-primary">{stat.value}</div>
               <div className="mt-1 text-xs text-muted">{t(messages, stat.labelKey)}</div>
             </div>
           ))}
@@ -264,9 +269,9 @@ export default async function HomePage() {
                   {!isZh && <p className="text-xs text-muted mt-0.5">{d.nameZh}</p>}
                   <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
                     {trials > 0 && (
-                      <span className="text-[11px] text-muted">🧪 {trials} {isZh ? "試驗" : "trials"}</span>
+                      <span className="text-xs text-muted">🧪 {trials} {isZh ? "試驗" : "trials"}</span>
                     )}
-                    <span className="text-[11px] text-muted">🔬 {isZh ? "網絡藥理" : "Network pharm."}</span>
+                    <span className="text-xs text-muted">🔬 {isZh ? "網絡藥理" : "Network pharm."}</span>
                   </div>
                 </Link>
               );

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { BodyMap, type BodyMapPoint } from "@/components/acupuncture/BodyMap";
@@ -390,7 +390,7 @@ export function PrescriptionBuilder({ herbs, acupoints, locale }: Props) {
             {pairWarnings.map((w) => (
               <li key={`p-${w.herbAId}-${w.herbBId}`} className="text-xs leading-relaxed">
                 <span
-                  className={`mr-1 inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold align-middle ${SEVERITY_COLORS[w.severity]}`}
+                  className={`mr-1 inline-block rounded px-1.5 py-0.5 text-xs font-semibold align-middle ${SEVERITY_COLORS[w.severity]}`}
                 >
                   {severityLabel(locale, w.severity)}
                 </span>
@@ -407,7 +407,7 @@ export function PrescriptionBuilder({ herbs, acupoints, locale }: Props) {
             {contraWarnings.map((w, i) => (
               <li key={`c-${w.herbId}-${i}`} className="text-xs leading-relaxed">
                 <span
-                  className={`mr-1 inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold align-middle ${SEVERITY_COLORS[w.severity]}`}
+                  className={`mr-1 inline-block rounded px-1.5 py-0.5 text-xs font-semibold align-middle ${SEVERITY_COLORS[w.severity]}`}
                 >
                   {severityLabel(locale, w.severity)}
                 </span>
@@ -447,7 +447,7 @@ export function PrescriptionBuilder({ herbs, acupoints, locale }: Props) {
             <h3 className="text-sm font-semibold mb-2">
               {locale === "zh-Hant" ? "中藥組成" : "Herbs"} ({draft.herbs.length})
               {draft.herbs.length > 0 && (
-                <span className="ml-2 text-[10px] font-normal text-muted print:hidden">
+                <span className="ml-2 text-xs font-normal text-muted print:hidden">
                   {t.clickHint}
                 </span>
               )}
@@ -678,7 +678,7 @@ export function PrescriptionBuilder({ herbs, acupoints, locale }: Props) {
                             <span className="font-medium">
                               {localizeDbText(c.condition, locale)}
                             </span>
-                            <span className="ml-2 text-[10px] font-semibold">
+                            <span className="ml-2 text-xs font-semibold">
                               [{severityLabel(locale, c.severity)}]
                             </span>
                             {c.description && (
@@ -703,7 +703,7 @@ export function PrescriptionBuilder({ herbs, acupoints, locale }: Props) {
                             <span className="font-medium">
                               {localizeDbText(d.drugName, locale)}
                             </span>
-                            <span className="ml-2 text-[10px] font-semibold">
+                            <span className="ml-2 text-xs font-semibold">
                               [{severityLabel(locale, d.severity)}]
                             </span>
                             {d.clinicalEffect && (

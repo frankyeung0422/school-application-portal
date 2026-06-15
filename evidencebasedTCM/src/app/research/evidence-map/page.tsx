@@ -1,4 +1,4 @@
-import Link from "next/link";
+﻿import Link from "next/link";
 import { buildEvidenceMap, GRADE_ORDER, type DiseaseEvidenceMap } from "@/lib/research/evidence-map";
 import { getLocale } from "@/lib/i18n/locale-server";
 
@@ -79,7 +79,7 @@ function DiseaseCard({ d, S }: { d: DiseaseEvidenceMap; S: (zh: string, en: stri
       {d.gaps.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-1">
           {d.gaps.map((gap) => (
-            <span key={gap} className="rounded-full bg-red-500/10 px-2 py-0.5 text-[11px] text-red-700">
+            <span key={gap} className="rounded-full bg-red-500/10 px-2 py-0.5 text-xs text-red-700">
               ⚠ {gap}
             </span>
           ))}
@@ -139,7 +139,7 @@ export default async function EvidenceMapPage() {
             >
               <div className="flex items-start justify-between gap-3">
                 <span className="text-sm font-medium line-clamp-1">{e.title}</span>
-                <span className={`shrink-0 rounded px-1.5 py-0.5 text-[11px] font-semibold ${GRADE_HEADER_CLASS[e.evidenceGrade]}`}>
+                <span className={`shrink-0 rounded px-1.5 py-0.5 text-xs font-semibold ${GRADE_HEADER_CLASS[e.evidenceGrade]}`}>
                   {e.evidenceGrade}
                 </span>
               </div>

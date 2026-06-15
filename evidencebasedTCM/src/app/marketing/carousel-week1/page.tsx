@@ -1,4 +1,4 @@
-import { getLocale } from "@/lib/i18n/locale-server";
+﻿import { getLocale } from "@/lib/i18n/locale-server";
 import { PrintButton } from "@/components/marketing/PrintButton";
 
 export const dynamic = "force-dynamic";
@@ -174,7 +174,7 @@ export default async function CarouselWeek1Page() {
           if (slide.type === "cover") {
             return (
               <div key={i} className="slide shadow-lg print:shadow-none">
-                <div className="text-[11px] uppercase tracking-[0.2em] text-emerald-700 mb-auto">
+                <div className="text-xs uppercase tracking-[0.2em] text-emerald-700 mb-auto">
                   EvidenceBasedTCM
                 </div>
                 <div className="my-auto">
@@ -199,7 +199,7 @@ export default async function CarouselWeek1Page() {
           if (slide.type === "legend") {
             return (
               <div key={i} className="slide shadow-lg print:shadow-none">
-                <div className="text-[11px] uppercase tracking-[0.2em] text-emerald-700 mb-4">
+                <div className="text-xs uppercase tracking-[0.2em] text-emerald-700 mb-4">
                   {T("如何閱讀", "How to read this")}
                 </div>
                 <div className="space-y-3 my-auto">
@@ -264,26 +264,26 @@ export default async function CarouselWeek1Page() {
 
                 <div className="space-y-2.5 text-[13px] leading-snug">
                   <div>
-                    <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-0.5">
+                    <div className="text-xs uppercase tracking-wider text-slate-500 mb-0.5">
                       {T("機轉", "Mechanism")}
                     </div>
                     <div>{isZh ? slide.mechanism.zh : slide.mechanism.en}</div>
                   </div>
                   <div>
-                    <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-0.5">
+                    <div className="text-xs uppercase tracking-wider text-slate-500 mb-0.5">
                       {T("臨床效應", "Clinical effect")}
                     </div>
                     <div>{isZh ? slide.effect.zh : slide.effect.en}</div>
                   </div>
                   <div>
-                    <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-0.5">
+                    <div className="text-xs uppercase tracking-wider text-slate-500 mb-0.5">
                       {T("處置", "Management")}
                     </div>
                     <div className="font-medium">{isZh ? slide.management.zh : slide.management.en}</div>
                   </div>
                 </div>
 
-                <div className="mt-auto text-[10px] text-slate-400">
+                <div className="mt-auto text-xs text-slate-400">
                   {T("證據：", "Evidence: ")}{slide.evidence}
                 </div>
                 <FooterStripContent slideNo={i + 1} />
@@ -294,7 +294,7 @@ export default async function CarouselWeek1Page() {
           // CTA
           return (
             <div key={i} className="slide shadow-lg print:shadow-none">
-              <div className="text-[11px] uppercase tracking-[0.2em] text-emerald-700 mb-auto">
+              <div className="text-xs uppercase tracking-[0.2em] text-emerald-700 mb-auto">
                 {T("完整查詢", "Full checker")}
               </div>
 
