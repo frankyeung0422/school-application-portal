@@ -1,0 +1,1046 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>足球預測器 — 香港賽馬會即時賠率與 ML 模擬</title>
+    <meta name="description" content="香港賽馬會足球即時賠率、賠率變動監控、10,000 次蒙地卡羅模擬、AI 預測。Built for serious analysts.">
+
+    <!-- PWA -->
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#0a0f1e">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+    <!-- Auth gate: redirect to login before any API call fires -->
+    <script src="/static/js/auth.js"></script>
+    <script>
+      (function () {
+        if (!AUTH.isLoggedIn()) {
+          location.href = '/static/templates/login.html?next=' + encodeURIComponent(location.pathname);
+        }
+      })();
+    </script>
+
+    <!-- Unified theme: marketing first, product surface on top -->
+    <link rel="stylesheet" href="/static/assets/css/marketing.css">
+    <link rel="stylesheet" href="/static/assets/css/style.css">
+
+    <style>
+      /* Sticky upgrade banner — only shown to Free users above the main header */
+      .fp-upgrade-bar {
+        background: linear-gradient(90deg, rgba(91,141,239,0.22), rgba(245,193,108,0.16));
+        color: var(--txt); font-size: 13px; padding: 9px 18px;
+        display: none; align-items: center; justify-content: center; gap: 12px;
+        border-bottom: 1px solid rgba(91,141,239,0.3);
+        position: sticky; top: 0; z-index: 60;
+      }
+      .fp-upgrade-bar.show { display: flex; }
+      .fp-upgrade-bar a.cta {
+        background: var(--accent); color: #fff; text-decoration: none;
+        padding: 5px 14px; border-radius: 999px; font-weight: 600; font-size: 12px;
+      }
+      .fp-upgrade-bar a.cta:hover { filter: brightness(1.08); }
+      .fp-upgrade-bar .close { cursor: pointer; color: var(--mut); margin-left: 6px; }
+      .fp-upgrade-bar .close:hover { color: var(--txt); }
+
+      /* Paywall modal */
+      #fpPaywallBg {
+        position: fixed; inset: 0; background: rgba(5, 8, 18, 0.78); backdrop-filter: blur(6px);
+        display: none; align-items: center; justify-content: center; z-index: 999; padding: 20px;
+      }
+      #fpPaywallBg.show { display: flex; }
+      .fp-paywall {
+        background: linear-gradient(180deg, var(--card) 0%, var(--bg-2) 100%);
+        border: 1px solid var(--border-2); border-radius: var(--radius-lg);
+        padding: 32px; max-width: 460px; width: 100%; position: relative;
+        box-shadow: var(--shadow);
+      }
+      .fp-paywall .close-x {
+        position: absolute; top: 12px; right: 14px; background: transparent;
+        border: 0; color: var(--mut); font-size: 22px; cursor: pointer; line-height: 1;
+      }
+      .fp-paywall .icon-circle {
+        width: 56px; height: 56px; border-radius: 50%; margin: 0 auto 18px;
+        background: rgba(245,193,108,0.14); color: var(--gold);
+        display: flex; align-items: center; justify-content: center;
+      }
+      .fp-paywall h2 { margin: 0 0 8px; font-size: 22px; text-align: center; color: var(--txt); }
+      .fp-paywall p  { margin: 0 0 22px; color: var(--mut); text-align: center; line-height: 1.55; }
+      .fp-paywall .perks { list-style: none; padding: 0; margin: 0 0 24px; }
+      .fp-paywall .perks li {
+        display: flex; align-items: center; gap: 10px; padding: 8px 0;
+        color: var(--txt); font-size: 14px;
+      }
+      .fp-paywall .perks li svg { color: var(--green); flex-shrink: 0; }
+      .fp-paywall .actions { display: flex; flex-direction: column; gap: 10px; }
+      .fp-paywall .btn-pro {
+        background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #fff;
+        text-align: center; text-decoration: none; padding: 13px 20px;
+        border-radius: 10px; font-weight: 600; cursor: pointer; border: 0; font-size: 14px;
+        box-shadow: 0 8px 24px rgba(91, 141, 239, 0.3);
+      }
+      .fp-paywall .btn-pro:hover { filter: brightness(1.06); }
+      .fp-paywall .btn-basic {
+        background: transparent; color: var(--txt); border: 1px solid var(--border-2);
+        text-align: center; padding: 11px 20px; border-radius: 10px; font-size: 14px;
+        text-decoration: none;
+      }
+      .fp-paywall .btn-basic:hover { border-color: var(--accent); }
+      .fp-paywall .dismiss { color: var(--mut); text-align: center; font-size: 13px; cursor: pointer; padding: 6px; }
+      .fp-paywall .dismiss:hover { color: var(--txt); }
+    </style>
+</head>
+
+<body>
+    <!-- Free-tier sticky upgrade banner -->
+    <div class="fp-upgrade-bar" id="fpUpgradeBar">
+      <span id="fpUpgradeBarMsg">您正在使用免費等級 — 升級解鎖 1 分鐘賠率刷新、過關工具及 API 存取。</span>
+      <a class="cta" href="/static/templates/pricing.html" id="fpUpgradeBarCta">查看方案</a>
+      <span class="close" id="fpUpgradeBarClose" title="關閉">✕</span>
+    </div>
+
+    <!-- Paywall modal -->
+    <div id="fpPaywallBg">
+      <div class="fp-paywall" role="dialog" aria-modal="true">
+        <button class="close-x" id="fpPaywallClose" aria-label="Close">&times;</button>
+        <div class="icon-circle">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        </div>
+        <h2 id="fpPaywallTitle">Pro 專屬功能</h2>
+        <p id="fpPaywallBody">此功能屬於 Pro 方案。解鎖過關工具、1 分鐘賠率刷新、API 存取、回測工具。</p>
+        <ul class="perks">
+          <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg><span id="fpPerk1">過關投注組合工具</span></li>
+          <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg><span id="fpPerk2">1 分鐘賠率刷新</span></li>
+          <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg><span id="fpPerk3">API 存取與密鑰</span></li>
+          <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg><span id="fpPerk4">完整回測工具</span></li>
+        </ul>
+        <div class="actions">
+          <button class="btn-pro" id="fpCheckoutPro">升級至 Pro · HKD 299/月</button>
+          <a class="btn-basic" id="fpCheckoutBasic" href="/static/templates/pricing.html">或從 Basic 開始 · HKD 99/月</a>
+          <div class="dismiss" id="fpPaywallDismiss">稍後再說</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Header + section tabs rendered by /static/js/product-header.js -->
+    <div id="app-header" data-active="hkjc"></div>
+
+    <!-- Hero -->
+    <section class="hero" id="top">
+        <div class="container">
+            <div class="hero-content">
+                <h2 class="hero-title" data-i18n="app.hero.title">即時賠率 · ML 預測 · 萬次模擬</h2>
+                <p class="hero-subtitle" data-i18n="app.hero.sub">bet.hkjc.com 即時賠率 + 5 模型集成 + 10,000 次蒙地卡羅模擬,協助你做出有依據的投注決定。</p>
+                <div class="hero-stats">
+                    <div class="stat-card">
+                        <div class="stat-value" id="accuracy-stat">--</div>
+                        <div class="stat-label" data-i18n="app.stat.acc">模型準確度</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="matches-stat">--</div>
+                        <div class="stat-label" data-i18n="app.stat.matches">馬會賽事</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="simulations-stat">10,000</div>
+                        <div class="stat-label" data-i18n="app.stat.sims">每場模擬次數</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Main Content -->
+    <main class="main">
+        <div class="container">
+            <!-- HKJC Matches -->
+            <section class="section mobile-panel" id="hkjc" data-mobile-tab="hkjc">
+                <div id="hkjc-sample-banner" class="sample-banner hidden">
+                    無法載入 bet.hkjc.com 即時賠率(維護中、無法連線或地區限制)。仍可使用範例資料進行模擬,按「更新賠率」重試。
+                </div>
+                <div class="section-header">
+                    <h2 class="section-title" data-i18n="app.sec.hkjc">馬會足球 (bet.hkjc.com)</h2>
+                    <div class="filter-controls">
+                        <button type="button" id="refresh-hkjc-btn" class="btn-refresh" data-i18n="app.btn.refresh_odds">更新賠率</button>
+                        <select id="hkjc-match-select" class="filter-select">
+                            <option value="">-- 選擇賽事 --</option>
+                        </select>
+                    </div>
+                </div>
+                <div id="hkjc-match-detail" class="hkjc-detail card hidden">
+                    <div class="detail-loading" id="hkjc-detail-loading">載入中…</div>
+                    <div id="hkjc-detail-content" class="hidden">
+                        <div class="detail-match-info"></div>
+                        <div class="detail-form-strip"></div>
+                        <div class="detail-best-bet"></div>
+                        <div class="detail-markets-grid"></div>
+                        <div class="detail-odds-grid"></div>
+                        <h3 class="card-title" style="margin-top:18px">預期入球熱圖 (Poisson 進球機率分布)</h3>
+                        <div class="detail-goal-grid"></div>
+                        <h3 class="card-title" style="margin-top:18px">推薦比分 (波膽) <small style="font-weight:400;font-size:11px;color:var(--mut)">— 模型 × 聯賽歷史比分先驗</small></h3>
+                        <div class="detail-correct-score"></div>
+                        <h3 class="card-title" style="margin-top:18px">最有可能比分 (前 10)</h3>
+                        <div class="sim-score-table-wrap"></div>
+                        <div class="detail-sharp"></div>
+                        <h3 class="card-title" style="margin-top:16px">賠率歷史(監控變動)</h3>
+                        <div class="odds-history-chart-wrap"><canvas id="odds-history-chart"></canvas></div>
+                        <h3 class="card-title" style="margin-top:16px">1X2 模擬結果分布</h3>
+                        <div class="sim-result-distribution"></div>
+                        <div class="recommended-bet"></div>
+                        <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap;align-items:center">
+                            <button type="button" id="ai-preview-btn" class="btn-refresh" data-match-id="">📝 AI 預覽 (Gemini)</button>
+                            <select id="ai-preview-lang" class="filter-select" style="padding:7px 10px">
+                                <option value="zh" selected>中文</option>
+                                <option value="en">English</option>
+                            </select>
+                            <button type="button" id="share-match-btn" class="btn-refresh ghost" data-match-id="">🔗 分享</button>
+                            <span style="font-size:12px;color:var(--mut);align-self:center" id="ai-preview-meta"></span>
+                        </div>
+                        <div id="ai-preview-content" style="margin-top:14px;display:none">
+                            <div class="card" style="background:rgba(91,141,239,0.06);border-color:rgba(91,141,239,0.3);white-space:pre-wrap;line-height:1.7;font-size:14px"></div>
+                            <div style="display:flex;gap:8px;margin-top:8px">
+                                <button type="button" id="ai-preview-copy" class="btn-refresh ghost" style="padding:5px 12px;font-size:12px">複製</button>
+                                <button type="button" id="ai-preview-refresh" class="btn-refresh ghost" style="padding:5px 12px;font-size:12px">重新生成</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <p class="section-note">按「更新賠率」從馬會、Soccer24、BetExplorer 或 The Odds API 載入賠率。多來源合併賠率提升預測準確度。選擇賽事查看賠率歷史及模擬結果。</p>
+            </section>
+
+            <!-- Profitable Picks -->
+            <section class="section mobile-panel" id="profitable" data-mobile-tab="profitable">
+                <div class="section-header">
+                    <h2 class="section-title" data-i18n="app.sec.profitable">盈利精選(多家書商共識 + 套利)</h2>
+                    <div class="filter-controls">
+                        <label for="profit-days-input" style="font-size:12px;color:var(--mut)">未來天數</label>
+                        <input type="number" id="profit-days-input" class="filter-select" min="1" max="14" value="7" style="width:72px">
+                        <label for="profit-edge-input" style="font-size:12px;color:var(--mut)">最低邊際%</label>
+                        <input type="number" id="profit-edge-input" class="filter-select" min="0" max="20" step="0.5" value="2" style="width:72px">
+                        <label for="profit-ev-input" style="font-size:12px;color:var(--mut)">最低 EV%</label>
+                        <input type="number" id="profit-ev-input" class="filter-select" min="0" max="50" step="0.5" value="1.5" style="width:72px">
+                        <button type="button" id="profit-refresh-btn" class="btn-refresh">重新搜尋</button>
+                    </div>
+                </div>
+                <p class="section-note" style="margin-bottom:10px">
+                    讀取 <strong>oddcomparision</strong> 連線之 18 家書商(皇冠、Winbao、Titan/HG)即時讓球及大細賠率,
+                    去除水位後計算共識真實機率,再對比每場最佳出價。當某書商隱含機率低於共識,即為 <strong style="color:var(--green)">+EV</strong> 投注。
+                    紅色卡為跨書商套利機會(保證利潤)。建議注碼採 ¼ Kelly 並上限 5%。
+                </p>
+                <div id="profit-status-bar" class="profit-status-bar">資料來源狀態載入中…</div>
+                <div class="loading-spinner hidden" id="profit-loading"><div class="spinner"></div><p>分析多家書商賠率…</p></div>
+                <div id="profit-summary" class="accuracy-stats-grid" style="margin-top:14px">
+                    <div class="accuracy-stat-card"><div class="accuracy-stat-value" id="profit-stat-matches">--</div><div class="accuracy-stat-label">監控賽事</div></div>
+                    <div class="accuracy-stat-card"><div class="accuracy-stat-value" id="profit-stat-books">--</div><div class="accuracy-stat-label">書商數</div></div>
+                    <div class="accuracy-stat-card"><div class="accuracy-stat-value" id="profit-stat-picks">--</div><div class="accuracy-stat-label">+EV 投注</div></div>
+                    <div class="accuracy-stat-card"><div class="accuracy-stat-value" id="profit-stat-arbs">--</div><div class="accuracy-stat-label">套利機會</div></div>
+                </div>
+                <div id="profit-arbs-container" style="margin-top:14px"></div>
+                <div id="profit-picks-container"></div>
+            </section>
+
+            <!-- Odds Opportunities (drops + peer value from oddcomparision2) -->
+            <section class="section mobile-panel" id="odds-opportunities" data-mobile-tab="opportunities">
+                <div class="section-header">
+                    <h2 class="section-title">賠率機會 <span class="pill" style="font-size:10px;vertical-align:middle;background:rgba(229,62,62,0.18);color:#fc8181">急跌</span></h2>
+                    <div class="filter-controls">
+                        <button type="button" id="odds-opportunities-refresh-btn" class="btn-refresh">掃描機會</button>
+                    </div>
+                </div>
+                <p class="section-note" style="margin-bottom:12px">
+                    整合 <strong>oddcomparision2</strong> 同業偏離算法 + 開盤→現價賠率急跌偵測。
+                    顯著隱含概率上升、跨莊價值差、套利機會會在此列出 (開賽前 3 小時內優先)。
+                </p>
+                <div id="odds-opportunities-loading" style="padding:12px;color:#8aa0c7">載入賠率機會…</div>
+                <div id="odds-opportunities-container" class="hidden" style="min-height:60px"></div>
+
+                <!-- MacauSlot vs HKJC comparison subsection -->
+                <div style="margin-top:28px;padding-top:20px;border-top:1px solid rgba(255,255,255,0.08)">
+                    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+                        <div>
+                            <h3 style="margin:0;font-size:15px;font-weight:700;color:#e6ecf5;display:flex;align-items:center;gap:8px">
+                                🔔 澳門彩票 vs 香港賽馬會
+                                <span style="padding:2px 8px;border-radius:999px;background:rgba(72,187,120,0.18);color:#48bb78;font-size:10px">賠率比較</span>
+                                <span id="ms-live-dot"
+                                    title="每 60 秒背景輪詢"
+                                    style="width:7px;height:7px;border-radius:50%;background:#48bb78;
+                                           display:inline-block;animation:ms-pulse 2s infinite"></span>
+                            </h3>
+                            <p style="margin:4px 0 0;font-size:11px;color:#8aa0c7">
+                                HKJC 賠率高於澳門彩票時自動警報 — 每 60 秒偵測，每 5 分鐘刷新比較
+                            </p>
+                        </div>
+                        <button type="button" id="macauslot-refresh-btn" class="btn-refresh" style="font-size:12px;padding:5px 12px">刷新比較</button>
+                    </div>
+                    <!-- alert banner injected here by JS -->
+                    <div id="macauslot-loading" style="padding:10px;color:#8aa0c7;font-size:13px">載入澳門彩票賠率比較…</div>
+                    <div id="macauslot-comparison-grid" class="hidden" style="min-height:40px"></div>
+                </div>
+                <style>
+                    @keyframes ms-pulse {
+                        0%, 100% { opacity: 1; }
+                        50% { opacity: 0.35; }
+                    }
+                </style>
+            </section>
+
+            <!-- Strategy Picks (production-gated wagering layer) -->
+            <section class="section mobile-panel" id="strategy-picks" data-mobile-tab="strategy">
+                <div class="section-header">
+                    <h2 class="section-title">策略精選 <span class="pill" style="font-size:10px;vertical-align:middle;background:rgba(72,187,120,0.18);color:#48bb78">+ROI</span></h2>
+                    <div class="filter-controls">
+                        <button type="button" id="strategy-picks-refresh-btn" class="btn-refresh">更新策略精選</button>
+                    </div>
+                </div>
+                <p class="section-note" style="margin-bottom:12px">
+                    經 2026-05 回測驗證的盈利策略過濾器(預設 <code>fav_strong</code> 64.9% 命中率 / +1.28% ROI)。
+                    在 <code>.env</code> 設 <code>STRATEGY_NAME=public_fade</code> 或 <code>sharp_move</code> 切換策略。
+                </p>
+                <div id="strategy-picks-container" style="min-height:60px"></div>
+            </section>
+
+            <!-- Daily AI Picks -->
+            <section class="section mobile-panel" id="daily-picks" data-mobile-tab="picks">
+                <div class="section-header">
+                    <h2 class="section-title" data-i18n="app.sec.daily">每日 AI 精選(大細 + 波膽)</h2>
+                    <div class="filter-controls">
+                        <button type="button" id="picks-download-pdf-btn" class="btn-refresh ghost" data-i18n="app.btn.download_pdf">下載 PDF</button>
+                        <button type="button" id="picks-refresh-btn" class="btn-refresh" data-i18n="app.btn.refresh_picks">更新精選</button>
+                    </div>
+                </div>
+                <div id="picks-loading">
+                    <div class="picks-grid">
+                        <div class="skeleton card-skel"><div class="skeleton-line tall" style="width:60%"></div><div class="skeleton-line short"></div><div class="skeleton-line"></div><div class="skeleton-line"></div></div>
+                        <div class="skeleton card-skel"><div class="skeleton-line tall" style="width:60%"></div><div class="skeleton-line short"></div><div class="skeleton-line"></div><div class="skeleton-line"></div></div>
+                    </div>
+                </div>
+                <div id="picks-container" class="hidden"></div>
+            </section>
+
+            <!-- All-up (Pro) -->
+            <section class="section mobile-panel" id="allup" data-mobile-tab="allup">
+                <div class="section-header">
+                    <h2 class="section-title"><span data-i18n="app.sec.allup">過關投注 All-Up</span> <span class="pill gold" style="font-size:10px;vertical-align:middle">PRO</span></h2>
+                    <div class="filter-controls">
+                        <label for="allup-n-input" style="font-size:12px;color:var(--mut)">過關數</label>
+                        <input type="number" id="allup-n-input" class="filter-select" min="2" max="8" value="4" style="width:72px">
+                        <label for="allup-days-input" style="font-size:12px;color:var(--mut)">未來天數</label>
+                        <input type="number" id="allup-days-input" class="filter-select" min="1" max="14" value="3" style="width:72px">
+                        <button type="button" id="allup-build-btn" class="btn-refresh" data-i18n="app.btn.build_allup">建立過關</button>
+                    </div>
+                </div>
+                <div class="upgrade-card" id="allup-upgrade-card" style="display:none;margin-bottom:14px">
+                    <div class="lock-circle">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                    </div>
+                    <div>
+                        <h4 data-i18n="app.upgrade.allup.t">過關工具屬於 Pro 方案</h4>
+                        <p data-i18n="app.upgrade.allup.b">解鎖自動 EV 排序的多腿過關建議、合併賠率與獨立勝率,讓你抓住高期望值組合。</p>
+                    </div>
+                    <a class="btn-pro" href="/static/templates/pricing.html" data-i18n="app.btn.upgrade_now">立即升級</a>
+                </div>
+                <p class="section-note" style="margin-bottom:12px">
+                    系統按單場最高 EV(期望值)排序,選出最佳 N 場組合過關。組合賠率 = 各場賠率相乘;組合勝率 = 各場模擬勝率相乘(假設獨立)。
+                </p>
+                <div id="allup-summary-card" class="hidden card" style="margin-bottom:14px"></div>
+                <div id="allup-legs-container"></div>
+                <div class="loading-spinner hidden" id="allup-loading"><div class="spinner"></div><p>計算中…</p></div>
+            </section>
+
+            <!-- Handicap All-up (Pro) — same panel pattern as 1X2 All-Up above. -->
+            <section class="section mobile-panel" id="handicap-allup" data-mobile-tab="handicap-allup">
+                <div class="section-header">
+                    <h2 class="section-title">讓球過關 Handicap All-Up <span class="pill gold" style="font-size:10px;vertical-align:middle">PRO</span></h2>
+                    <div class="filter-controls">
+                        <label for="hcap-allup-n-input" style="font-size:12px;color:var(--mut)">過關數</label>
+                        <input type="number" id="hcap-allup-n-input" class="filter-select" min="3" max="12" value="5" style="width:72px">
+                        <label for="hcap-allup-days-input" style="font-size:12px;color:var(--mut)">未來天數</label>
+                        <input type="number" id="hcap-allup-days-input" class="filter-select" min="1" max="14" value="7" style="width:72px">
+                        <button type="button" id="hcap-allup-build-btn" class="btn-refresh">建立讓球過關</button>
+                    </div>
+                </div>
+                <p class="section-note" style="margin-bottom:12px">
+                    讓球 (Asian Handicap) 過關 — 按單場讓球 EV 排序,模型用同一個 λ(進球率)算覆蓋機率。組合賠率 = 各場讓球賠率相乘;組合勝率 = 各場 Poisson 勝率相乘(假設獨立)。
+                </p>
+                <div id="hcap-allup-summary-card" class="hidden card" style="margin-bottom:14px"></div>
+                <div id="hcap-allup-legs-container"></div>
+                <div class="loading-spinner hidden" id="hcap-allup-loading"><div class="spinner"></div><p>計算中…</p></div>
+            </section>
+
+            <section class="section mobile-panel" id="hilo-allup" data-mobile-tab="hilo-allup">
+                <div class="section-header">
+                    <h2 class="section-title">大細過關 HiLo All-Up <span class="pill gold" style="font-size:10px;vertical-align:middle">PRO</span></h2>
+                    <div class="filter-controls">
+                        <label for="hilo-allup-n-input" style="font-size:12px;color:var(--mut)">過關數</label>
+                        <input type="number" id="hilo-allup-n-input" class="filter-select" min="2" max="8" value="4" style="width:72px">
+                        <label for="hilo-allup-days-input" style="font-size:12px;color:var(--mut)">未來天數</label>
+                        <input type="number" id="hilo-allup-days-input" class="filter-select" min="1" max="14" value="3" style="width:72px">
+                        <label for="hilo-allup-conf-input" style="font-size:12px;color:var(--mut)">最低勝率%</label>
+                        <input type="number" id="hilo-allup-conf-input" class="filter-select" min="50" max="90" step="1" value="60" style="width:72px">
+                        <label for="hilo-allup-ev-input" style="font-size:12px;color:var(--mut)">最低 EV%</label>
+                        <input type="number" id="hilo-allup-ev-input" class="filter-select" min="-10" max="30" step="0.5" value="2" style="width:72px">
+                        <button type="button" id="hilo-allup-build-btn" class="btn-refresh">建立大細過關</button>
+                    </div>
+                </div>
+                <p class="section-note" style="margin-bottom:12px">
+                    大細 (Over/Under) 過關 — 每場 P(Over)/P(Under) 用 Poisson(λ_h+λ_a) 對 半線計算(無和局)。每場按 EV 後比較,選擇 EV 較高的一方;只有同時通過「最低勝率」及「最低 EV」門檻的場次入選。各腿按 EV·√勝率 排序以偏向高信心。
+                </p>
+                <div id="hilo-allup-summary-card" class="hidden card" style="margin-bottom:14px"></div>
+                <div id="hilo-allup-legs-container"></div>
+                <div class="loading-spinner hidden" id="hilo-allup-loading"><div class="spinner"></div><p>計算中…</p></div>
+            </section>
+
+            <section class="section mobile-panel" id="mixed-allup" data-mobile-tab="mixed-allup">
+                <div class="section-header">
+                    <h2 class="section-title">混合過關 Mix All-Up <span class="pill gold" style="font-size:10px;vertical-align:middle">PRO</span><span class="pill" style="font-size:10px;vertical-align:middle;background:rgba(72,187,120,0.18);color:#48bb78;margin-left:6px">長線 +EV</span></h2>
+                    <div class="filter-controls">
+                        <label for="mix-allup-n-input" style="font-size:12px;color:var(--mut)">過關數</label>
+                        <input type="number" id="mix-allup-n-input" class="filter-select" min="2" max="8" value="4" style="width:72px">
+                        <label for="mix-allup-days-input" style="font-size:12px;color:var(--mut)">未來天數</label>
+                        <input type="number" id="mix-allup-days-input" class="filter-select" min="1" max="14" value="3" style="width:72px">
+                        <label for="mix-allup-ah-edge-input" style="font-size:12px;color:var(--mut)">讓球最低邊際%</label>
+                        <input type="number" id="mix-allup-ah-edge-input" class="filter-select" min="0" max="10" step="0.5" value="2" style="width:72px">
+                        <label for="mix-allup-ah-ev-input" style="font-size:12px;color:var(--mut)">讓球最低 EV%</label>
+                        <input type="number" id="mix-allup-ah-ev-input" class="filter-select" min="-5" max="30" step="0.5" value="3" style="width:72px">
+                        <label for="mix-allup-hilo-conf-input" style="font-size:12px;color:var(--mut)">大細最低勝率%</label>
+                        <input type="number" id="mix-allup-hilo-conf-input" class="filter-select" min="50" max="90" step="1" value="60" style="width:72px">
+                        <label for="mix-allup-hilo-ev-input" style="font-size:12px;color:var(--mut)">大細最低 EV%</label>
+                        <input type="number" id="mix-allup-hilo-ev-input" class="filter-select" min="-5" max="30" step="0.5" value="3" style="width:72px">
+                        <label for="mix-allup-combined-ev-input" style="font-size:12px;color:var(--mut)">組合最低 EV%</label>
+                        <input type="number" id="mix-allup-combined-ev-input" class="filter-select" min="-5" max="50" step="0.5" value="5" style="width:72px">
+                        <button type="button" id="mix-allup-build-btn" class="btn-refresh">建立混合過關</button>
+                    </div>
+                </div>
+                <p class="section-note" style="margin-bottom:12px">
+                    混合 <strong>讓球 × 大細</strong> 過關 — 每場由同一 Poisson(λ_h, λ_a) 進球模型同時評分兩個市場,取 EV·√勝率 較高的一方。每場最多一腿(避免同場相關性導致組合勝率被高估),每聯賽最多一腿。嚴格門檻:讓球邊際≥2pp 且 EV≥3%;大細勝率≥60% 且 EV≥3%。組合 EV 須≥5%,否則整個過關會被淘汰 — 即使每腿都 +EV,組合仍可能 −EV。
+                </p>
+                <div id="mix-allup-summary-card" class="hidden card" style="margin-bottom:14px"></div>
+                <div id="mix-allup-legs-container"></div>
+                <div class="loading-spinner hidden" id="mix-allup-loading"><div class="spinner"></div><p>計算中…</p></div>
+            </section>
+
+            <!-- All-up history (Pro) -->
+            <section class="section mobile-panel" id="allup-stats" data-mobile-tab="allup-stats">
+                <div class="section-header">
+                    <h2 class="section-title"><span data-i18n="app.sec.allup_stats">過關往績統計</span> <span class="pill gold" style="font-size:10px;vertical-align:middle">PRO</span></h2>
+                    <div class="filter-controls">
+                        <select id="allup-stats-days-select" class="filter-select">
+                            <option value="14">最近 14 天</option>
+                            <option value="30" selected>最近 30 天</option>
+                            <option value="60">最近 60 天</option>
+                            <option value="180">最近 180 天</option>
+                        </select>
+                        <button type="button" id="allup-stats-snapshot-btn" class="btn-refresh ghost">立即快照</button>
+                        <button type="button" id="allup-stats-refresh-btn" class="btn-refresh">更新</button>
+                    </div>
+                </div>
+                <p class="section-note" style="margin-bottom:12px">
+                    系統每天自動記錄 3/4/5 串 1 的最佳組合(按 EV 排序,加上單場 EV 上限避免極端離群值)。每場比賽完結後自動評分。
+                </p>
+                <div class="accuracy-stats-grid" id="allup-overall-grid">
+                    <div class="accuracy-stat-card"><div class="accuracy-stat-value" id="allup-overall-total">--</div><div class="accuracy-stat-label">總過關數</div></div>
+                    <div class="accuracy-stat-card"><div class="accuracy-stat-value" id="allup-overall-winrate">--</div><div class="accuracy-stat-label">命中率</div></div>
+                    <div class="accuracy-stat-card"><div class="accuracy-stat-value" id="allup-overall-roi">--</div><div class="accuracy-stat-label">ROI</div></div>
+                    <div class="accuracy-stat-card"><div class="accuracy-stat-value" id="allup-overall-pending">--</div><div class="accuracy-stat-label">待結算</div></div>
+                </div>
+                <div id="allup-by-n-container" style="margin-top:14px"></div>
+                <div id="allup-history-container" style="margin-top:14px"></div>
+                <div class="loading-spinner hidden" id="allup-stats-loading"><div class="spinner"></div><p>載入過關往績…</p></div>
+            </section>
+
+            <!-- Interactive backtest playground -->
+            <section class="section mobile-panel" id="backtest" data-mobile-tab="backtest">
+                <div class="section-header">
+                    <h2 class="section-title" data-i18n="app.sec.backtest">回測 Playground</h2>
+                    <button type="button" id="backtest-run-btn" class="btn-refresh">執行回測</button>
+                </div>
+                <p class="section-note" style="margin-bottom:10px">
+                    用真實已結算數據,模擬不同篩選條件下的歷史 ROI、勝率、最大回撤。賠率使用紀錄當時的市場價,
+                    所以結果反映真實的書商水位 — 沒有 look-ahead。
+                </p>
+                <div class="card" style="margin-bottom:14px">
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px">
+                        <div>
+                            <label class="field-label">期間(天)</label>
+                            <input class="input" id="bt-days" type="number" min="7" max="365" value="90">
+                        </div>
+                        <div>
+                            <label class="field-label">市場</label>
+                            <select class="input" id="bt-market">
+                                <option value="1X2">1X2</option>
+                                <option value="HiLo">大細</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="field-label">最低 EV%</label>
+                            <input class="input" id="bt-min-ev" type="number" step="0.5" value="0">
+                        </div>
+                        <div>
+                            <label class="field-label">最低信心 %</label>
+                            <input class="input" id="bt-min-conf" type="number" step="1" min="0" max="100" value="0">
+                        </div>
+                        <div>
+                            <label class="field-label">注碼模式</label>
+                            <select class="input" id="bt-stake-mode">
+                                <option value="flat">固定注碼</option>
+                                <option value="kelly">分數 Kelly</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="field-label">固定注碼</label>
+                            <input class="input" id="bt-flat-stake" type="number" min="1" value="100">
+                        </div>
+                        <div>
+                            <label class="field-label">Kelly 比例</label>
+                            <input class="input" id="bt-kelly" type="number" step="0.05" min="0.05" max="1" value="0.25">
+                        </div>
+                        <div>
+                            <label class="field-label">起始本金</label>
+                            <input class="input" id="bt-bankroll" type="number" min="100" value="1000">
+                        </div>
+                    </div>
+                </div>
+                <div class="accuracy-stats-grid" id="bt-summary-grid">
+                    <div class="accuracy-stat-card"><div class="accuracy-stat-value" id="bt-trades">--</div><div class="accuracy-stat-label">交易數</div></div>
+                    <div class="accuracy-stat-card"><div class="accuracy-stat-value" id="bt-winrate">--</div><div class="accuracy-stat-label">勝率</div></div>
+                    <div class="accuracy-stat-card"><div class="accuracy-stat-value" id="bt-roi">--</div><div class="accuracy-stat-label">ROI</div></div>
+                    <div class="accuracy-stat-card"><div class="accuracy-stat-value" id="bt-growth">--</div><div class="accuracy-stat-label">本金增長</div></div>
+                    <div class="accuracy-stat-card"><div class="accuracy-stat-value" id="bt-max-dd">--</div><div class="accuracy-stat-label">最大回撤</div></div>
+                    <div class="accuracy-stat-card"><div class="accuracy-stat-value" id="bt-ending">--</div><div class="accuracy-stat-label">期末本金</div></div>
+                </div>
+                <div class="analytics-card full-width" style="margin-top:14px">
+                    <h3 class="card-title">資金曲線</h3>
+                    <canvas id="bt-equity-chart" style="max-height:280px"></canvas>
+                </div>
+                <div id="bt-trades-container" style="margin-top:14px"></div>
+                <div class="loading-spinner hidden" id="bt-loading"><div class="spinner"></div><p>計算中…</p></div>
+            </section>
+
+            <!-- Notification preferences -->
+            <section class="section mobile-panel" id="notifs" data-mobile-tab="notifs">
+                <div class="section-header">
+                    <h2 class="section-title" data-i18n="app.sec.notifs">電郵通知</h2>
+                </div>
+                <p class="section-note" style="margin-bottom:10px">
+                    每日 8am 推送今日 AI 精選 + 昨日結算回顧;當你在追蹤的賽事賠率變動超過閾值時即時通知。
+                </p>
+                <div class="card" style="max-width:560px">
+                    <label style="display:flex;align-items:center;gap:10px;padding:8px 0;cursor:pointer">
+                        <input type="checkbox" id="notif-digest" style="transform:scale(1.2)">
+                        <span>每日摘要(每天 08:00 香港時間)</span>
+                    </label>
+                    <label style="display:flex;align-items:center;gap:10px;padding:8px 0;cursor:pointer">
+                        <input type="checkbox" id="notif-alerts" style="transform:scale(1.2)">
+                        <span>賠率變動即時通知(限你已紀錄投注的賽事)</span>
+                    </label>
+                    <label style="display:flex;align-items:center;gap:10px;padding:8px 0;cursor:pointer">
+                        <input type="checkbox" id="notif-coach" style="transform:scale(1.2)">
+                        <span>本週投注回顧(每週日 09:00,需有最少 5 注)</span>
+                    </label>
+                    <div style="display:flex;align-items:center;gap:10px;padding:8px 0">
+                        <label class="field-label" style="margin:0">變動閾值 %</label>
+                        <input class="input" id="notif-threshold" type="number" min="2" max="50" step="0.5" value="10" style="width:90px">
+                    </div>
+                    <button type="button" id="notif-save-btn" class="btn-refresh" style="margin-top:8px">儲存</button>
+                    <p class="section-note" id="notif-meta" style="margin-top:14px"></p>
+                    <hr style="margin:18px 0;border:0;border-top:1px solid var(--border)">
+                    <div>
+                        <strong style="font-size:14px">瀏覽器推送通知 (PWA)</strong>
+                        <p class="section-note" style="margin-top:4px">啟用後可加到主螢幕,並在賽事更新或賠率變動時即時收到推送 — 開放率比電郵高 3-5 倍。</p>
+                        <div style="display:flex;gap:10px;align-items:center;margin-top:8px">
+                            <button type="button" id="push-enable-btn" class="btn-refresh" style="padding:7px 16px">啟用推送</button>
+                            <button type="button" id="push-disable-btn" class="btn-refresh ghost" style="padding:7px 16px;display:none">停用</button>
+                            <span id="push-status" style="font-size:12px;color:var(--mut)"></span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Live in-play overlay -->
+            <section class="section mobile-panel" id="live" data-mobile-tab="live">
+                <div class="section-header">
+                    <h2 class="section-title" data-i18n="app.sec.live">即時對賽 · Live</h2>
+                    <div class="filter-controls">
+                        <select id="live-match-select" class="filter-select"><option value="">-- 選擇進行中的賽事 --</option></select>
+                        <button type="button" id="live-refresh-btn" class="btn-refresh">更新</button>
+                    </div>
+                </div>
+                <p class="section-note" style="margin-bottom:10px">
+                    輸入目前比賽分鐘 + 比分,系統會用 Poisson 模型即時重算主勝/和/客勝機率與預期入球。
+                    每 30 秒自動更新一次。
+                </p>
+                <div class="card" id="live-card" style="margin-bottom:14px">
+                    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;align-items:end">
+                        <div>
+                            <label class="field-label">分鐘 (0-90)</label>
+                            <input class="input" id="live-minute" type="number" min="0" max="120" value="45">
+                        </div>
+                        <div>
+                            <label class="field-label">主隊入球</label>
+                            <input class="input" id="live-home-score" type="number" min="0" max="20" value="0">
+                        </div>
+                        <div>
+                            <label class="field-label">客隊入球</label>
+                            <input class="input" id="live-away-score" type="number" min="0" max="20" value="0">
+                        </div>
+                    </div>
+                    <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">
+                        <button type="button" id="live-recompute-btn" class="btn-refresh" style="flex:1;min-width:160px">重算機率</button>
+                        <button type="button" id="live-save-btn" class="btn-refresh ghost" style="flex:1;min-width:160px">儲存即時狀態</button>
+                    </div>
+                </div>
+                <div class="accuracy-stats-grid" id="live-stats-grid">
+                    <div class="accuracy-stat-card"><div class="accuracy-stat-value" id="live-home-pct">--</div><div class="accuracy-stat-label">主勝 %</div></div>
+                    <div class="accuracy-stat-card"><div class="accuracy-stat-value" id="live-draw-pct">--</div><div class="accuracy-stat-label">和 %</div></div>
+                    <div class="accuracy-stat-card"><div class="accuracy-stat-value" id="live-away-pct">--</div><div class="accuracy-stat-label">客勝 %</div></div>
+                    <div class="accuracy-stat-card"><div class="accuracy-stat-value" id="live-exp-goals">--</div><div class="accuracy-stat-label">預期總入球</div></div>
+                </div>
+                <p class="section-note" id="live-meta" style="margin-top:14px"></p>
+            </section>
+
+            <!-- Bet log (我的投注 / personal bankroll tracker) -->
+            <section class="section mobile-panel" id="bets" data-mobile-tab="bets">
+                <div class="section-header">
+                    <h2 class="section-title" data-i18n="app.sec.bets">我的投注 · 個人資金管理</h2>
+                    <div class="filter-controls">
+                        <button type="button" id="bet-bankroll-edit-btn" class="btn-refresh ghost">設定本金</button>
+                        <button type="button" id="bet-add-btn" class="btn-refresh">+ 紀錄投注</button>
+                    </div>
+                </div>
+                <p class="section-note" style="margin-bottom:10px">
+                    紀錄你實際下注的場次,系統自動計算 ROI、命中率、按市場細分績效;同時提供分數 Kelly 注碼建議與回撤保護。
+                    所有資料只屬你個人帳戶,不會公開。
+                </p>
+                <div id="bankroll-plan-card" class="glass-card" style="margin-bottom:14px;padding:14px 16px;display:none">
+                    <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;margin-bottom:10px">
+                        <div>
+                            <div style="font-size:12px;color:var(--mut);text-transform:uppercase;letter-spacing:0.5px">資金管理計劃</div>
+                            <div style="font-size:15px;font-weight:600;margin-top:4px" id="bankroll-plan-status">--</div>
+                        </div>
+                        <span id="bankroll-plan-dd-badge" class="status-badge pending">正常</span>
+                    </div>
+                    <div class="accuracy-stats-grid" style="grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:10px">
+                        <div class="accuracy-stat-card"><div class="accuracy-stat-value" id="bankroll-plan-kelly">--</div><div class="accuracy-stat-label">有效 Kelly</div></div>
+                        <div class="accuracy-stat-card"><div class="accuracy-stat-value" id="bankroll-plan-max">--</div><div class="accuracy-stat-label">單注上限</div></div>
+                        <div class="accuracy-stat-card"><div class="accuracy-stat-value" id="bankroll-plan-exposure">--</div><div class="accuracy-stat-label">待結算敞口</div></div>
+                        <div class="accuracy-stat-card"><div class="accuracy-stat-value" id="bankroll-plan-budget">--</div><div class="accuracy-stat-label">剩餘敞口額度</div></div>
+                    </div>
+                    <ul id="bankroll-plan-guidelines" style="margin:0;padding-left:18px;font-size:12px;color:var(--mut);line-height:1.55"></ul>
+                </div>
+                <div class="accuracy-stats-grid" id="bet-summary-grid">
+                    <div class="accuracy-stat-card"><div class="accuracy-stat-value" id="bet-stat-bankroll">--</div><div class="accuracy-stat-label">當前本金</div></div>
+                    <div class="accuracy-stat-card"><div class="accuracy-stat-value" id="bet-stat-roi">--</div><div class="accuracy-stat-label">ROI</div></div>
+                    <div class="accuracy-stat-card"><div class="accuracy-stat-value" id="bet-stat-winrate">--</div><div class="accuracy-stat-label">命中率</div></div>
+                    <div class="accuracy-stat-card"><div class="accuracy-stat-value" id="bet-stat-pnl">--</div><div class="accuracy-stat-label">累計盈虧</div></div>
+                    <div class="accuracy-stat-card"><div class="accuracy-stat-value" id="bet-stat-pending">--</div><div class="accuracy-stat-label">待結算</div></div>
+                    <div class="accuracy-stat-card"><div class="accuracy-stat-value" id="bet-stat-total">--</div><div class="accuracy-stat-label">總注數</div></div>
+                </div>
+                <div id="bet-by-market" style="margin-top:14px"></div>
+                <div id="bet-list-container" style="margin-top:14px"></div>
+                <div class="loading-spinner hidden" id="bet-loading"><div class="spinner"></div><p>載入中…</p></div>
+            </section>
+
+            <!-- Bet form modal -->
+            <div id="bet-modal" class="modal">
+                <div class="modal-content" style="max-width:520px">
+                    <span class="modal-close" id="bet-modal-close">&times;</span>
+                    <h3 id="bet-modal-title" style="margin-top:0">紀錄投注</h3>
+                    <div id="bet-modal-body">
+                        <label class="field-label">賽事</label>
+                        <input class="input" id="bet-form-match" placeholder="例:Arsenal vs Chelsea">
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                            <div>
+                                <label class="field-label">市場</label>
+                                <select class="input" id="bet-form-market">
+                                    <option value="1X2">1X2</option>
+                                    <option value="HiLo">大細</option>
+                                    <option value="Handicap">讓球</option>
+                                    <option value="Score">波膽</option>
+                                    <option value="Custom">其他</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="field-label">選項</label>
+                                <input class="input" id="bet-form-selection" placeholder="Home / Over / 1-0...">
+                            </div>
+                        </div>
+                        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+                            <div>
+                                <label class="field-label">線 (HiLo/讓)</label>
+                                <input class="input" id="bet-form-line" type="number" step="0.25" placeholder="2.5">
+                            </div>
+                            <div>
+                                <label class="field-label">賠率</label>
+                                <input class="input" id="bet-form-odds" type="number" step="0.01" min="1.01" placeholder="1.85">
+                            </div>
+                            <div>
+                                <label class="field-label">注碼</label>
+                                <input class="input" id="bet-form-stake" type="number" step="1" min="1" placeholder="100">
+                            </div>
+                        </div>
+                        <input type="hidden" id="bet-form-model-prob" value="">
+                        <div id="bet-kelly-hint" style="font-size:12px;color:var(--mut);margin-top:6px;min-height:18px"></div>
+                        <label class="field-label">備註(選填)</label>
+                        <input class="input" id="bet-form-notes" placeholder="例:Pinnacle 早盤,EV +4.2%">
+                        <div style="display:flex;gap:10px;margin-top:18px">
+                            <button class="btn-refresh" id="bet-form-submit" style="flex:1">儲存</button>
+                            <button class="btn-refresh ghost" id="bet-form-cancel">取消</button>
+                        </div>
+                        <div class="err" id="bet-form-err" style="color:var(--red);font-size:13px;margin-top:8px;min-height:18px"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bankroll edit modal -->
+            <div id="bankroll-modal" class="modal">
+                <div class="modal-content" style="max-width:480px">
+                    <span class="modal-close" id="bankroll-modal-close">&times;</span>
+                    <h3 style="margin-top:0">本金設定</h3>
+                    <p class="section-note" style="margin-top:0">用於 Kelly 注碼計算與 ROI 追蹤。</p>
+                    <label class="field-label">當前本金</label>
+                    <input class="input" id="bankroll-current" type="number" step="1" min="0">
+                    <label class="field-label">起始本金(用作成長計算)</label>
+                    <input class="input" id="bankroll-start" type="number" step="1" min="0">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                        <div>
+                            <label class="field-label">Kelly 比例</label>
+                            <select class="input" id="bankroll-kelly">
+                                <option value="0.10">1/10 Kelly(極保守)</option>
+                                <option value="0.25" selected>1/4 Kelly(推薦)</option>
+                                <option value="0.50">1/2 Kelly</option>
+                                <option value="1.00">全 Kelly(高風險)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="field-label">單注上限 %</label>
+                            <input class="input" id="bankroll-cap" type="number" step="0.5" min="0.5" max="25" value="5">
+                        </div>
+                    </div>
+                    <div style="display:flex;gap:10px;margin-top:18px">
+                        <button class="btn-refresh" id="bankroll-save" style="flex:1">儲存</button>
+                        <button class="btn-refresh ghost" id="bankroll-cancel">取消</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Archive -->
+            <section class="section mobile-panel" id="archive" data-mobile-tab="archive">
+                <div class="section-header">
+                    <h2 class="section-title" data-i18n="app.sec.archive">往績存檔(每日預測準確度)</h2>
+                    <div class="filter-controls">
+                        <select id="archive-days-select" class="filter-select">
+                            <option value="7">最近 7 天</option>
+                            <option value="14" selected>最近 14 天</option>
+                            <option value="30">最近 30 天</option>
+                            <option value="90">最近 90 天</option>
+                        </select>
+                        <button type="button" id="archive-refresh-btn" class="btn-refresh">更新存檔</button>
+                    </div>
+                </div>
+                <div class="accuracy-stats-grid" id="archive-totals-grid">
+                    <div class="accuracy-stat-card"><div class="accuracy-stat-value" id="archive-tot-1x2">--</div><div class="accuracy-stat-label">勝負和準確度</div></div>
+                    <div class="accuracy-stat-card"><div class="accuracy-stat-value" id="archive-tot-hilo">--</div><div class="accuracy-stat-label">大細球準確度</div></div>
+                    <div class="accuracy-stat-card"><div class="accuracy-stat-value" id="archive-tot-score">--</div><div class="accuracy-stat-label">波膽準確度</div></div>
+                    <div class="accuracy-stat-card"><div class="accuracy-stat-value" id="archive-tot-count">--</div><div class="accuracy-stat-label">已結算場數</div></div>
+                </div>
+                <div id="archive-days-container" style="margin-top:16px"></div>
+                <div class="loading-spinner hidden" id="archive-loading"><div class="spinner"></div><p>載入存檔中…</p></div>
+
+                <!-- CLV (closing-line value) tracker — surfaces whether our recommended
+                     prices beat the closing line. Positive avg CLV = real edge. -->
+                <div class="card" id="clv-card" style="margin-top:18px">
+                    <div class="section-header" style="margin-bottom:8px">
+                        <h3 class="card-title" style="margin:0">收市賠率值 CLV</h3>
+                        <div class="filter-controls">
+                            <select id="clv-days-select" class="filter-select">
+                                <option value="14">最近 14 天</option>
+                                <option value="30" selected>最近 30 天</option>
+                                <option value="90">最近 90 天</option>
+                            </select>
+                            <button type="button" id="clv-refresh-btn" class="btn-refresh">更新</button>
+                        </div>
+                    </div>
+                    <p class="section-note" style="margin-top:0">
+                        CLV = (推薦賠率 ÷ 收市賠率 − 1) × 100%。長期正 CLV 是真正擁有優勢的最有力指標
+                        (Pinnacle/Betfair 交易員的金標準)。負 CLV 但仍贏錢通常只是運氣。
+                    </p>
+                    <div class="accuracy-stats-grid" id="clv-totals-grid">
+                        <div class="accuracy-stat-card"><div class="accuracy-stat-value" id="clv-avg">--</div><div class="accuracy-stat-label">平均 CLV %</div></div>
+                        <div class="accuracy-stat-card"><div class="accuracy-stat-value" id="clv-median">--</div><div class="accuracy-stat-label">中位數 CLV %</div></div>
+                        <div class="accuracy-stat-card"><div class="accuracy-stat-value" id="clv-coverage">--</div><div class="accuracy-stat-label">已測 / 總預測</div></div>
+                        <div class="accuracy-stat-card"><div class="accuracy-stat-value" id="clv-winrate-pos">--</div><div class="accuracy-stat-label">CLV>0 命中率</div></div>
+                    </div>
+                    <div id="clv-by-market" style="margin-top:14px"></div>
+                </div>
+            </section>
+
+            <!-- Summary -->
+            <section class="section mobile-panel" id="summary" data-mobile-tab="summary">
+                <div id="summary-sample-banner" class="sample-banner hidden">
+                    因無法取得馬會賠率,總覽使用範例資料。
+                </div>
+                <div class="section-header">
+                    <h2 class="section-title" data-i18n="app.sec.summary">賽事預測總覽</h2>
+                    <button type="button" id="summary-refresh-btn" class="btn-refresh" data-i18n="app.btn.refresh_summary">更新總覽</button>
+                </div>
+                <div id="summary-mobile-cards" class="summary-mobile-cards" aria-label="賽事預測總覽(卡片)"></div>
+                <div id="summary-table-container" class="history-table-container">
+                    <table class="history-table" id="summary-table">
+                        <thead>
+                            <tr>
+                                <th>賽事</th>
+                                <th>聯賽</th>
+                                <th>日期</th>
+                                <th>預測結果</th>
+                                <th>信心度</th>
+                                <th>預期入球</th>
+                                <th>最可能比分</th>
+                                <th>近況</th>
+                                <th>傷停</th>
+                                <th>價值投注 (+EV)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="summary-tbody"></tbody>
+                    </table>
+                </div>
+                <div class="loading-spinner hidden" id="summary-loading"><div class="spinner"></div><p>載入中…</p></div>
+            </section>
+
+            <!-- AI chat -->
+            <section class="section mobile-panel" id="ai-chat" data-mobile-tab="ai-chat">
+                <div class="section-header">
+                    <h2 class="section-title" data-i18n="app.sec.aichat">AI 賽事分析</h2>
+                </div>
+                <div class="ai-chat-container">
+                    <div id="ai-chat-messages" class="ai-chat-messages">
+                        <div class="ai-message bot">
+                            <p>歡迎使用 AI 足球分析!你可以問我:</p>
+                            <ul>
+                                <li><strong>哪些賽事有價值投注?</strong></li>
+                                <li><strong>比較各莊家賠率</strong></li>
+                                <li><strong>預測準確度如何?</strong></li>
+                                <li><strong>分析 Arsenal vs Liverpool</strong></li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="ai-chat-input-wrap">
+                        <input type="text" id="ai-chat-input" class="ai-chat-input" placeholder="輸入問題,例如:哪些賽事有價值投注?">
+                        <button type="button" id="ai-chat-send" class="btn-refresh" data-i18n="app.btn.send">發送</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Upcoming -->
+            <section class="section mobile-panel" id="predictions" data-mobile-tab="predictions">
+                <div class="section-header">
+                    <h2 class="section-title" data-i18n="app.sec.upcoming">即將舉行的賽事</h2>
+                    <div class="filter-controls">
+                        <select id="league-filter" class="filter-select">
+                            <option value="Premier League">英超</option>
+                            <option value="La Liga">西甲</option>
+                            <option value="Bundesliga">德甲</option>
+                        </select>
+                        <select id="days-filter" class="filter-select">
+                            <option value="7">未來 7 日</option>
+                            <option value="14">未來 14 日</option>
+                            <option value="30">未來 30 日</option>
+                        </select>
+                    </div>
+                </div>
+                <div id="matches-container" class="matches-grid">
+                    <div class="skeleton card-skel"><div class="skeleton-line tall" style="width:50%"></div><div class="skeleton-line short"></div><div class="skeleton-line"></div><div class="skeleton-line"></div><div class="skeleton-line short"></div></div>
+                    <div class="skeleton card-skel"><div class="skeleton-line tall" style="width:50%"></div><div class="skeleton-line short"></div><div class="skeleton-line"></div><div class="skeleton-line"></div><div class="skeleton-line short"></div></div>
+                    <div class="skeleton card-skel"><div class="skeleton-line tall" style="width:50%"></div><div class="skeleton-line short"></div><div class="skeleton-line"></div><div class="skeleton-line"></div><div class="skeleton-line short"></div></div>
+                </div>
+            </section>
+
+            <!-- Analytics -->
+            <section class="section mobile-panel" id="analytics" data-mobile-tab="analytics">
+                <div class="section-header">
+                    <h2 class="section-title" data-i18n="app.sec.analytics">模型表現與準確度</h2>
+                    <button type="button" id="fetch-results-btn" class="btn-refresh" data-i18n="app.btn.fetch_results">更新實際結果</button>
+                </div>
+
+                <div class="accuracy-stats-grid" id="accuracy-stats-grid">
+                    <div class="accuracy-stat-card"><div class="accuracy-stat-value" id="dash-result-acc">--</div><div class="accuracy-stat-label">勝負和準確度</div></div>
+                    <div class="accuracy-stat-card"><div class="accuracy-stat-value" id="dash-hilo-acc">--</div><div class="accuracy-stat-label">大細球準確度</div></div>
+                    <div class="accuracy-stat-card"><div class="accuracy-stat-value" id="dash-score-acc">--</div><div class="accuracy-stat-label">波膽準確度</div></div>
+                    <div class="accuracy-stat-card"><div class="accuracy-stat-value" id="dash-goals-err">--</div><div class="accuracy-stat-label">平均入球誤差</div></div>
+                    <div class="accuracy-stat-card"><div class="accuracy-stat-value" id="dash-settled">--</div><div class="accuracy-stat-label">已結算預測</div></div>
+                    <div class="accuracy-stat-card"><div class="accuracy-stat-value" id="dash-pending">--</div><div class="accuracy-stat-label">待結算預測</div></div>
+                </div>
+
+                <div class="analytics-grid">
+                    <div class="analytics-card"><h3 class="card-title">每週準確度趨勢</h3><canvas id="accuracy-chart"></canvas></div>
+                    <div class="analytics-card"><h3 class="card-title">預測分佈</h3><canvas id="distribution-chart"></canvas></div>
+                    <div class="analytics-card full-width"><h3 class="card-title">信心度 vs 準確度(校準圖)</h3><canvas id="features-chart"></canvas></div>
+                </div>
+
+                <div class="analytics-card full-width" style="margin-top:16px">
+                    <h3 class="card-title">各聯賽準確度</h3>
+                    <div class="history-table-container">
+                        <table class="history-table" id="league-accuracy-table">
+                            <thead><tr><th>聯賽</th><th>預測數</th><th>正確</th><th>準確度</th></tr></thead>
+                            <tbody id="league-accuracy-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- History -->
+            <section class="section mobile-panel" id="history" data-mobile-tab="analytics">
+                <div class="section-header">
+                    <h2 class="section-title" data-i18n="app.sec.history">往績紀錄(已完成賽事)</h2>
+                </div>
+                <p class="section-note" id="history-stats" style="margin-bottom:12px"></p>
+
+                <div class="history-table-container">
+                    <table class="history-table" id="history-table">
+                        <thead>
+                            <tr>
+                                <th>日期</th>
+                                <th>賽事</th>
+                                <th>AI 預測</th>
+                                <th>信心度</th>
+                                <th>實際比分</th>
+                                <th>實際結果</th>
+                                <th>狀態</th>
+                            </tr>
+                        </thead>
+                        <tbody id="history-tbody"></tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <!-- Mobile bottom tabbar -->
+    <nav class="mobile-tabbar" aria-label="分區導覽">
+        <button type="button" class="mobile-tabbar__btn is-active" data-mobile-tab="hkjc" title="馬會賽事">馬會</button>
+        <button type="button" class="mobile-tabbar__btn" data-mobile-tab="profitable" title="盈利精選">盈利</button>
+        <button type="button" class="mobile-tabbar__btn" data-mobile-tab="opportunities" title="賠率機會">機會</button>
+        <button type="button" class="mobile-tabbar__btn" data-mobile-tab="picks" title="每日精選">精選</button>
+        <button type="button" class="mobile-tabbar__btn" data-mobile-tab="summary" title="總覽">總覽</button>
+        <button type="button" class="mobile-tabbar__btn" data-mobile-tab="ai-chat" title="AI 對話">AI</button>
+        <button type="button" class="mobile-tabbar__btn" data-mobile-tab="analytics" title="分析">分析</button>
+    </nav>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <p>&copy; 2026 足球預測器 · 由機器學習與蒙地卡羅模擬驅動 · <a href="/static/templates/faq.html" style="color:var(--mut)">FAQ</a> · <a href="/static/templates/pricing.html" style="color:var(--mut)">方案</a></p>
+        </div>
+    </footer>
+
+    <!-- Match prediction modal -->
+    <div id="prediction-modal" class="modal">
+        <div class="modal-content">
+            <span class="modal-close">&times;</span>
+            <div id="modal-body"></div>
+        </div>
+    </div>
+
+    <script src="/static/js/api.js?v=3"></script>
+    <script src="/static/js/i18n.js?v=2"></script>
+    <script src="/static/js/product-header.js?v=3"></script>
+    <script src="/static/js/charts.js"></script>
+    <script src="/static/js/app.js?v=6"></script>
+    <script src="/static/js/profitable_picks.js"></script>
+    <script src="/static/js/odds_opportunities.js?v=2"></script>
+    <script src="/static/js/macauslot_comparison.js?v=2"></script>
+    <script src="/static/js/strategy_picks.js?v=3"></script>
+    <script src="/static/js/bets.js"></script>
+    <script src="/static/js/live.js"></script>
+    <script src="/static/js/backtest.js"></script>
+    <script src="/static/js/notifs.js"></script>
+    <script src="/static/js/push.js"></script>
+    <script src="/static/js/ai-preview.js?v=gemini"></script>
+    <script src="/static/js/onboarding.js"></script>
+    <script>
+      (async () => {
+        const u = AUTH.getUser();
+        const userTier = (u && u.tier) || 'free';
+        const isFree = userTier === 'free';
+        const isBasic = userTier === 'basic';
+        const isPro = userTier === 'pro';
+
+        // Sticky upgrade banner — Free users (and Basic users approaching limits)
+        const bar = document.getElementById('fpUpgradeBar');
+        if (isFree && !sessionStorage.getItem('fp_dismiss_upgrade_bar')) {
+          bar.classList.add('show');
+        } else if (isBasic && !sessionStorage.getItem('fp_dismiss_upgrade_bar')) {
+          document.getElementById('fpUpgradeBarMsg').textContent = '升級至 Pro 解鎖過關工具、1 分鐘賠率刷新、API 存取與回測。';
+          bar.classList.add('show');
+        }
+        document.getElementById('fpUpgradeBarClose').addEventListener('click', () => {
+          bar.classList.remove('show');
+          sessionStorage.setItem('fp_dismiss_upgrade_bar', '1');
+        });
+
+        // Phase 2: show in-context upgrade card on Pro sections for non-Pro users
+        if (!isPro) {
+          const u1 = document.getElementById('allup-upgrade-card');
+          if (u1) u1.style.display = '';
+        }
+
+        // Paywall modal helpers
+        const paywallBg = document.getElementById('fpPaywallBg');
+        function openPaywall() { paywallBg.classList.add('show'); }
+        function closePaywall() { paywallBg.classList.remove('show'); }
+        document.getElementById('fpPaywallClose').addEventListener('click', closePaywall);
+        document.getElementById('fpPaywallDismiss').addEventListener('click', closePaywall);
+        paywallBg.addEventListener('click', (e) => { if (e.target === paywallBg) closePaywall(); });
+        document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && paywallBg.classList.contains('show')) closePaywall(); });
+
+        async function startCheckout(tier, cycle = 'monthly') {
+          if (!AUTH.isLoggedIn()) {
+            sessionStorage.setItem('fp_post_signup', JSON.stringify({tier, cycle}));
+            location.href = '/static/templates/signup.html?next=checkout';
+            return;
+          }
+          try {
+            const r = await AUTH.apiFetch('/api/v1/billing/checkout', {
+              method: 'POST',
+              body: JSON.stringify({tier, billing_cycle: cycle}),
+            });
+            if (!r.ok) throw new Error((await r.json()).error || 'Checkout failed');
+            location.href = (await r.json()).checkout_url;
+          } catch (ex) {
+            location.href = '/static/templates/pricing.html';
+          }
+        }
+        document.getElementById('fpCheckoutPro').addEventListener('click', () => startCheckout('pro'));
+        document.getElementById('fpCheckoutBasic').addEventListener('click', (e) => {
+          e.preventDefault();
+          startCheckout('basic');
+        });
+
+        // (Pro-tab paywall intercept lives in product-header.js — runs for all product pages.)
+
+        // Surface 402/RATE_LIMITED errors directly into paywall instead of toast
+        window.addEventListener('unhandledrejection', (ev) => {
+          const err = ev.reason;
+          if (!err) return;
+          if (err.code === 'UPGRADE_REQUIRED' || err.code === 'RATE_LIMITED') {
+            const titleEl = document.getElementById('fpPaywallTitle');
+            const bodyEl = document.getElementById('fpPaywallBody');
+            if (err.code === 'RATE_LIMITED') {
+              titleEl.textContent = '今日預測已達上限';
+              bodyEl.textContent = err.message + ' 升級獲得更多每日預測次數及更快的賠率刷新。';
+            } else {
+              titleEl.textContent = '需要 Pro 方案';
+              bodyEl.textContent = err.message;
+            }
+            openPaywall();
+          }
+        });
+      })();
+    </script>
+</body>
+</html>
