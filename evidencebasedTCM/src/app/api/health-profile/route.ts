@@ -32,10 +32,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Profile already exists, use PATCH" }, { status: 409 });
   }
 
+  const dob = dateOfBirth ? new Date(dateOfBirth) : null;
+  if (dob && Number.isNaN(dob.getTime())) {
+    return NextResponse.json({ error: "Invalid dateOfBirth" }, { status: 400 });
+  }
+
   const profile = await prisma.userHealthProfile.create({
     data: {
       userId,
-      dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
+      dateOfBirth: dob,
       gender: gender || null,
       chronicConditions: chronicConditions ?? [],
       knownAllergies: knownAllergies ?? [],
@@ -58,6 +63,11 @@ export async function PATCH(request: NextRequest) {
 
   const consentChanged = researchConsent !== undefined && researchConsent !== current?.researchConsent;
 
+  const patchDob = dateOfBirth !== undefined ? (dateOfBirth ? new Date(dateOfBirth) : null) : undefined;
+  if (patchDob instanceof Date && Number.isNaN(patchDob.getTime())) {
+    return NextResponse.json({ error: "Invalid dateOfBirth" }, { status: 400 });
+  }
+
   const profile = await prisma.userHealthProfile.upsert({
     where: { userId },
     create: {
@@ -71,7 +81,7 @@ export async function PATCH(request: NextRequest) {
       consentVersion: researchConsent ? "v1.0" : null,
     },
     update: {
-      ...(dateOfBirth !== undefined && { dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null }),
+      ...(patchDob !== undefined && { dateOfBirth: patchDob }),
       ...(gender !== undefined && { gender }),
       ...(chronicConditions !== undefined && { chronicConditions }),
       ...(knownAllergies !== undefined && { knownAllergies }),

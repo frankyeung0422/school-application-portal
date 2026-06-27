@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { auth } from "@/lib/auth/authOptions";
+import { Prisma } from "@/generated/prisma/client";
 
 async function requireAdmin() {
   const session = await auth();
@@ -21,38 +22,47 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     return NextResponse.json({ error: "Invalid status" }, { status: 400 });
   }
 
-  const contribution = await prisma.evidenceContribution.update({
-    where: { id },
-    data: {
-      status,
-      reviewNotes: reviewNotes || null,
-      reviewedAt: new Date(),
-      reviewedBy: admin.id,
-    },
-    include: {
-      researcher: { select: { user: { select: { name: true } } } },
-    },
-  });
-
-  // If accepted, promote to a real EvidenceEntry
-  if (status === "ACCEPTED") {
-    await prisma.evidenceEntry.create({
+  try {
+    const contribution = await prisma.evidenceContribution.update({
+      where: { id },
       data: {
-        title: contribution.title,
-        studyType: contribution.studyType,
-        evidenceLevel: "LEVEL_4", // default — admin should update after review
-        evidenceGrade: contribution.proposedGrade ?? "C",
-        authors: contribution.authors,
-        journal: contribution.journal,
-        year: contribution.year,
-        doi: contribution.doi,
-        pubmedId: contribution.pmid,
-        resultsSummary: contribution.results,
-        abstract: contribution.conclusions,
-        status: "REVIEWED",
+        status,
+        reviewNotes: reviewNotes || null,
+        reviewedAt: new Date(),
+        reviewedBy: admin.id,
+      },
+      include: {
+        researcher: { select: { user: { select: { name: true } } } },
       },
     });
-  }
 
-  return NextResponse.json(contribution);
+    // If accepted, promote to a real EvidenceEntry
+    if (status === "ACCEPTED") {
+      await prisma.evidenceEntry.create({
+        data: {
+          title: contribution.title,
+          studyType: contribution.studyType,
+          evidenceLevel: "LEVEL_4", // default — admin should update after review
+          evidenceGrade: contribution.proposedGrade ?? "C",
+          authors: contribution.authors,
+          journal: contribution.journal,
+          year: contribution.year,
+          doi: contribution.doi,
+          pubmedId: contribution.pmid,
+          resultsSummary: contribution.results,
+          abstract: contribution.conclusions,
+          status: "REVIEWED",
+        },
+      });
+    }
+
+    return NextResponse.json(contribution);
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError) {
+      if (err.code === "P2025") return NextResponse.json({ error: "Contribution not found" }, { status: 404 });
+      if (err.code === "P2002") return NextResponse.json({ error: "Duplicate DOI or PubMed ID when promoting to evidence entry" }, { status: 409 });
+    }
+    console.error("[admin/contributions/[id]] PATCH error", err);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
 }

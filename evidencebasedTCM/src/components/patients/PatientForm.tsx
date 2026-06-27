@@ -50,6 +50,10 @@ export function PatientForm({ locale, mode, initial }: Props) {
       setError(T("姓名為必填", "Name is required"));
       return;
     }
+    if (mode === "edit" && !initial?.id) {
+      setError(T("缺少病人 ID", "Missing patient ID"));
+      return;
+    }
     setSaving(true);
     try {
       const url = mode === "create" ? "/api/patients" : `/api/patients/${initial?.id}`;

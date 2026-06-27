@@ -19,6 +19,11 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const body = await request.json();
   const { status, endDate, severity, notes, tcmPatternId, tcmPatternFree } = body;
 
+  const VALID_STATUSES = ["ACTIVE", "RESOLVED", "MANAGED"] as const;
+  if (status !== undefined && !VALID_STATUSES.includes(status as typeof VALID_STATUSES[number])) {
+    return NextResponse.json({ error: "Invalid status. Must be ACTIVE, RESOLVED, or MANAGED" }, { status: 400 });
+  }
+
   const updated = await prisma.userConditionLog.update({
     where: { id },
     data: {

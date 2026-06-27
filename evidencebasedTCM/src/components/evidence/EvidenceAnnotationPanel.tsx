@@ -85,10 +85,20 @@ export function EvidenceAnnotationPanel({ evidenceId }: { evidenceId: string }) 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
+  const [fetchError, setFetchError] = useState("");
+  const [upvotingId, setUpvotingId] = useState<string | null>(null);
+
   const fetchAnnotations = useCallback(async () => {
-    const res = await fetch(`/api/evidence/${evidenceId}/annotations`);
-    if (res.ok) setAnnotations(await res.json());
-    setLoading(false);
+    try {
+      setFetchError("");
+      const res = await fetch(`/api/evidence/${evidenceId}/annotations`);
+      if (res.ok) setAnnotations(await res.json());
+      else setFetchError("Failed to load annotations");
+    } catch {
+      setFetchError("Network error loading annotations");
+    } finally {
+      setLoading(false);
+    }
   }, [evidenceId]);
 
   useEffect(() => { fetchAnnotations(); }, [fetchAnnotations]);
@@ -97,26 +107,39 @@ export function EvidenceAnnotationPanel({ evidenceId }: { evidenceId: string }) 
     e.preventDefault();
     if (!form.body.trim()) { setError("Annotation body required"); return; }
     setSaving(true); setError("");
-    const res = await fetch(`/api/evidence/${evidenceId}/annotations`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ body: form.body, annotationType: form.annotationType, parentId: replyTo }),
-    });
-    if (res.ok) {
-      setForm({ body: "", annotationType: "COMMENT" });
-      setShowForm(false);
-      setReplyTo(null);
-      fetchAnnotations();
-    } else {
-      const d = await res.json();
-      setError(d.error ?? "Failed to post");
+    try {
+      const res = await fetch(`/api/evidence/${evidenceId}/annotations`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body: form.body, annotationType: form.annotationType, parentId: replyTo }),
+      });
+      if (res.ok) {
+        setForm({ body: "", annotationType: "COMMENT" });
+        setShowForm(false);
+        setReplyTo(null);
+        fetchAnnotations();
+      } else {
+        const d = await res.json();
+        setError(d.error ?? "Failed to post");
+      }
+    } catch {
+      setError("Network error — please try again");
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
   };
 
   const handleUpvote = async (id: string) => {
-    await fetch(`/api/evidence/${evidenceId}/annotations/${id}/upvote`, { method: "POST" });
-    fetchAnnotations();
+    if (upvotingId) return;
+    setUpvotingId(id);
+    try {
+      await fetch(`/api/evidence/${evidenceId}/annotations/${id}/upvote`, { method: "POST" });
+      fetchAnnotations();
+    } catch {
+      // silent — annotations will refresh on next load
+    } finally {
+      setUpvotingId(null);
+    }
   };
 
   const totalCount = annotations.reduce((n, a) => n + 1 + (a.replies?.length ?? 0), 0);

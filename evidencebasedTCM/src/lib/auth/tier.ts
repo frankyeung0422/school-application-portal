@@ -63,7 +63,8 @@ export async function requirePatient(): Promise<string> {
   const user = session?.user as SessionUser;
   if (!user?.id) throw new Error("auth:unauthenticated");
   // PATIENT, PRACTITIONER, ADMIN, EDITOR can all access self-health profile
-  if (!user.role) throw new Error("auth:patient_required");
+  const ALLOWED = ["PATIENT", "PRACTITIONER", "ADMIN", "EDITOR"];
+  if (!user.role || !ALLOWED.includes(user.role)) throw new Error("auth:patient_required");
   return user.id;
 }
 

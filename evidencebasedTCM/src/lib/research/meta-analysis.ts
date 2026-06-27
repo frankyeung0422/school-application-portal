@@ -97,10 +97,12 @@ function poolGroup(metric: string, rows: Row[]): MetaGroup | null {
   const back = (y: number) => (ratio ? Math.exp(y) : y);
   const r1 = (n: number) => Math.round(n * 100) / 100;
   const pooledValue = r1(back(yR));
-  const ciLow = r1(back(yR - 1.96 * seR));
-  const ciHigh = r1(back(yR + 1.96 * seR));
+  const rawLow = back(yR - 1.96 * seR);
+  const rawHigh = back(yR + 1.96 * seR);
+  const ciLow = r1(rawLow);
+  const ciHigh = r1(rawHigh);
   const noEffectLine = ratio ? 1 : 0;
-  const significant = ratio ? ciHigh < 1 || ciLow > 1 : ciHigh < 0 || ciLow > 0;
+  const significant = ratio ? rawHigh < 1 || rawLow > 1 : rawHigh < 0 || rawLow > 0;
 
   const forest: ForestStudy[] = wStar
     .map((x) => ({

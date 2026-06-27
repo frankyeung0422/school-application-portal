@@ -662,6 +662,8 @@ model User {
   referralsReceived ReferralRequest[]  @relation("ReferralTo")
   healthProfile     UserHealthProfile?
   researcherProfile ResearcherProfile?
+  lessonProgress    UserLessonProgress[]
+  caseNotes         CaseNote[]
 
   @@map("users")
 }
@@ -1586,4 +1588,46 @@ model DataExportLog {
 
   @@index([userId, createdAt])
   @@map("data_export_logs")
+}
+
+// ============================================
+// User lesson progress tracking
+// ============================================
+
+model UserLessonProgress {
+  id          String   @id @default(cuid())
+  userId      String   @map("user_id")
+  courseId    String   @map("course_id")
+  lessonNum   Int      @map("lesson_num")
+  completedAt DateTime @default(now()) @map("completed_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, courseId, lessonNum])
+  @@index([userId, courseId])
+  @@map("user_lesson_progress")
+}
+
+// ============================================
+// Cloud-backed case notebook
+// ============================================
+
+model CaseNote {
+  id              String   @id @default(cuid())
+  userId          String   @map("user_id")
+  patientInitials String   @default("") @map("patient_initials")
+  chiefComplaint  String   @default("") @map("chief_complaint") @db.Text
+  diagnosis       String   @default("") @db.Text
+  patternIds      String   @default("[]") @map("pattern_ids") @db.Text
+  formulaIds      String   @default("[]") @map("formula_ids") @db.Text
+  acupointIds     String   @default("[]") @map("acupoint_ids") @db.Text
+  herbIds         String   @default("[]") @map("herb_ids") @db.Text
+  notes           String   @default("") @db.Text
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("case_notes")
 }

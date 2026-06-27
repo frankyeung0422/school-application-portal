@@ -290,6 +290,7 @@ export function ConsultationForm({
         setSaving(false);
         return;
       }
+      setSaving(false);
       router.push(`/patients/${patientId}/consultations/${j.id}`);
       router.refresh();
     } catch (err) {

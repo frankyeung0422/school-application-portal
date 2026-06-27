@@ -15,7 +15,7 @@ export function CredibilityBadge({
   locale: string;
   title?: string;
 }) {
-  const m = TIER_META[tier];
+  const m = TIER_META[tier] ?? TIER_META["LOW"];
   return (
     <span
       title={title}

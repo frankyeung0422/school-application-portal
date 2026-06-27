@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { DRUGS, getDrugByGeneric } from "@/lib/safety/rxnorm-subset";
 import { predictPkInteractions } from "@/lib/safety/predict-interactions";
+import { checkClassicalIncompatibilities } from "@/lib/safety/classical-incompatibilities";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -115,7 +116,6 @@ export async function POST(req: NextRequest) {
           clinicalEffect: inter.clinicalEffect,
           management: inter.management,
         });
-        break;
       }
     }
   }
@@ -130,17 +130,50 @@ export async function POST(req: NextRequest) {
     drugs: drugRecords.map((d) => ({ generic: d.generic, display: d.display })),
   });
 
-  // Herb-herb classical incompatibilities (十八反十九畏) when both in the selection.
-  const herbHerbConflicts = hhis.map((h) => ({
+  // Herb-herb classical incompatibilities — DB curated pairs first,
+  // then code-based 十八反/十九畏 checker to catch any DB gaps.
+  const herbHerbConflicts: Array<{
+    herbAId: string;
+    herbAChineseName: string;
+    herbBId: string;
+    herbBChineseName: string;
+    interactionType: string;
+    severity: string;
+    description: string | null;
+    classicalSource: string | null;
+  }> = hhis.map((h) => ({
     herbAId: h.herbAId,
     herbAChineseName: h.herbA.chineseName,
     herbBId: h.herbBId,
     herbBChineseName: h.herbB.chineseName,
-    interactionType: h.interactionType,
-    severity: h.severity,
+    interactionType: h.interactionType as string,
+    severity: h.severity as string,
     description: h.description,
     classicalSource: h.classicalSource,
   }));
+
+  // Augment with code-based 十八反/十九畏 (catches pairs not yet in the DB).
+  const classicalWarnings = checkClassicalIncompatibilities(
+    herbs.map((h) => ({ chineseName: h.chineseName, pinyinName: h.pinyinName }))
+  );
+  const dbPairKeys = new Set(
+    herbHerbConflicts.map((c) => [c.herbAChineseName, c.herbBChineseName].sort().join("|"))
+  );
+  for (const w of classicalWarnings) {
+    const key = [w.herb1, w.herb2].sort().join("|");
+    if (dbPairKeys.has(key)) continue;
+    dbPairKeys.add(key);
+    herbHerbConflicts.push({
+      herbAId: herbs.find((h) => h.chineseName.includes(w.herb1) || w.herb1.includes(h.chineseName))?.id ?? "",
+      herbAChineseName: w.herb1,
+      herbBId: herbs.find((h) => h.chineseName.includes(w.herb2) || w.herb2.includes(h.chineseName))?.id ?? "",
+      herbBChineseName: w.herb2,
+      interactionType: w.type,
+      severity: w.severity,
+      description: w.description,
+      classicalSource: w.classicalSource,
+    });
+  }
 
   // Worst-of safety summary per herb.
   const safetyByHerb = herbs.map((h) => {

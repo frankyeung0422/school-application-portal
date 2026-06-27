@@ -36,6 +36,7 @@ export async function diseaseGeneSet(diseaseId: string): Promise<Set<string>> {
  */
 export async function herbTargetMap(): Promise<Map<string, Set<string>>> {
   const compounds = await prisma.herbActiveCompound.findMany({
+    where: { herb: { status: "PUBLISHED" } },
     select: {
       herbId: true,
       targets: { select: { target: { select: { geneSymbol: true } } } },

@@ -63,10 +63,9 @@ export async function GET(req: NextRequest, { params }: RouteCtx) {
     if (!p) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
     return NextResponse.json({ ok: true, patient: p });
   } catch (err) {
-    return NextResponse.json(
-      { ok: false, error: err instanceof Error ? err.message : "internal" },
-      { status: 401 },
-    );
+    const msg = err instanceof Error ? err.message : "internal";
+    const status = msg === "practitioner_required" || msg === "auth:unauthenticated" ? 401 : 500;
+    return NextResponse.json({ ok: false, error: msg }, { status });
   }
 }
 

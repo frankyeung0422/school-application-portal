@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { auth } from "@/lib/auth/authOptions";
 import { prisma } from "@/lib/db/prisma";
 import { getLocale } from "@/lib/i18n/locale-server";
@@ -21,6 +22,15 @@ export default async function SecurityPage() {
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
+      <nav className="mb-6 flex gap-4 text-sm border-b border-border pb-3">
+        <Link href="/account/profile" className="text-muted hover:text-foreground">
+          {isZh ? "個人資料" : "Profile"}
+        </Link>
+        <Link href="/account/security" className="font-semibold text-primary">
+          {isZh ? "安全設定" : "Security"}
+        </Link>
+      </nav>
+
       <h1 className="text-3xl font-bold mb-1">
         {isZh ? "帳戶安全" : "Account Security"}
       </h1>

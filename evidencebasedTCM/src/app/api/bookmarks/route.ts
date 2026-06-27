@@ -81,6 +81,10 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: "entityType and entityId are required" }, { status: 400 });
   }
 
+  if (!VALID_ENTITY_TYPES.includes(entityType as (typeof VALID_ENTITY_TYPES)[number])) {
+    return NextResponse.json({ error: "Invalid entityType" }, { status: 400 });
+  }
+
   await prisma.bookmark.deleteMany({
     where: {
       userId: session.user.id,

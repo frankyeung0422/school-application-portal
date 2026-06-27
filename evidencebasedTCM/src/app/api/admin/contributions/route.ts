@@ -18,6 +18,11 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const status = searchParams.get("status") ?? "PENDING";
 
+  const VALID_STATUSES = ["PENDING", "REVIEWING", "ACCEPTED", "REJECTED"] as const;
+  if (!VALID_STATUSES.includes(status as typeof VALID_STATUSES[number])) {
+    return NextResponse.json({ error: "Invalid status. Must be one of: PENDING, REVIEWING, ACCEPTED, REJECTED" }, { status: 400 });
+  }
+
   const contributions = await prisma.evidenceContribution.findMany({
     where: { status },
     orderBy: { createdAt: "desc" },

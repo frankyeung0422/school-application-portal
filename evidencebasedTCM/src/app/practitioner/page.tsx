@@ -37,6 +37,48 @@ export default async function PractitionerDashboard() {
       })
     : [];
 
+  // Resolve bookmark entity names via batch lookups
+  const bkHerbIds     = recentBookmarks.filter(b => b.entityType === "HERB").map(b => b.entityId);
+  const bkFormulaIds  = recentBookmarks.filter(b => b.entityType === "FORMULA").map(b => b.entityId);
+  const bkAcuIds      = recentBookmarks.filter(b => b.entityType === "ACUPOINT").map(b => b.entityId);
+  const bkPatternIds  = recentBookmarks.filter(b => b.entityType === "PATTERN").map(b => b.entityId);
+  const bkEvidenceIds = recentBookmarks.filter(b => b.entityType === "EVIDENCE").map(b => b.entityId);
+  const bkCondIds     = recentBookmarks.filter(b => b.entityType === "CONDITION").map(b => b.entityId);
+
+  const [bkHerbs, bkFormulas, bkAcupoints, bkPatterns, bkEvidence, bkConditions] = await Promise.all([
+    bkHerbIds.length     ? prisma.herb.findMany({ where: { id: { in: bkHerbIds } }, select: { id: true, pinyinName: true, chineseName: true } }) : [],
+    bkFormulaIds.length  ? prisma.formula.findMany({ where: { id: { in: bkFormulaIds } }, select: { id: true, pinyinName: true, chineseName: true } }) : [],
+    bkAcuIds.length      ? prisma.acupuncturePoint.findMany({ where: { id: { in: bkAcuIds } }, select: { id: true, code: true, pinyinName: true, chineseName: true } }) : [],
+    bkPatternIds.length  ? prisma.tcmPattern.findMany({ where: { id: { in: bkPatternIds } }, select: { id: true, pinyinName: true, chineseName: true } }) : [],
+    bkEvidenceIds.length ? prisma.evidenceEntry.findMany({ where: { id: { in: bkEvidenceIds } }, select: { id: true, title: true } }) : [],
+    bkCondIds.length     ? prisma.conditionMapping.findMany({ where: { id: { in: bkCondIds } }, select: { id: true, westernName: true } }) : [],
+  ]);
+
+  const bkNameMap = new Map<string, string>();
+  bkHerbs.forEach(h    => bkNameMap.set(h.id, `${h.pinyinName} ${h.chineseName}`));
+  bkFormulas.forEach(f => bkNameMap.set(f.id, `${f.pinyinName} ${f.chineseName}`));
+  bkAcupoints.forEach(a => bkNameMap.set(a.id, `${a.code} ${a.pinyinName}`));
+  bkPatterns.forEach(p => bkNameMap.set(p.id, `${p.pinyinName} ${p.chineseName}`));
+  bkEvidence.forEach(e => bkNameMap.set(e.id, e.title));
+  bkConditions.forEach(c => bkNameMap.set(c.id, c.westernName));
+
+  const bkHrefBase: Record<string, string> = {
+    HERB: "/herbs",
+    FORMULA: "/formulas",
+    ACUPOINT: "/acupuncture",
+    PATTERN: "/patterns",
+    EVIDENCE: "/evidence",
+    CONDITION: "/conditions",
+  };
+  const bkTypeLabel: Record<string, string> = {
+    HERB: "Herb", FORMULA: "Formula", ACUPOINT: "Acupoint",
+    PATTERN: "Pattern", EVIDENCE: "Evidence", CONDITION: "Condition",
+  };
+  const bkTypeLabelZh: Record<string, string> = {
+    HERB: "藥材", FORMULA: "方劑", ACUPOINT: "穴位",
+    PATTERN: "證型", EVIDENCE: "研究", CONDITION: "病症",
+  };
+
   const userName = session?.user?.name ?? T("醫師", "Doctor");
 
   // Recent high-impact evidence (week's reading)
@@ -201,16 +243,23 @@ export default async function PractitionerDashboard() {
             </p>
           ) : (
             <ul className="space-y-2">
-              {recentBookmarks.map((b) => (
-                <li key={b.id}>
-                  <Link
-                    href={`/${b.entityType.toLowerCase()}s/${b.entityId}`}
-                    className="text-sm hover:text-primary"
-                  >
-                    {b.entityType} · {b.entityId.slice(0, 12)}…
-                  </Link>
-                </li>
-              ))}
+              {recentBookmarks.map((b) => {
+                const base = bkHrefBase[b.entityType] ?? `/${b.entityType.toLowerCase()}s`;
+                const name = bkNameMap.get(b.entityId) ?? b.entityId.slice(0, 12) + "…";
+                const typeLabel = isZh
+                  ? (bkTypeLabelZh[b.entityType] ?? b.entityType)
+                  : (bkTypeLabel[b.entityType] ?? b.entityType);
+                return (
+                  <li key={b.id}>
+                    <Link href={`${base}/${b.entityId}`} className="flex items-center gap-2 text-sm hover:text-primary group">
+                      <span className="shrink-0 rounded-full bg-primary/10 text-primary px-2 py-0.5 text-xs font-medium">
+                        {typeLabel}
+                      </span>
+                      <span className="truncate group-hover:text-primary transition-colors">{name}</span>
+                    </Link>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>

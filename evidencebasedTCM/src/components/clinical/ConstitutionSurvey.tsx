@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import Link from "next/link";
 import {
   SURVEY_ITEMS,
@@ -241,6 +241,9 @@ function ResultView({ result, locale, patientId, onRetake }: { result: Result; l
         </p>
       </div>
 
+      {/* Food therapy recommendations based on primary constitution */}
+      <FoodTherapyRecs constitutionKey={result.primary} locale={locale} />
+
       {result.saved && (
         <p className="text-sm text-green-700 bg-green-50 dark:bg-green-900/10 border border-green-200 rounded-md p-3">
           ✓ {T("已儲存至病人檔案。", "Saved to patient chart.")}
@@ -263,6 +266,101 @@ function ResultView({ result, locale, patientId, onRetake }: { result: Result; l
             {T("返回病人檔案", "Back to patient")}
           </Link>
         )}
+        <Link
+          href="/food-therapy"
+          className="rounded-md border border-border bg-background px-4 py-2 text-sm hover:bg-surface"
+        >
+          {T("瀏覽全部食療", "All food therapy")}
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+interface FoodRec {
+  id: string;
+  chineseName: string;
+  pinyinName: string;
+  englishName: string | null;
+  category: string;
+  season: string | null;
+  treatmentPrinciple: string | null;
+  prepTimeMinutes: number | null;
+  cookTimeMinutes: number | null;
+}
+
+function FoodTherapyRecs({ constitutionKey, locale }: { constitutionKey: ConstitutionKey; locale: Locale }) {
+  const isZh = locale === "zh-Hant";
+  const [recipes, setRecipes] = useState<FoodRec[]>([]);
+  const [fallback, setFallback] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch(`/api/diagnose/constitution/food-recs?type=${constitutionKey}`)
+      .then(r => r.json())
+      .then(d => {
+        setRecipes(d.recipes ?? []);
+        setFallback(d.fallback ?? false);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, [constitutionKey]);
+
+  if (loading) return null;
+  if (recipes.length === 0) return null;
+
+  const SEASON_LABEL: Record<string, string> = {
+    spring: "🌱", summer: "☀️", autumn: "🍂", winter: "❄️", "all-season": "🌿",
+  };
+
+  return (
+    <div className="rounded-lg border border-border bg-surface p-4">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-semibold">
+          {isZh ? "🍲 推薦食療方" : "🍲 Recommended Food Therapy"}
+        </h3>
+        {fallback && (
+          <span className="text-xs text-muted">
+            {isZh ? "（通用推薦）" : "(general)"}
+          </span>
+        )}
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        {recipes.map(r => {
+          const totalMin = (r.prepTimeMinutes ?? 0) + (r.cookTimeMinutes ?? 0);
+          return (
+            <Link
+              key={r.id}
+              href={`/food-therapy/${r.id}`}
+              className="rounded-md border border-border bg-background p-3 hover:border-primary-light transition-colors group"
+            >
+              <div className="flex items-start justify-between gap-1">
+                <div>
+                  <p className="text-sm font-medium group-hover:text-primary transition-colors">
+                    {r.chineseName}
+                  </p>
+                  {!isZh && r.englishName && (
+                    <p className="text-xs text-muted">{r.englishName}</p>
+                  )}
+                </div>
+                <span className="shrink-0 text-xs rounded-full bg-primary/10 text-primary px-2 py-0.5">
+                  {r.category}
+                </span>
+              </div>
+              <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+                {r.season && SEASON_LABEL[r.season] && (
+                  <span className="text-xs text-muted">{SEASON_LABEL[r.season]} {r.season}</span>
+                )}
+                {totalMin > 0 && (
+                  <span className="text-xs text-muted">⏱ {totalMin} min</span>
+                )}
+              </div>
+              {r.treatmentPrinciple && (
+                <p className="text-xs text-muted mt-1 line-clamp-1">{r.treatmentPrinciple}</p>
+              )}
+            </Link>
+          );
+        })}
       </div>
     </div>
   );

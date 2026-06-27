@@ -35,6 +35,17 @@ export async function POST(request: NextRequest) {
 
   if (overallScore === undefined) return NextResponse.json({ error: "overallScore required" }, { status: 400 });
 
+  const isValidScore = (v: unknown) => typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= 10;
+  if (!isValidScore(overallScore)) {
+    return NextResponse.json({ error: "overallScore must be an integer 0–10" }, { status: 400 });
+  }
+  const optionalScores = { energyScore, painScore, sleepScore, stressScore, digestiveScore };
+  for (const [key, val] of Object.entries(optionalScores)) {
+    if (val !== undefined && val !== null && !isValidScore(val)) {
+      return NextResponse.json({ error: `${key} must be an integer 0–10` }, { status: 400 });
+    }
+  }
+
   // Snapshot active conditions at check-in time
   const activeConditions = await prisma.userConditionLog.findMany({
     where: { profileId: profile.id, status: "ACTIVE" },

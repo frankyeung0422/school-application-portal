@@ -112,7 +112,7 @@ export const HERB_CYP: HerbCyp[] = [
     note: "葛根素影響 CYP2D6/1A2。" },
   { pinyin: ["wu zhu yu"], latin: "Evodia", zh: "吳茱萸", induces: ["CYP1A2", "CYP3A4"],
     note: "吳茱萸可誘導 CYP1A2/3A4，降低受質藥物濃度。" },
-  { pinyin: ["shi gao"], latin: "Schisandra sphenanthera", zh: "南五味子", inhibits: ["CYP3A4"],
+  { pinyin: ["nan wu wei zi", "hua zhong wu wei zi"], latin: "Schisandra sphenanthera", zh: "南五味子", inhibits: ["CYP3A4"],
     note: "南五味子（華中五味子）為強 CYP3A4 抑制劑。" },
   { pinyin: ["gou teng"], latin: "Uncaria", zh: "鉤藤", inhibits: ["CYP3A4"],
     note: "鉤藤生物鹼抑制 CYP3A4。" },

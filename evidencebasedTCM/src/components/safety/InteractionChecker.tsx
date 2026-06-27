@@ -101,6 +101,7 @@ export function InteractionChecker({ locale }: { locale: Locale }) {
   const [drugsSelected, setDrugsSelected] = useState<DrugRecord[]>([]);
 
   const [result, setResult] = useState<CheckResponse | null>(null);
+  const [checkError, setCheckError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -120,6 +121,9 @@ export function InteractionChecker({ locale }: { locale: Locale }) {
         /* ignore */
       }
     }, 200);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
   }, [herbQuery]);
 
   const drugSuggestions = useMemo(() => searchDrugs(drugQuery, 12), [drugQuery]);
@@ -152,6 +156,7 @@ export function InteractionChecker({ locale }: { locale: Locale }) {
   async function runCheck() {
     if (herbsSelected.length === 0) return;
     setLoading(true);
+    setCheckError(null);
     try {
       const res = await fetch("/api/safety/check", {
         method: "POST",
@@ -162,7 +167,13 @@ export function InteractionChecker({ locale }: { locale: Locale }) {
         }),
       });
       const j = (await res.json()) as CheckResponse;
-      setResult(j);
+      if (!res.ok) {
+        setCheckError((j as unknown as Record<string, unknown>).error as string ?? "Check failed");
+      } else {
+        setResult(j);
+      }
+    } catch {
+      setCheckError("Network error — please try again");
     } finally {
       setLoading(false);
     }

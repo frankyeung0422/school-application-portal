@@ -302,7 +302,7 @@ function scoreHerbs(
   const targetMeridians = analysis.affectedOrgans.flatMap((o) => ORGAN_MERIDIAN[o] ?? []);
   const targetCategories = [analysis.primaryPathology, ...analysis.secondaryPathologies]
     .flatMap((p) => PATHOLOGY_TREATMENTS[p]?.categoryNeeds ?? []);
-  const allKeywords = [...disease.tcmTermsZh, ...disease.keywordsZh, ...analysis.treatmentPrinciples];
+  const allKeywords = [...disease.tcmTermsZh, ...disease.keywordsZh];
 
   return allHerbs
     .map((h) => {
@@ -419,7 +419,7 @@ function assembleFormula(
 
   // ZUO (Assistant) — 2-3 herbs that moderate, address side effects, or treat minor aspects
   const zuoHerbs = ranked
-    .filter((h) => !usedIds.has(h.id) && isSafe(h))
+    .filter((h) => !usedIds.has(h.id) && isSafe(h) && h.score > 0)
     .slice(0, 3);
   for (const h of zuoHerbs) {
     const dosage = scaleDosage(h.dosageRange, 0.8);

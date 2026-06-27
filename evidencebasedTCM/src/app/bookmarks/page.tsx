@@ -21,59 +21,32 @@ const ENTITY_TYPE_CONFIG: Record<string, { color: string; href: (id: string) => 
   CONDITION: { color: "bg-teal-100 text-teal-800", href: (id) => `/conditions/${id}` },
 };
 
-async function getEntityName(entityType: string, entityId: string, locale: Locale): Promise<string> {
-  switch (entityType) {
-    case "HERB": {
-      const herb = await prisma.herb.findUnique({
-        where: { id: entityId },
-        select: { pinyinName: true, chineseName: true },
-      });
-      if (!herb) return "?";
-      const zh = toTraditionalChinese(herb.chineseName, locale);
-      return `${herb.pinyinName} (${zh})`;
-    }
-    case "FORMULA": {
-      const formula = await prisma.formula.findUnique({
-        where: { id: entityId },
-        select: { pinyinName: true, chineseName: true },
-      });
-      if (!formula) return "?";
-      const zh = toTraditionalChinese(formula.chineseName, locale);
-      return `${formula.pinyinName} (${zh})`;
-    }
-    case "ACUPOINT": {
-      const acupoint = await prisma.acupuncturePoint.findUnique({
-        where: { id: entityId },
-        select: { code: true, pinyinName: true },
-      });
-      return acupoint ? `${acupoint.code} ${acupoint.pinyinName}` : "?";
-    }
-    case "PATTERN": {
-      const pattern = await prisma.tcmPattern.findUnique({
-        where: { id: entityId },
-        select: { pinyinName: true, chineseName: true },
-      });
-      if (!pattern) return "?";
-      const zh = toTraditionalChinese(pattern.chineseName, locale);
-      return `${pattern.pinyinName} (${zh})`;
-    }
-    case "EVIDENCE": {
-      const evidence = await prisma.evidenceEntry.findUnique({
-        where: { id: entityId },
-        select: { title: true },
-      });
-      return evidence?.title ? toTraditionalChinese(evidence.title, locale) : "?";
-    }
-    case "CONDITION": {
-      const condition = await prisma.conditionMapping.findUnique({
-        where: { id: entityId },
-        select: { westernName: true },
-      });
-      return condition?.westernName ? toTraditionalChinese(condition.westernName, locale) : "?";
-    }
-    default:
-      return "?";
-  }
+async function buildNameMap(bookmarks: { entityType: string; entityId: string }[], locale: Locale): Promise<Map<string, string>> {
+  const ids = (type: string) => bookmarks.filter(b => b.entityType === type).map(b => b.entityId);
+  const herbIds     = ids("HERB");
+  const formulaIds  = ids("FORMULA");
+  const acuIds      = ids("ACUPOINT");
+  const patternIds  = ids("PATTERN");
+  const evidenceIds = ids("EVIDENCE");
+  const condIds     = ids("CONDITION");
+
+  const [herbs, formulas, acupoints, patterns, evidence, conditions] = await Promise.all([
+    herbIds.length     ? prisma.herb.findMany({ where: { id: { in: herbIds } }, select: { id: true, pinyinName: true, chineseName: true } }) : [],
+    formulaIds.length  ? prisma.formula.findMany({ where: { id: { in: formulaIds } }, select: { id: true, pinyinName: true, chineseName: true } }) : [],
+    acuIds.length      ? prisma.acupuncturePoint.findMany({ where: { id: { in: acuIds } }, select: { id: true, code: true, pinyinName: true } }) : [],
+    patternIds.length  ? prisma.tcmPattern.findMany({ where: { id: { in: patternIds } }, select: { id: true, pinyinName: true, chineseName: true } }) : [],
+    evidenceIds.length ? prisma.evidenceEntry.findMany({ where: { id: { in: evidenceIds } }, select: { id: true, title: true } }) : [],
+    condIds.length     ? prisma.conditionMapping.findMany({ where: { id: { in: condIds } }, select: { id: true, westernName: true } }) : [],
+  ]);
+
+  const map = new Map<string, string>();
+  herbs.forEach(h     => map.set(h.id, `${h.pinyinName} (${toTraditionalChinese(h.chineseName, locale)})`));
+  formulas.forEach(f  => map.set(f.id, `${f.pinyinName} (${toTraditionalChinese(f.chineseName, locale)})`));
+  acupoints.forEach(a => map.set(a.id, `${a.code} ${a.pinyinName}`));
+  patterns.forEach(p  => map.set(p.id, `${p.pinyinName} (${toTraditionalChinese(p.chineseName, locale)})`));
+  evidence.forEach(e  => map.set(e.id, toTraditionalChinese(e.title, locale)));
+  conditions.forEach(c => map.set(c.id, toTraditionalChinese(c.westernName, locale)));
+  return map;
 }
 
 interface Props {
@@ -94,26 +67,30 @@ export default async function BookmarksPage({ searchParams }: Props) {
     where.entityType = filterType;
   }
 
-  const bookmarks = await prisma.bookmark.findMany({
-    where,
+  // Fetch all bookmarks for this user once (for counts + names)
+  const allBookmarks = await prisma.bookmark.findMany({
+    where: { userId: session.user.id },
     orderBy: { createdAt: "desc" },
   });
 
-  const bookmarksWithNames = await Promise.all(
-    bookmarks.map(async (b) => ({
-      ...b,
-      name: await getEntityName(b.entityType, b.entityId, locale),
-    }))
-  );
-
+  // Derive type counts from the already-fetched array (no second DB query)
   const typeCounts: Record<string, number> = {};
-  const allBookmarks = await prisma.bookmark.findMany({
-    where: { userId: session.user.id },
-    select: { entityType: true },
-  });
   for (const b of allBookmarks) {
     typeCounts[b.entityType] = (typeCounts[b.entityType] || 0) + 1;
   }
+
+  // Apply type filter after computing counts
+  const bookmarks = filterType && filterType in ENTITY_TYPE_CONFIG
+    ? allBookmarks.filter(b => b.entityType === filterType)
+    : allBookmarks;
+
+  // Batch-resolve entity names (at most 6 parallel queries regardless of N bookmarks)
+  const nameMap = await buildNameMap(bookmarks, locale);
+
+  const bookmarksWithNames = bookmarks.map(b => ({
+    ...b,
+    name: nameMap.get(b.entityId) ?? "?",
+  }));
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">

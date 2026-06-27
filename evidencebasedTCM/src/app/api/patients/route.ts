@@ -42,10 +42,9 @@ export async function GET(req: NextRequest) {
     });
     return NextResponse.json({ ok: true, patients });
   } catch (err) {
-    return NextResponse.json(
-      { ok: false, error: err instanceof Error ? err.message : "internal" },
-      { status: 401 },
-    );
+    const msg = err instanceof Error ? err.message : "internal";
+    const status = msg === "practitioner_required" || msg === "auth:unauthenticated" ? 401 : 500;
+    return NextResponse.json({ ok: false, error: msg }, { status });
   }
 }
 

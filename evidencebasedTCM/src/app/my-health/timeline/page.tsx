@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { CheckInSparkline } from "@/components/health/CheckInSparkline";
 
 type SymptomEntry = { name: string; severity: number };
 
@@ -93,6 +94,19 @@ export default function TimelinePage() {
 
   const filtered = filter === "all" ? events : events.filter(e => e.type === filter);
 
+  // Build sparkline data from the last 12 check-in events (oldest first)
+  const checkIns = [...events]
+    .filter((e): e is Extract<typeof e, { type: "check_in" }> => e.type === "check_in")
+    .slice(-12);
+
+  const overallScores = checkIns.map(e => e.data.overallScore);
+  const energyScores  = checkIns.map(e => e.data.energyScore ?? 0);
+  const sleepScores   = checkIns.map(e => e.data.sleepScore ?? 0);
+  const painScores    = checkIns.map(e => e.data.painScore ?? 0);
+  const avgOverall    = overallScores.length
+    ? Math.round((overallScores.reduce((s, v) => s + v, 0) / overallScores.length) * 10) / 10
+    : null;
+
   const grouped = filtered.reduce<Record<string, TimelineEvent[]>>((acc, event) => {
     const month = new Date(event.date).toLocaleDateString("en-HK", { year: "numeric", month: "long" });
     (acc[month] ??= []).push(event);
@@ -121,6 +135,33 @@ export default function TimelinePage() {
           ))}
         </div>
       </div>
+
+      {/* Sparkline trend section — shown when ≥2 check-ins exist */}
+      {!loading && checkIns.length >= 2 && (
+        <div className="mb-6 rounded-xl border border-border bg-surface p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-semibold text-foreground">Score Trends</h2>
+            {avgOverall !== null && (
+              <span className="text-xs text-muted">
+                Last {checkIns.length} check-ins · Overall avg{" "}
+                <span className="font-semibold text-primary">{avgOverall}/10</span>
+              </span>
+            )}
+          </div>
+          <div className="flex flex-wrap justify-around gap-4">
+            <CheckInSparkline values={overallScores} label="Overall" color="#0d9488" />
+            <CheckInSparkline values={energyScores}  label="Energy"  color="#d97706" />
+            <CheckInSparkline values={sleepScores}   label="Sleep"   color="#6366f1" />
+            <CheckInSparkline
+              values={painScores}
+              label="Pain"
+              color="#f43f5e"
+              inverted
+            />
+          </div>
+          <p className="text-xs text-muted mt-2 text-center">Pain chart is inverted — higher line = less pain</p>
+        </div>
+      )}
 
       {loading ? (
         <p className="text-muted text-sm">Loading…</p>

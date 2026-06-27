@@ -12,10 +12,10 @@ interface RouteCtx {
 const TYPES = ["DRUG", "FOOD", "ENVIRONMENTAL", "HERB", "OTHER"] as const;
 const SEVS = ["MILD", "MODERATE", "SEVERE", "ANAPHYLAXIS", "UNKNOWN"] as const;
 
-function asType(v: unknown): typeof TYPES[number] {
+function asType(v: unknown): typeof TYPES[number] | null {
   return (TYPES as readonly string[]).includes(v as string)
     ? (v as typeof TYPES[number])
-    : "DRUG";
+    : null;
 }
 function asSev(v: unknown): typeof SEVS[number] {
   return (SEVS as readonly string[]).includes(v as string)
@@ -64,10 +64,14 @@ export async function POST(req: NextRequest, { params }: RouteCtx) {
     if (allergen.length === 0) {
       return NextResponse.json({ ok: false, error: "allergen_required" }, { status: 400 });
     }
+    const allergyType = asType(body.type);
+    if (allergyType === null) {
+      return NextResponse.json({ ok: false, error: "invalid_type. Must be one of: DRUG, FOOD, ENVIRONMENTAL, HERB, OTHER" }, { status: 400 });
+    }
     const created = await prisma.patientAllergy.create({
       data: {
         patientId: id,
-        type: asType(body.type),
+        type: allergyType,
         allergen,
         reaction: typeof body.reaction === "string" ? body.reaction.trim().slice(0, 200) || null : null,
         severity: asSev(body.severity),
@@ -95,7 +99,10 @@ export async function DELETE(req: NextRequest, { params }: RouteCtx) {
     if (!allergyId) {
       return NextResponse.json({ ok: false, error: "allergy_id_required" }, { status: 400 });
     }
-    await prisma.patientAllergy.deleteMany({ where: { id: allergyId, patientId: id } });
+    const { count } = await prisma.patientAllergy.deleteMany({ where: { id: allergyId, patientId: id } });
+    if (count === 0) {
+      return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
+    }
     return NextResponse.json({ ok: true });
   } catch (err) {
     return NextResponse.json(

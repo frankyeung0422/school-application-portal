@@ -59,8 +59,14 @@ export async function POST(req: NextRequest, { params }: RouteCtx) {
 
     const startDate = typeof body.startDate === "string" && body.startDate.length > 0
       ? new Date(body.startDate) : null;
+    if (startDate && Number.isNaN(startDate.getTime())) {
+      return NextResponse.json({ ok: false, error: "invalid_start_date" }, { status: 400 });
+    }
     const endDate = typeof body.endDate === "string" && body.endDate.length > 0
       ? new Date(body.endDate) : null;
+    if (endDate && Number.isNaN(endDate.getTime())) {
+      return NextResponse.json({ ok: false, error: "invalid_end_date" }, { status: 400 });
+    }
 
     const created = await prisma.patientMedication.create({
       data: {
@@ -97,7 +103,10 @@ export async function DELETE(req: NextRequest, { params }: RouteCtx) {
     if (!medId) {
       return NextResponse.json({ ok: false, error: "med_id_required" }, { status: 400 });
     }
-    await prisma.patientMedication.deleteMany({ where: { id: medId, patientId: id } });
+    const { count } = await prisma.patientMedication.deleteMany({ where: { id: medId, patientId: id } });
+    if (count === 0) {
+      return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
+    }
     return NextResponse.json({ ok: true });
   } catch (err) {
     return NextResponse.json(

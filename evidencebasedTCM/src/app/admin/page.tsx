@@ -5,6 +5,7 @@ import { getMessages } from "@/lib/i18n/messages";
 import { t } from "@/lib/i18n/resolve-message";
 import { tf } from "@/lib/i18n/format-message";
 import { studyTypeLabel } from "@/lib/i18n/data-labels";
+import { AdminStatsPanel } from "@/components/admin/AdminStatsPanel";
 
 async function getStats() {
   const [herbs, formulas, acupoints, patterns, evidence, conditions, users, bookmarks] = await Promise.all([
@@ -180,6 +181,8 @@ export default async function AdminDashboardPage() {
           </Link>
         </div>
       </div>
+
+      <AdminStatsPanel totals={{ herbs: stats.herbs, formulas: stats.formulas, acupoints: stats.acupoints, patterns: stats.patterns }} />
     </div>
   );
 }

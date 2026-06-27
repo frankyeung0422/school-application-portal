@@ -566,7 +566,7 @@ async function composeAnalysis(args: {
   for (const cm of conditionMappings) {
     const key = cm.conditionId;
     const existing = conditionScores.get(key);
-    const score = (existing?.score ?? 0) + freqWeight[cm.frequency as keyof typeof freqWeight];
+    const score = (existing?.score ?? 0) + (freqWeight[cm.frequency as keyof typeof freqWeight] ?? 1);
     conditionScores.set(key, {
       id: cm.conditionId,
       westernName: cm.condition.westernName,

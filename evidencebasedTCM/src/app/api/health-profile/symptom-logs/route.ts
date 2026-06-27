@@ -20,11 +20,20 @@ export async function GET(request: NextRequest) {
   const from = searchParams.get("from");
   const to = searchParams.get("to");
 
+  const fromDate = from ? new Date(from) : undefined;
+  if (fromDate && Number.isNaN(fromDate.getTime())) {
+    return NextResponse.json({ error: "Invalid from date" }, { status: 400 });
+  }
+  const toDate = to ? new Date(to) : undefined;
+  if (toDate && Number.isNaN(toDate.getTime())) {
+    return NextResponse.json({ error: "Invalid to date" }, { status: 400 });
+  }
+
   const logs = await prisma.symptomLog.findMany({
     where: {
       profileId: profile.id,
-      ...(from && { logDate: { gte: new Date(from) } }),
-      ...(to && { logDate: { lte: new Date(to) } }),
+      ...(fromDate && { logDate: { gte: fromDate } }),
+      ...(toDate && { logDate: { lte: toDate } }),
     },
     orderBy: { logDate: "desc" },
     take: 100,

@@ -2,6 +2,8 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { prisma } from "@/lib/db/prisma";
 import { getLocale } from "@/lib/i18n/locale-server";
+import { getCurrentUserId } from "@/lib/auth/tier";
+import { LessonProgressButton } from "@/components/learn/LessonProgressButton";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +22,15 @@ export default async function LessonPage({ params }: Props) {
   });
 
   if (!lesson) notFound();
+
+  // Check user's progress for this lesson
+  const userId = await getCurrentUserId();
+  const lessonDone = userId
+    ? !!(await prisma.userLessonProgress.findUnique({
+        where: { userId_courseId_lessonNum: { userId, courseId, lessonNum: num } },
+        select: { id: true },
+      }))
+    : false;
 
   // Nav: prev/next
   const [prev, next] = await Promise.all([
@@ -54,6 +65,16 @@ export default async function LessonPage({ params }: Props) {
         </div>
         <h1 className="text-2xl font-bold">{lesson.title}</h1>
         {lesson.instructor && <p className="text-sm text-muted mt-1">{lesson.instructor}</p>}
+        {userId && (
+          <div className="mt-3">
+            <LessonProgressButton
+              courseId={courseId}
+              lessonNum={num}
+              initialDone={lessonDone}
+              locale={locale}
+            />
+          </div>
+        )}
       </header>
 
       {/* Key Points */}

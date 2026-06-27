@@ -57,6 +57,7 @@ export function Navbar() {
         { href: "/diagnose/prescription", labelKey: "nav.prescriptionScan" },
         { href: "/prescription", labelKey: "nav.prescription", sectionLabelKey: "nav.sectionDecision" },
         { href: "/safety/check", labelKey: "nav.safety" },
+        { href: "/safety/pregnancy", labelKey: "nav.pregnancySafety" },
       ],
     },
     {
@@ -64,6 +65,9 @@ export function Navbar() {
       links: [
         { href: "/research", labelKey: "nav.research" },
         { href: "/research/dashboard", labelKey: "nav.dashboard" },
+        { href: "/research/evidence-map", labelKey: "nav.evidenceMap" },
+        { href: "/research/rwe", labelKey: "nav.rwe" },
+        { href: "/research/validation", labelKey: "nav.engineValidation" },
         { href: "/improve", labelKey: "nav.improve" },
       ],
     },
@@ -405,7 +409,7 @@ export function Navbar() {
                   onClick={() => { setMobileMenuOpen(false); signOut({ callbackUrl: "/" }); }}
                   className="block w-full text-left rounded-md px-3 py-2 text-sm font-medium text-red-500 hover:bg-background"
                 >
-                  {t("nav.signOut")} ({session.user.name || session.user.email})
+                  {t("nav.signOut")} ({session.user.name ?? session.user.email ?? "Account"})
                 </button>
               </>
             ) : (

@@ -77,9 +77,15 @@ export async function predictPkInteractions(input: PredictInput): Promise<Predic
             mech = `${herb.chineseName}抑制 ${enz}；${drug.display} 經 ${enz} 代謝清除，併用將升高其血藥濃度 → 毒性風險。`;
           }
         } else {
-          effect = "DECREASE";
-          severity = dc.narrowTI ? "MAJOR" : "MODERATE";
-          mech = `${herb.chineseName}誘導 ${enz}；加速 ${drug.display} 代謝清除，併用將降低其血藥濃度 → 療效下降。`;
+          if (isProdrug) {
+            effect = "INCREASE";
+            severity = dc.narrowTI ? "MAJOR" : "MODERATE";
+            mech = `${herb.chineseName}誘導 ${enz}；加速活化 ${drug.display} 前體藥，活性代謝物升高 → 毒性風險。`;
+          } else {
+            effect = "DECREASE";
+            severity = dc.narrowTI ? "MAJOR" : "MODERATE";
+            mech = `${herb.chineseName}誘導 ${enz}；加速 ${drug.display} 代謝清除，併用將降低其血藥濃度 → 療效下降。`;
+          }
         }
         const management =
           effect === "INCREASE"

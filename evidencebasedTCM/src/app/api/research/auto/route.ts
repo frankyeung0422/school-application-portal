@@ -1,11 +1,19 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
+import { auth } from "@/lib/auth/authOptions";
 import { DISEASE_CATALOG } from "@/lib/research/disease-catalog";
 import { buildProposal } from "@/lib/research/synthesize";
 import { craftInnovativeFormulas } from "@/lib/research/formula-architect";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300; // 5 min timeout for full cycle
+
+async function requireAdmin() {
+  const session = await auth();
+  const role = (session?.user as { role?: string } | undefined)?.role;
+  if (!session?.user || role !== "ADMIN") return null;
+  return session;
+}
 
 /**
  * POST /api/research/auto
@@ -18,6 +26,9 @@ export const maxDuration = 300; // 5 min timeout for full cycle
  * 5. Returns a summary with discovery insights
  */
 export async function POST() {
+  if (!(await requireAdmin())) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
   const startTime = Date.now();
   const results: {
     diseaseId: string;
@@ -236,6 +247,10 @@ export async function POST() {
  * GET /api/research/auto — retrieve latest stored reports
  */
 export async function GET() {
+  const session = await auth();
+  const userId = (session?.user as { id?: string } | undefined)?.id;
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const reports = await prisma.researchReport.findMany({
     orderBy: { updatedAt: "desc" },
   });

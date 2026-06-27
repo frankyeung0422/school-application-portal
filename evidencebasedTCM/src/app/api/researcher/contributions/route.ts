@@ -43,13 +43,32 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "title, authors, studyType, results, conclusions required" }, { status: 400 });
   }
 
+  const VALID_STUDY_TYPES = [
+    "SYSTEMATIC_REVIEW", "META_ANALYSIS", "RCT", "COHORT_STUDY",
+    "CASE_CONTROL", "CASE_SERIES", "EXPERT_OPINION", "ANIMAL_STUDY",
+    "IN_VITRO", "NETWORK_META_ANALYSIS",
+  ] as const;
+  if (!VALID_STUDY_TYPES.includes(studyType as typeof VALID_STUDY_TYPES[number])) {
+    return NextResponse.json({ error: "Invalid studyType" }, { status: 400 });
+  }
+
+  const VALID_GRADES = ["A", "B", "C", "D"] as const;
+  if (proposedGrade && !VALID_GRADES.includes(proposedGrade as typeof VALID_GRADES[number])) {
+    return NextResponse.json({ error: "Invalid proposedGrade. Must be A, B, C, or D" }, { status: 400 });
+  }
+
+  const parsedYear = year != null ? parseInt(String(year), 10) : null;
+  if (parsedYear !== null && (Number.isNaN(parsedYear) || parsedYear < 1900 || parsedYear > new Date().getFullYear() + 1)) {
+    return NextResponse.json({ error: "Invalid year" }, { status: 400 });
+  }
+
   const contribution = await prisma.evidenceContribution.create({
     data: {
       researcherProfileId: rp.id,
       title,
       authors,
       journal: journal || null,
-      year: year ? Number(year) : null,
+      year: parsedYear,
       doi: doi || null,
       pmid: pmid || null,
       studyType,

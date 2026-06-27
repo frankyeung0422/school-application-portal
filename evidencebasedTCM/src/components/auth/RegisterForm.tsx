@@ -27,7 +27,7 @@ export function RegisterForm() {
     e.preventDefault();
     setError("");
 
-    if (password.length < 6) {
+    if (password.length < 8) {
       setError(t("auth.passwordTooShort"));
       return;
     }
@@ -62,6 +62,7 @@ export function RegisterForm() {
 
       const result = await signIn("credentials", { email, password, redirect: false });
       if (result?.error) {
+        setLoading(false);
         router.push("/login");
       } else if (plan === "professional" || plan === "clinic") {
         try {
@@ -75,7 +76,10 @@ export function RegisterForm() {
             window.location.href = checkoutData.url;
             return;
           }
-        } catch {}
+        } catch (e) {
+          console.error('[stripe-checkout]', e);
+        }
+        setLoading(false);
         router.push("/pricing");
         router.refresh();
       } else {

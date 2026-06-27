@@ -100,8 +100,8 @@ export async function checkRxInteractions(
       const genericLow = (d.generic ?? "").toLowerCase();
       const dClassLow = (d.className ?? "").toLowerCase();
       const matchName =
-        drugLow.includes(dispLow) || dispLow.includes(drugLow) ||
-        (genericLow && (drugLow.includes(genericLow) || genericLow.includes(drugLow)));
+        (dispLow.length >= 4 && (drugLow.includes(dispLow) || dispLow.includes(drugLow))) ||
+        (genericLow.length >= 4 && (drugLow.includes(genericLow) || genericLow.includes(drugLow)));
       const matchClass = classLow.length > 0 && dClassLow.length > 0 &&
         (classLow.includes(dClassLow) || dClassLow.includes(classLow));
       if (matchName || matchClass) {

@@ -162,7 +162,7 @@ export async function buildDiscoveryBoard(opts: { minOverlap?: number } = {}): P
   formulaPairs.sort(byCredibility);
 
   return {
-    diseasesCovered: DISEASE_CATALOG.length,
+    diseasesCovered: new Set([...herbPairs, ...formulaPairs].map((p) => p.diseaseId)).size,
     minOverlap,
     herbPairs,
     formulaPairs,

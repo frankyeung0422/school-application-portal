@@ -23,6 +23,9 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   const user = await getSession();
   if (!user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (user.role !== "RESEARCHER" && user.role !== "ADMIN") {
+    return NextResponse.json({ error: "Researcher or Admin account required" }, { status: 403 });
+  }
 
   const body = await request.json();
   const { institution, department, orcidId, researchAreas, publicationsJson } = body;
@@ -46,6 +49,9 @@ export async function POST(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   const user = await getSession();
   if (!user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (user.role !== "RESEARCHER" && user.role !== "ADMIN") {
+    return NextResponse.json({ error: "Researcher or Admin account required" }, { status: 403 });
+  }
 
   const body = await request.json();
   const { institution, department, orcidId, researchAreas, publicationsJson } = body;
@@ -58,14 +64,14 @@ export async function PATCH(request: NextRequest) {
       department: department || null,
       orcidId: orcidId || null,
       researchAreas: researchAreas ?? [],
-      publicationsJson: publicationsJson ? JSON.stringify(publicationsJson) : null,
+      publicationsJson: publicationsJson != null ? JSON.stringify(publicationsJson) : null,
     },
     update: {
       ...(institution !== undefined && { institution }),
       ...(department !== undefined && { department }),
       ...(orcidId !== undefined && { orcidId }),
       ...(researchAreas !== undefined && { researchAreas }),
-      ...(publicationsJson !== undefined && { publicationsJson: JSON.stringify(publicationsJson) }),
+      ...(publicationsJson !== undefined && { publicationsJson: publicationsJson != null ? JSON.stringify(publicationsJson) : null }),
     },
   });
   return NextResponse.json(profile);

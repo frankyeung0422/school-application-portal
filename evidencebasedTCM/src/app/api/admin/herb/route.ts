@@ -9,7 +9,34 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const data = await request.json();
-  const herb = await prisma.herb.create({ data });
+  const body = await request.json();
+  // Explicit allowlist — never pass raw body directly to Prisma
+  const {
+    chineseName, pinyinName, latinName, englishName, category, nature, flavor,
+    meridianTropism, dosageRange, description, contraindications,
+    status, toxicityClass, classicalFunctions, classicalIndications,
+    processingMethods,
+  } = body;
+
+  const herb = await prisma.herb.create({
+    data: {
+      chineseName,
+      pinyinName,
+      latinName: latinName ?? null,
+      englishName: englishName ?? null,
+      category: category ?? null,
+      nature: nature ?? null,
+      flavor: flavor ?? [],
+      meridianTropism: meridianTropism ?? [],
+      dosageRange: dosageRange ?? null,
+      description: description ?? null,
+      contraindications: contraindications ?? null,
+      status: status ?? "DRAFT",
+      toxicityClass: toxicityClass ?? null,
+      classicalFunctions: classicalFunctions ?? null,
+      classicalIndications: classicalIndications ?? null,
+      processingMethods: processingMethods ?? null,
+    },
+  });
   return NextResponse.json(herb, { status: 201 });
 }

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db/prisma";
 import { getLocale } from "@/lib/i18n/locale-server";
+import { getCurrentUserId } from "@/lib/auth/tier";
 import { CourseSearch } from "@/components/learn/CourseSearch";
 import { FiveElementCycle } from "@/components/shared/FiveElementCycle";
 
@@ -21,13 +22,28 @@ export default async function LearnPage() {
   const locale = await getLocale();
   const S = (zh: string, en: string) => (locale === "zh-Hant" ? zh : en);
 
-  const lessonCounts = await prisma.courseLesson.groupBy({
-    by: ["courseId"],
-    _count: true,
-  });
+  const [lessonCounts, totalLessons, userId] = await Promise.all([
+    prisma.courseLesson.groupBy({ by: ["courseId"], _count: true }),
+    prisma.courseLesson.count(),
+    getCurrentUserId(),
+  ]);
+
   const countMap = new Map(lessonCounts.map((c) => [c.courseId, c._count]));
 
-  const totalLessons = await prisma.courseLesson.count();
+  // Per-course completion counts for the current user
+  const completionMap = new Map<string, number>();
+  let totalUserCompleted = 0;
+  if (userId) {
+    const progressRows = await prisma.userLessonProgress.groupBy({
+      by: ["courseId"],
+      where: { userId },
+      _count: true,
+    });
+    for (const row of progressRows) {
+      completionMap.set(row.courseId, row._count);
+      totalUserCompleted += row._count;
+    }
+  }
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">

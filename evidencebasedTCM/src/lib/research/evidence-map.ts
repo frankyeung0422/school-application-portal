@@ -82,7 +82,8 @@ export async function buildEvidenceMap(): Promise<EvidenceMapResult> {
     const byGrade: Record<string, number> = { A: 0, B: 0, C: 0, D: 0 };
     let recent30 = 0;
     for (const e of matched) {
-      (matrix[e.studyType] ??= { A: 0, B: 0, C: 0, D: 0 })[e.evidenceGrade]++;
+      const st = (matrix[e.studyType] ??= { A: 0, B: 0, C: 0, D: 0 });
+      st[e.evidenceGrade] = (st[e.evidenceGrade] ?? 0) + 1;
       byGrade[e.evidenceGrade] = (byGrade[e.evidenceGrade] ?? 0) + 1;
       if (now - e.createdAt.getTime() <= 30 * DAY) recent30++;
     }
