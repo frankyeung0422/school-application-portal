@@ -49,6 +49,7 @@ const en: Record<string, any> = {
     engineValidation: "Engine Validation",
     benchmarking: "RWE Benchmarking",
     cpd: "CPD Tracker",
+    clinicalWorkflow: "Clinical Workflow",
     pregnancySafety: "Pregnancy Safety",
   },
   footer: {
@@ -566,6 +567,7 @@ const zhHant: Record<string, any> = {
     engineValidation: "引擎驗證",
     benchmarking: "真實世界療效排行",
     cpd: "進修記錄",
+    clinicalWorkflow: "臨床決策流程",
     pregnancySafety: "妊娠安全查詢",
   },
   footer: {
