@@ -543,6 +543,16 @@ export default async function FormulaDetailPage({ params }: Props) {
             🖨 {locale === "zh-Hant" ? "建構列印處方" : "Build Prescription"}
             <span className="ml-1 text-xs text-amber-700 dark:text-amber-400">Pro</span>
           </Link>
+          <Link
+            href={`/handouts/${formula.id}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="rounded-md border border-border bg-surface hover:bg-primary/5 hover:border-primary-light px-3 py-1 text-xs font-medium transition-colors"
+            title={locale === "zh-Hant" ? "生成患者資料（Pro）" : "Generate patient handout (Pro)"}
+          >
+            📋 {locale === "zh-Hant" ? "患者資料" : "Patient Handout"}
+            <span className="ml-1 text-xs text-amber-700 dark:text-amber-400">Pro</span>
+          </Link>
         </div>
       </div>
 

@@ -71,6 +71,7 @@ export default async function LessonPage({ params }: Props) {
               courseId={courseId}
               lessonNum={num}
               initialDone={lessonDone}
+              lessonTitle={lesson.title}
               locale={locale}
             />
           </div>
