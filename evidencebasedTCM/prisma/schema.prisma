@@ -664,6 +664,7 @@ model User {
   researcherProfile ResearcherProfile?
   lessonProgress    UserLessonProgress[]
   caseNotes         CaseNote[]
+  cpdActivities     CpdActivity[]
 
   @@map("users")
 }
@@ -1630,4 +1631,25 @@ model CaseNote {
 
   @@index([userId])
   @@map("case_notes")
+}
+
+// ============================================
+// CPD (Continuing Professional Development) tracker
+// Logs CPD-eligible activities for PRACTITIONER / RESEARCHER users.
+// 1 credit ≈ 1 hour of professional learning activity.
+// ============================================
+
+model CpdActivity {
+  id           String   @id @default(cuid())
+  userId       String   @map("user_id")
+  activityType String   @map("activity_type") // "evidence_read" | "lesson_complete" | "case_submit" | "research_review"
+  referenceId  String?  @map("reference_id")  // evidenceId, lessonId, caseId, etc.
+  title        String                          // human-readable description logged on the certificate
+  credits      Float    @default(0.5)          // CPD hours (0.5 per evidence read, 1.0 per lesson)
+  earnedAt     DateTime @default(now()) @map("earned_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, earnedAt])
+  @@map("cpd_activities")
 }

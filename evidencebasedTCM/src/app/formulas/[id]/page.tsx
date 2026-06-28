@@ -13,6 +13,8 @@ import { tcmEntityTitles } from "@/lib/i18n/entity-display";
 import { studyTypeLabel, evidenceLevelLabel, formulaRoleLabel } from "@/lib/i18n/data-labels";
 import { CompositionWheel } from "@/components/formulas/CompositionWheel";
 import { FormulaTreatmentFlow } from "@/components/formulas/FormulaTreatmentFlow";
+import { FormulaPersonalizer } from "@/components/formulas/FormulaPersonalizer";
+import { ProGate } from "@/components/shared/ProGate";
 import { SafetyBadges } from "@/components/safety/SafetyBadges";
 import { buildFormulaRWE } from "@/lib/rwe/aggregate";
 import { formulaNetworkProfile, targetSourceMap, geneChipClass, targetDruggabilityMap, druggabilityTitle } from "@/lib/research/network-pharmacology";
@@ -466,6 +468,20 @@ export default async function FormulaDetailPage({ params }: Props) {
     </div>
   );
 
+  const personalizeTab = (
+    <ProGate
+      need="professional"
+      feature={zh ? "個人化藥物交互分析" : "Personalised Drug Interaction Analysis"}
+      description={
+        zh
+          ? "輸入患者正在服用的西藥及中醫體質類型，AI 即時分析本方與西藥的 CYP 代謝酶交互作用及體質適用性。"
+          : "Enter the patient's Western medications and TCM constitution type. AI analyses this formula's CYP interactions and constitution fit in real time."
+      }
+    >
+      <FormulaPersonalizer formulaId={formula.id} />
+    </ProGate>
+  );
+
   const tabs = [
     {
       id: "composition",
@@ -486,6 +502,11 @@ export default async function FormulaDetailPage({ params }: Props) {
       id: "evidence",
       label: tf(messages, "detail.tabEvidenceCount", { count: formula.evidenceLinks.length }),
       content: evidenceTab,
+    },
+    {
+      id: "personalize",
+      label: zh ? "⚕ 個人化分析" : "⚕ Personalise",
+      content: personalizeTab,
     },
   ];
 

@@ -53,7 +53,7 @@ export default function SymptomsPage() {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     const validSymptoms = symptoms.filter(s => s.name.trim());
-    if (!validSymptoms.length) { setError("Add at least one symptom"); return; }
+    if (!validSymptoms.length) { setError("請新增至少一個症狀"); return; }
     setSaving(true); setError("");
     const res = await fetch("/api/health-profile/symptom-logs", {
       method: "POST",
@@ -75,7 +75,7 @@ export default function SymptomsPage() {
       fetchLogs();
     } else {
       const d = await res.json();
-      setError(d.error ?? "Failed to save");
+      setError(d.error ?? "儲存失敗");
     }
     setSaving(false);
   };
@@ -84,38 +84,38 @@ export default function SymptomsPage() {
     <div className="mx-auto max-w-3xl px-4 py-8">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <Link href="/my-health" className="text-sm text-muted hover:text-foreground">← My Health</Link>
-          <h1 className="text-xl font-bold text-foreground mt-1">Symptom Diary</h1>
+          <Link href="/my-health" className="text-sm text-muted hover:text-foreground">← 我的健康</Link>
+          <h1 className="text-xl font-bold text-foreground mt-1">症狀日記</h1>
         </div>
         <button onClick={() => setShowForm(true)}
           className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-dark transition-colors">
-          + Log Symptoms
+          ＋ 記錄症狀
         </button>
       </div>
 
       {showForm && (
         <form onSubmit={handleSave} className="mb-6 rounded-xl border border-border bg-surface p-5 space-y-5">
-          <h2 className="font-semibold">New Symptom Log</h2>
+          <h2 className="font-semibold">新增症狀記錄</h2>
           {error && <p className="text-sm text-red-600">{error}</p>}
 
           <div>
-            <label className="block text-sm font-medium mb-1">Date *</label>
+            <label className="block text-sm font-medium mb-1">日期 *</label>
             <input type="date" value={form.logDate} onChange={e => setForm(f => ({ ...f, logDate: e.target.value }))}
               className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20" />
           </div>
 
           <div>
             <div className="flex items-center justify-between mb-2">
-              <label className="text-sm font-medium">Symptoms *</label>
-              <button type="button" onClick={addSymptom} className="text-xs text-primary hover:underline">+ Add</button>
+              <label className="text-sm font-medium">症狀 *</label>
+              <button type="button" onClick={addSymptom} className="text-xs text-primary hover:underline">＋ 新增</button>
             </div>
             {symptoms.map((s, i) => (
               <div key={i} className="flex gap-2 mb-2">
                 <input value={s.name} onChange={e => updateSymptom(i, "name", e.target.value)}
-                  placeholder="Symptom name (e.g. headache, fatigue)"
+                  placeholder="症狀名稱（如：頭痛、疲勞）"
                   className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20" />
                 <div className="flex items-center gap-1 shrink-0">
-                  <span className="text-xs text-muted">Severity</span>
+                  <span className="text-xs text-muted">嚴重程度</span>
                   <select value={s.severity} onChange={e => updateSymptom(i, "severity", Number(e.target.value))}
                     className="rounded border border-border bg-background px-2 py-2 text-sm">
                     {[1,2,3,4,5,6,7,8,9,10].map(n => <option key={n} value={n}>{n}</option>)}
@@ -131,9 +131,9 @@ export default function SymptomsPage() {
 
           <div className="grid grid-cols-3 gap-3">
             {[
-              { label: "Energy 1–10", key: "energyLevel" },
-              { label: "Sleep 1–10", key: "sleepQuality" },
-              { label: "Stress 1–10", key: "stressLevel" },
+              { label: "精力 1–10", key: "energyLevel" },
+              { label: "睡眠 1–10", key: "sleepQuality" },
+              { label: "壓力 1–10", key: "stressLevel" },
             ].map(({ label, key }) => (
               <div key={key}>
                 <label className="block text-xs font-medium mb-1">{label}</label>
@@ -148,38 +148,38 @@ export default function SymptomsPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1">Tongue observations <span className="text-muted font-normal">(optional)</span></label>
+            <label className="block text-sm font-medium mb-1">舌診觀察 <span className="text-muted font-normal">（選填）</span></label>
             <input value={form.tongueNotes} onChange={e => setForm(f => ({ ...f, tongueNotes: e.target.value }))}
-              placeholder="e.g. pale, red tip, thick white coat..."
+              placeholder="如：舌淡、尖紅、苔白厚……"
               className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20" />
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1">Notes <span className="text-muted font-normal">(optional)</span></label>
+            <label className="block text-sm font-medium mb-1">備注 <span className="text-muted font-normal">（選填）</span></label>
             <textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-              rows={2} placeholder="What might have triggered this? What helped?"
+              rows={2} placeholder="可能的誘因是什麼？有什麼有助改善？"
               className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/20" />
           </div>
 
           <div className="flex gap-2">
             <button type="submit" disabled={saving}
               className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-dark disabled:opacity-50 transition-colors">
-              {saving ? "Saving…" : "Save Log"}
+              {saving ? "儲存中……" : "儲存記錄"}
             </button>
             <button type="button" onClick={() => setShowForm(false)}
               className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-muted hover:text-foreground transition-colors">
-              Cancel
+              取消
             </button>
           </div>
         </form>
       )}
 
       {loading ? (
-        <p className="text-muted text-sm">Loading…</p>
+        <p className="text-muted text-sm">載入中……</p>
       ) : logs.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border p-10 text-center">
-          <p className="text-muted">No symptom logs yet.</p>
-          <p className="text-sm text-muted mt-1">Start logging how you feel each day to track patterns over time.</p>
+          <p className="text-muted">尚未記錄任何症狀。</p>
+          <p className="text-sm text-muted mt-1">開始記錄每天的感覺，逐步發現健康規律。</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -188,7 +188,7 @@ export default function SymptomsPage() {
             return (
               <div key={log.id} className="rounded-xl border border-border bg-surface p-4">
                 <p className="text-sm font-medium text-foreground mb-2">
-                  {new Date(log.logDate).toLocaleDateString("en-HK", { weekday: "short", year: "numeric", month: "short", day: "numeric" })}
+                  {new Date(log.logDate).toLocaleDateString("zh-HK", { weekday: "short", year: "numeric", month: "short", day: "numeric" })}
                 </p>
                 <div className="flex flex-wrap gap-1.5 mb-3">
                   {parsedSymptoms.map((s, i) => (
@@ -199,11 +199,11 @@ export default function SymptomsPage() {
                   ))}
                 </div>
                 <div className="space-y-1">
-                  <ScoreBar label="Energy" value={log.energyLevel} />
-                  <ScoreBar label="Sleep" value={log.sleepQuality} />
-                  <ScoreBar label="Stress" value={log.stressLevel} />
+                  <ScoreBar label="精力" value={log.energyLevel} />
+                  <ScoreBar label="睡眠" value={log.sleepQuality} />
+                  <ScoreBar label="壓力" value={log.stressLevel} />
                 </div>
-                {log.tongueNotes && <p className="text-xs text-muted mt-2">Tongue: {log.tongueNotes}</p>}
+                {log.tongueNotes && <p className="text-xs text-muted mt-2">舌診：{log.tongueNotes}</p>}
                 {log.notes && <p className="text-xs text-muted mt-1">{log.notes}</p>}
               </div>
             );

@@ -47,6 +47,8 @@ const en: Record<string, any> = {
     evidenceMap: "Evidence Map",
     rwe: "Real-World Outcomes",
     engineValidation: "Engine Validation",
+    benchmarking: "RWE Benchmarking",
+    cpd: "CPD Tracker",
     pregnancySafety: "Pregnancy Safety",
   },
   footer: {
@@ -562,6 +564,8 @@ const zhHant: Record<string, any> = {
     evidenceMap: "證據地圖",
     rwe: "真實世界療效",
     engineValidation: "引擎驗證",
+    benchmarking: "真實世界療效排行",
+    cpd: "進修記錄",
     pregnancySafety: "妊娠安全查詢",
   },
   footer: {

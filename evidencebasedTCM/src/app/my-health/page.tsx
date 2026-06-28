@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db/prisma";
 import Link from "next/link";
 
-export const metadata = { title: "My Health Dashboard — EBTCM" };
+export const metadata = { title: "我的健康總覽 — EBTCM" };
 
 export default async function MyHealthPage() {
   const session = await auth();
@@ -23,51 +23,51 @@ export default async function MyHealthPage() {
     {
       href: "/my-health/conditions",
       icon: "🩺",
-      title: "My Conditions",
-      subtitle: `${conditionCount} active condition${conditionCount !== 1 ? "s" : ""}`,
-      cta: conditionCount === 0 ? "Add your first condition" : "View & manage",
+      title: "我的病況",
+      subtitle: `${conditionCount} 個活躍病況`,
+      cta: conditionCount === 0 ? "新增第一個病況" : "查看及管理",
       color: "border-blue-200 bg-blue-50",
     },
     {
       href: "/my-health/symptoms",
       icon: "📝",
-      title: "Symptom Diary",
-      subtitle: `${symptomCount} log entr${symptomCount !== 1 ? "ies" : "y"}`,
-      cta: "Log symptoms",
+      title: "症狀日記",
+      subtitle: `${symptomCount} 則記錄`,
+      cta: "記錄症狀",
       color: "border-amber-200 bg-amber-50",
     },
     {
       href: "/my-health/check-in",
       icon: "📊",
-      title: "Weekly Check-in",
+      title: "每週健康評估",
       subtitle: lastCheckIn
-        ? `Last: ${lastCheckIn.checkInDate.toLocaleDateString("en-HK")} · Score ${lastCheckIn.overallScore}/10`
-        : "No check-ins yet",
-      cta: "Start check-in",
+        ? `上次：${lastCheckIn.checkInDate.toLocaleDateString("zh-HK")} · 評分 ${lastCheckIn.overallScore}/10`
+        : "尚未評估",
+      cta: "開始評估",
       color: "border-green-200 bg-green-50",
     },
     {
       href: "/my-health/timeline",
       icon: "📅",
-      title: "Health Timeline",
-      subtitle: `${checkInCount} check-ins recorded`,
-      cta: "View timeline",
+      title: "健康時間軸",
+      subtitle: `${checkInCount} 則評估記錄`,
+      cta: "查看時間軸",
       color: "border-purple-200 bg-purple-50",
     },
     {
       href: "/diagnose/constitution",
       icon: "🧬",
-      title: "Constitution Assessment",
-      subtitle: "Wang Qi 9-type TCM constitution",
-      cta: "Take assessment",
+      title: "體質評估",
+      subtitle: "王琦九型中醫體質",
+      cta: "開始評估",
       color: "border-rose-200 bg-rose-50",
     },
     {
       href: "/account/security",
       icon: "⚙️",
-      title: "Profile & Privacy",
-      subtitle: profile?.researchConsent ? "Contributing to research" : "Not contributing to research",
-      cta: "Manage settings",
+      title: "個人資料及私隱",
+      subtitle: profile?.researchConsent ? "正在參與研究貢獻" : "未參與研究貢獻",
+      cta: "管理設定",
       color: "border-slate-200 bg-slate-50",
     },
   ];
@@ -75,9 +75,9 @@ export default async function MyHealthPage() {
   return (
     <div className="mx-auto max-w-4xl px-4 py-8">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-foreground">My Health Dashboard</h1>
+        <h1 className="text-2xl font-bold text-foreground">我的健康總覽</h1>
         <p className="text-muted mt-1">
-          Welcome back, {user.name?.split(" ")[0] ?? "there"}. Track your health journey with evidence-based TCM insights.
+          歡迎回來，{user.name?.split(" ")[0] ?? "朋友"}。以循證中醫追蹤您的健康旅程。
         </p>
       </div>
 
@@ -85,16 +85,16 @@ export default async function MyHealthPage() {
         <div className="mb-6 rounded-xl border border-green-200 bg-green-50 p-4 flex items-start gap-3">
           <span className="text-green-600 text-xl">🔬</span>
           <div className="flex-1">
-            <p className="text-sm font-medium text-green-800">Help advance TCM research</p>
+            <p className="text-sm font-medium text-green-800">協助推進中醫研究</p>
             <p className="text-xs text-green-700 mt-0.5">
-              Opt in to share your anonymised health data with researchers — your history helps validate TCM patterns and formulas.
+              選擇加入，將您的匿名健康數據與研究人員共享——您的記錄有助驗證中醫證型及方劑。
             </p>
           </div>
           <Link
             href="/my-health/privacy"
             className="shrink-0 rounded-lg border border-green-300 bg-white px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-100 transition-colors"
           >
-            Learn more
+            了解更多
           </Link>
         </div>
       )}
@@ -117,14 +117,14 @@ export default async function MyHealthPage() {
       </div>
 
       <div className="mt-8 rounded-xl border border-border bg-surface p-5">
-        <h2 className="font-semibold text-foreground mb-3">Explore TCM Knowledge</h2>
+        <h2 className="font-semibold text-foreground mb-3">探索中醫知識</h2>
         <div className="flex flex-wrap gap-2">
           {[
-            { href: "/conditions", label: "Browse Conditions" },
-            { href: "/patterns", label: "TCM Patterns" },
-            { href: "/food-therapy", label: "Food Therapy" },
-            { href: "/herbs", label: "Herb Database" },
-            { href: "/interactions", label: "Safety Checker" },
+            { href: "/conditions", label: "瀏覽病症" },
+            { href: "/patterns", label: "中醫證型" },
+            { href: "/food-therapy", label: "食療" },
+            { href: "/herbs", label: "草藥資料庫" },
+            { href: "/interactions", label: "安全查核" },
           ].map((l) => (
             <Link
               key={l.href}

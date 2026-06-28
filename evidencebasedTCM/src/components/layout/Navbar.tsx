@@ -68,6 +68,7 @@ export function Navbar() {
         { href: "/research/evidence-map", labelKey: "nav.evidenceMap" },
         { href: "/research/rwe", labelKey: "nav.rwe" },
         { href: "/research/validation", labelKey: "nav.engineValidation" },
+        { href: "/research/benchmarking", labelKey: "nav.benchmarking" },
         { href: "/improve", labelKey: "nav.improve" },
       ],
     },
@@ -75,6 +76,7 @@ export function Navbar() {
       labelKey: "nav.learn",
       links: [
         { href: "/learn", labelKey: "nav.learn" },
+        { href: "/learn/cpd", labelKey: "nav.cpd" },
         { href: "/principles", labelKey: "nav.principles" },
       ],
     },

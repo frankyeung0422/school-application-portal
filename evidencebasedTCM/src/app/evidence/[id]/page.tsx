@@ -21,6 +21,7 @@ import {
   effectDirectionLabel,
 } from "@/lib/i18n/data-labels";
 import { EvidenceAnnotationPanel } from "@/components/evidence/EvidenceAnnotationPanel";
+import { CpdTracker } from "@/components/learn/CpdTracker";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -54,8 +55,17 @@ export default async function EvidenceDetailPage({ params }: Props) {
   const gradeConfig = EVIDENCE_GRADE_CONFIG[entry.evidenceGrade as keyof typeof EVIDENCE_GRADE_CONFIG];
   const qualityWord = gradeQualityLabel(locale, entry.evidenceGrade);
 
+  const evidenceTitle = localizeDbText(entry.title, locale) ?? entry.title ?? "";
+
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
+      {/* Auto-log CPD credit for practitioners who read this evidence entry */}
+      <CpdTracker
+        activityType="evidence_read"
+        referenceId={entry.id}
+        title={`研讀實證：${evidenceTitle.slice(0, 120)}`}
+        credits={0.5}
+      />
       <nav className="mb-4 text-sm text-muted">
         <Link href="/evidence" className="hover:text-primary">
           {t(messages, "nav.evidence")}
