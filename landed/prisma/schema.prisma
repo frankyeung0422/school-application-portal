@@ -1,0 +1,950 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// SQLite has no Prisma enums: enum-like columns are String with const unions in
+// lib/types.ts. Money the business actually owes or is owed is Int HKD cents;
+// prices scraped off third-party sites stay Float in their native currency
+// because that is what the source said.
+
+// ─── Catalogue ───────────────────────────────────────────────────────────────
+
+/// A canonical thing a buyer wants. Offers from many sources cluster into it.
+model Product {
+  id                    Int       @id @default(autoincrement())
+  slug                  String    @unique
+  title                 String
+  /// English title (supermarket items carry both languages).
+  titleEn               String?
+  /// GLOBAL (cross-border sources) | SUPERMARKET (HK chains, Price Watch feed)
+  segment               String    @default("GLOBAL")
+  /// Stable external key, e.g. "opw:P000003270".
+  externalKey           String?   @unique
+  /// Manufacturer reference (e.g. "126610LN") linking to OfficialPrice rows.
+  officialRef           String?
+  brand                 String?
+  imageUrl              String?
+  category              String?
+  keyword               String // search query that first found it
+  packQty               Int?
+  unitSize              String?
+  restricted            Boolean   @default(false)
+  restrictedReason      String?
+  /// AFFILIATE (send buyers to the source) | FULFIL (our own checkout)
+  fulfilMode            String    @default("AFFILIATE")
+  fulfilApprovedAt      DateTime?
+  /// Denormalised read cache, recomputed by the pricing job. Never an input.
+  bestLandedHkdCents    Int?
+  bestOfferId           Int?
+  historicalLowHkdCents Int?
+  sourceCount           Int       @default(0)
+  lastPricedAt          DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  offers             Offer[]
+  watches            Watch[]
+  clicks             AffiliateClick[]
+  pools              Pool[]
+  channelListings    ChannelListing[]
+  eligibilityReviews EligibilityReview[]
+  quotes             Quote[]
+  orderLines         OrderLine[]
+  socialPosts        SocialPost[]
+  priceReports       StorePriceReport[]
+
+  @@index([keyword])
+  @@index([segment, category])
+}
+
+/// Per-chain delivery terms for basket comparison. Null = unknown; never guessed.
+model RetailerConfig {
+  code                  String   @id
+  deliveryFeeCents      Int?
+  freeDeliveryOverCents Int?
+  enabled               Boolean  @default(true)
+  updatedAt             DateTime @updatedAt
+}
+
+/// A price a shopper saw on a shelf, with an optional photo of the tag.
+/// The only source we have for chains that publish nothing (優之良品, 優品360,
+/// 759) and the only way to show a real in-store price. Never mixed into the
+/// online-price ranking: shown separately, and only after a human approves it.
+model StorePriceReport {
+  id              Int       @id @default(autoincrement())
+  productId       Int?
+  /// Used when the shopper reports an item we do not have in the catalogue.
+  itemName        String?
+  retailer        String
+  branch          String?
+  priceCents      Int
+  photoPath       String?
+  note            String?
+  seenAt          DateTime
+  /// PENDING | APPROVED | REJECTED
+  status          String    @default("PENDING")
+  rejectedReason  String?
+  reviewedBy      String?
+  reviewedAt      DateTime?
+  reporterEmail   String?
+  /// Hashed session id — rate limiting without storing who anyone is.
+  reporterKey     String
+  createdAt       DateTime  @default(now())
+
+  product Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@index([productId, status])
+}
+
+/// Manufacturer's own boutique price, per market. The reference price for
+/// luxury: marketplace listings are compared against it, never the reverse.
+model OfficialPrice {
+  id            Int      @id @default(autoincrement())
+  brand         String
+  reference     String
+  market        String // HK | JP | GB | US | SG
+  currency      String
+  priceNative   Float
+  priceHkdCents Int
+  url           String
+  capturedAt    DateTime @default(now())
+
+  @@unique([brand, reference, market])
+  @@index([reference])
+}
+
+/// Physical shop, so a price can answer "where do I buy this near me?".
+/// Sourced from OpenStreetMap (ODbL) — attribution required wherever shown.
+model StoreLocation {
+  id         Int      @id @default(autoincrement())
+  retailer   String
+  osmType    String
+  osmId      String
+  name       String
+  address    String?
+  lat        Float
+  lng        Float
+  updatedAt  DateTime @updatedAt
+
+  @@unique([osmType, osmId])
+  @@index([retailer])
+}
+
+// ─── Travel: flights + hotels (compare and link out, never book) ────────────
+
+/// One flight or hotel search, cached by its normalised parameters
+/// (lib/travel/types.ts paramsKey). Refreshed when stale, never per page view.
+model TravelSearch {
+  id          Int       @id @default(autoincrement())
+  /// TravelKind: FLIGHT | HOTEL
+  kind        String
+  paramsKey   String    @unique
+  /// JSON TravelParams
+  params      String
+  /// TravelStatus: PENDING | DONE | FAILED
+  status      String    @default("PENDING")
+  /// TravelSource: SERPAPI | FIXTURE (demo data, labelled as such)
+  source      String?
+  /// Google Flights/Hotels page for the whole search — the honest link-out.
+  searchUrl   String?
+  resultCount Int       @default(0)
+  jobId       Int?
+  error       String?
+  fetchedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  quotes TravelQuote[]
+}
+
+/// A priced option in a TravelSearch. The price stays in its native currency
+/// (Float); totalHkdCents is the whole party / whole stay, taxes in where given.
+model TravelQuote {
+  id            Int      @id @default(autoincrement())
+  searchId      Int
+  rank          Int
+  /// Airline(s) or hotel name
+  provider      String
+  title         String
+  priceNative   Float
+  currency      String
+  totalHkdCents Int
+  /// JSON FlightDetails | HotelDetails
+  details       String
+  bookingUrl    String?
+  createdAt     DateTime @default(now())
+
+  search TravelSearch  @relation(fields: [searchId], references: [id], onDelete: Cascade)
+  clicks TravelClick[]
+
+  @@index([searchId, rank])
+}
+
+model TravelClick {
+  id        Int      @id @default(autoincrement())
+  /// Set for a click on one quote's own link.
+  quoteId   Int?
+  /// Set for a "compare on <partner>" click, which belongs to the whole search.
+  searchId  Int?
+  /// lib/travel/partners.ts TravelPartner, or null for the source's own link.
+  partner   String?
+  createdAt DateTime @default(now())
+
+  quote TravelQuote? @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+
+  @@index([quoteId])
+  @@index([searchId])
+}
+
+/// One paid SerpApi request (flights, hotels or Maps). Counted per calendar
+/// month against SERPAPI_MONTHLY_LIMIT so demand cannot run up a bill.
+model SerpApiCall {
+  id        Int      @id @default(autoincrement())
+  engine    String
+  ok        Boolean
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+/// Nearby restaurants for a ~500 m grid cell (never the visitor's exact point).
+model FoodPlaceCache {
+  id        Int      @id @default(autoincrement())
+  /// "lat2dp,lng2dp" rounded cell — see lib/food/rank.ts gridCell
+  cellKey   String
+  cuisine   String   @default("")
+  /// SERPAPI | OSM | FIXTURE
+  source    String
+  /// JSON FoodPlace[]
+  places    String
+  fetchedAt DateTime @default(now())
+
+  @@unique([cellKey, cuisine, source])
+}
+
+/// One source listing (successor of PriceArb's Listing).
+model Offer {
+  id              Int       @id @default(autoincrement())
+  platform        String
+  itemId          String
+  productId       Int?
+  supplierId      Int?
+  url             String
+  title           String
+  imageUrl        String?
+  shopName        String?
+  currency        String    @default("USD")
+  latestPrice     Float
+  soldCount       Int?
+  moq             Int?
+  priceTiers      String? // JSON [{minQty, price}] native currency
+  attributes      String?
+  keyword         String
+  inStock         Boolean   @default(true)
+  packQty         Int?
+  isAccessory     Boolean   @default(false)
+  unitSize        String?
+  rating          Float?
+  reviewCount     Int?
+  boughtPastMonth Int?
+  weightKg        Float?
+  /// Parcel size "LxWxH" in cm when the listing states it (volumetric weight).
+  dimsCm          String?
+  category        String?
+  /// Confidence this offer really is the product it is clustered into.
+  matchConfidence Float?
+  /// Luxury only: priced below what a genuine item can be, or replica wording.
+  /// Hidden from comparison until a human clears it (never silently deleted).
+  suspectCounterfeit Boolean @default(false)
+  suspectReason      String?
+  clearedBy          String?
+  firstSeenAt     DateTime  @default(now())
+  lastSeenAt      DateTime  @updatedAt
+  lastCheckedAt   DateTime?
+
+  product        Product?        @relation(fields: [productId], references: [id], onDelete: SetNull)
+  supplier       Supplier?       @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  snapshots      OfferSnapshot[]
+  clicks         AffiliateClick[]
+  supplierOrders SupplierOrder[]
+  pools          Pool[]
+  quotes         Quote[]
+
+  @@unique([platform, itemId])
+  @@index([keyword])
+  @@index([productId])
+}
+
+model OfferSnapshot {
+  id             Int      @id @default(autoincrement())
+  offerId        Int
+  price          Float
+  currency       String
+  inStock        Boolean  @default(true)
+  landedHkdCents Int?
+  /// The promotion running that day — the history that makes a cycle visible.
+  promoText      String?
+  /// Pack size that day, so shrinkflation is detectable ("250g" → "220g").
+  unitSizeLabel  String?
+  jobId          Int?
+  capturedAt     DateTime @default(now())
+
+  offer Offer @relation(fields: [offerId], references: [id], onDelete: Cascade)
+
+  @@index([offerId, capturedAt])
+}
+
+/// Cached same-product verdict for an unordered offer pair (offerAId < offerBId).
+model MatchPair {
+  id          Int      @id @default(autoincrement())
+  offerAId    Int
+  offerBId    Int
+  verdict     String // SAME | DIFFERENT | UNSURE
+  confidence  Float
+  variantNote String?
+  reason      String?
+  model       String
+  createdAt   DateTime @default(now())
+
+  @@unique([offerAId, offerBId])
+}
+
+model Supplier {
+  id              Int      @id @default(autoincrement())
+  platform        String
+  shopName        String
+  /// AFFILIATE_ONLY | MANUAL_ASSISTED | API
+  fulfilmentMode  String   @default("AFFILIATE_ONLY")
+  ordersPlaced    Int      @default(0)
+  ordersFilled    Int      @default(0)
+  ordersDefective Int      @default(0)
+  avgShipDays     Float?
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  offers Offer[]
+
+  @@unique([platform, shopName])
+}
+
+// ─── Pricing inputs ──────────────────────────────────────────────────────────
+
+/// How getting goods from a source to a Hong Kong door costs money.
+model SourceConfig {
+  platform               String  @id
+  country                String
+  currency               String
+  /// Flat shipping the source charges to HK per order (HKD). 0 = free.
+  shipToHkHkd            Float   @default(0)
+  /// Order value (native currency) above which the source ships free.
+  freeShipOverNative     Float?
+  /// Domestic leg to a forwarder warehouse (native currency), CN platforms only.
+  domesticShipNative     Float   @default(0)
+  viaForwarder           Boolean @default(false)
+  forwarderPerKgHkd      Float   @default(0)
+  forwarderMinHkd        Float   @default(0)
+  assumedWeightKg        Float   @default(0.5)
+  /// What an HK-issued card adds on a foreign-currency purchase.
+  cardFxMarkupPct        Float   @default(0.0195)
+  paymentFeePct          Float   @default(0)
+  importDutyPct          Float   @default(0)
+  /// Platform's own consolidation ships free to an HK pickup point (Taobao since 2025-08).
+  officialFreeToPickup   Boolean @default(false)
+  officialFreeMaxKg      Float?
+  /// Extra per order for door delivery instead of a pickup point / locker (HKD).
+  homeDeliverySurchargeHkd Float @default(0)
+  volumetricDivisor      Float   @default(6000)
+  affiliateCommissionPct Float   @default(0)
+  enabled                Boolean @default(true)
+}
+
+/// Mid-market rate: 1 unit of `base` = `mid` units of `quote` (quote is HKD).
+model FxQuote {
+  id        Int      @id @default(autoincrement())
+  base      String
+  quote     String
+  mid       Float
+  source    String
+  fetchedAt DateTime @default(now())
+
+  @@unique([base, quote])
+}
+
+/// A way of paying a supplier in their currency.
+model FxRail {
+  name           String  @id // CARD_HK | AIRWALLEX | WISE
+  label          String
+  bps            Int
+  minFeeHkdCents Int     @default(0)
+  active         Boolean @default(true)
+}
+
+model SearchQuery {
+  id             Int       @id @default(autoincrement())
+  normalized     String    @unique
+  display        String
+  count          Int       @default(1)
+  lastSearchedAt DateTime  @default(now())
+  lastCrawledAt  DateTime?
+  /// Order-, script- and synonym-independent key (lib/search/fuzzy.ts querySignature):
+  /// "band 9 xiaomi" and "小米手環9" share one, so the second wording skips a crawl.
+  signature      String    @default("")
+  createdAt      DateTime  @default(now())
+
+  @@index([signature])
+}
+
+// ─── Demand evidence ─────────────────────────────────────────────────────────
+
+model Watch {
+  id                  Int      @id @default(autoincrement())
+  productId           Int
+  customerId          Int?
+  email               String
+  /// Telegram chat to notify instead of (or as well as) email.
+  telegramChatId      String?
+  targetHkdCents      Int?
+  lastNotifiedCents   Int?
+  /// PRICE (drop / target) | PROMO (tell me when any chain puts it on offer)
+  kind                String   @default("PRICE")
+  /// PROMO watches: the offers-on-promo signature last told, so one promo is announced once.
+  lastPromoKey        String?
+  active              Boolean  @default(true)
+  createdAt           DateTime @default(now())
+
+  product  Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  customer Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  @@unique([productId, email])
+}
+
+model AffiliateClick {
+  id               Int      @id @default(autoincrement())
+  productId        Int?
+  offerId          Int
+  sessionId        String?
+  referrer         String?
+  tracked          Boolean  @default(false)
+  landedHkdCents   Int?
+  /// Median delivered price of the product's in-stock sources at click time —
+  /// what "typical" was, so the account page can compare (never "saved").
+  medianHkdCents   Int?
+  createdAt        DateTime @default(now())
+
+  product Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  offer   Offer    @relation(fields: [offerId], references: [id], onDelete: Cascade)
+
+  @@index([productId, createdAt])
+}
+
+model EligibilityReview {
+  id              Int      @id @default(autoincrement())
+  productId       Int
+  evidence        String // JSON EligibilityEvidence
+  ok              Boolean
+  missing         String // JSON string[]
+  actionRequestId String?
+  createdAt       DateTime @default(now())
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+}
+
+// ─── Commerce ────────────────────────────────────────────────────────────────
+
+model Customer {
+  id               Int      @id @default(autoincrement())
+  email            String   @unique
+  /// Linked Telegram chat, and the one-time code that links it.
+  telegramChatId   String?
+  telegramCode     String?  @unique
+  name             String?
+  passwordHash     String
+  phone            String?
+  address          String? // JSON
+  providerCustomer String? // Stripe customer id
+  isAdmin          Boolean  @default(false)
+  createdAt        DateTime @default(now())
+
+  orders      Order[]
+  watches     Watch[]
+  commitments PoolCommitment[]
+  quotes      Quote[]
+  basket      SavedBasket?
+}
+
+/// A locked price. Expires; checkout refuses an expired quote.
+model Quote {
+  id                 String   @id @default(cuid())
+  productId          Int
+  offerId            Int
+  customerId         Int?
+  qty                Int
+  unitPriceHkdCents  Int
+  totalHkdCents      Int
+  /// What we expect to pay the supplier (goods + shipping + rail fee), HKD cents.
+  lockedCostHkdCents Int
+  fxMid              Float
+  fxBufferPct        Float
+  rail               String
+  breakdown          String // JSON
+  expiresAt          DateTime
+  createdAt          DateTime @default(now())
+
+  product  Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  offer    Offer     @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  customer Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+}
+
+model Order {
+  id                String    @id @default(cuid())
+  number            String    @unique
+  customerId        Int?
+  /// QUOTED | PAID | ROUTED | SUPPLIER_PLACED | SHIPPED | DELIVERED | REFUNDED | CANCELLED | NEEDS_DECISION
+  status            String    @default("QUOTED")
+  channel           String    @default("STOREFRONT")
+  externalOrderRef  String?
+  totalHkdCents     Int
+  shipping          String? // JSON address
+  realness          String    @default("TEST") // TEST | REAL
+  providerSessionId String?
+  paidAt            DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  customer       Customer?       @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  lines          OrderLine[]
+  payments       PaymentRecord[]
+  supplierOrders SupplierOrder[]
+
+  @@index([status])
+}
+
+model OrderLine {
+  id                 Int     @id @default(autoincrement())
+  orderId            String
+  productId          Int
+  quoteId            String?
+  qty                Int
+  unitPriceHkdCents  Int
+  lockedCostHkdCents Int
+  fxMid              Float
+  offerId            Int
+
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+}
+
+model SupplierOrder {
+  id                    Int       @id @default(autoincrement())
+  orderId               String?
+  poolId                Int?
+  offerId               Int
+  qty                   Int
+  expectedCostHkdCents  Int
+  actualCostHkdCents    Int?
+  rail                  String
+  /// FX the cost was budgeted at (mid, and our disclosed buffer), for the realised FX line.
+  fxMid                 Float     @default(1)
+  fxBufferPct           Float     @default(0)
+  /// NEEDS_DECISION | TASK_OPEN | PLACED | SHIPPED | RECEIVED | FAILED | CANCELLED
+  status                String    @default("TASK_OPEN")
+  mode                  String // MANUAL_ASSISTED | API
+  routingReason         String
+  fallbackOfferIds      String    @default("[]")
+  externalRef           String?
+  trackingNo            String?
+  shipmentId            Int?
+  actionRequestId       String?
+  createdAt             DateTime  @default(now())
+  placedAt              DateTime?
+
+  order    Order?    @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  pool     Pool?     @relation(fields: [poolId], references: [id], onDelete: SetNull)
+  offer    Offer     @relation(fields: [offerId], references: [id])
+  shipment Shipment? @relation(fields: [shipmentId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+}
+
+model Shipment {
+  id          Int      @id @default(autoincrement())
+  forwarder   String
+  /// CONSOLIDATING | IN_TRANSIT | ARRIVED_HK | DISPATCHED | DELIVERED
+  status      String   @default("CONSOLIDATING")
+  weightKg    Float?
+  costHkdCents Int?
+  trackingNo  String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  supplierOrders SupplierOrder[]
+}
+
+model PaymentRecord {
+  id               Int      @id @default(autoincrement())
+  orderId          String?
+  commitmentId     Int?
+  provider         String
+  providerRef      String
+  /// CHARGE | AUTHORIZE | CAPTURE | CANCEL | REFUND | SETUP
+  kind             String
+  amountHkdCents   Int
+  status           String // SUCCEEDED | PENDING | FAILED | DECLINED
+  realness         String   @default("TEST")
+  createdAt        DateTime @default(now())
+
+  order      Order?          @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  commitment PoolCommitment? @relation(fields: [commitmentId], references: [id], onDelete: SetNull)
+}
+
+model WebhookEvent {
+  id          Int       @id @default(autoincrement())
+  provider    String
+  eventId     String
+  type        String
+  payload     String
+  processed   Boolean   @default(false)
+  error       String?
+  createdAt   DateTime  @default(now())
+  processedAt DateTime?
+
+  @@unique([provider, eventId])
+}
+
+// ─── 拼單 Pools ──────────────────────────────────────────────────────────────
+
+model Pool {
+  id                  Int       @id @default(autoincrement())
+  slug                String    @unique
+  productId           Int
+  offerId             Int
+  /// OPEN | UNLOCKING | UNLOCKED | FAILED | FULFILLED | CANCELLED
+  status              String    @default("OPEN")
+  ladder              String // JSON LadderStep[]
+  singleUnitHkdCents  Int
+  committedQty        Int       @default(0)
+  deadline            DateTime
+  /// Cash we would tie up at the first tier — counted against the envelope.
+  exposureHkdCents    Int       @default(0)
+  outcome             String? // JSON settlement decision
+  createdAt           DateTime  @default(now())
+  unlockedAt          DateTime?
+
+  product        Product          @relation(fields: [productId], references: [id], onDelete: Cascade)
+  offer          Offer            @relation(fields: [offerId], references: [id])
+  commitments    PoolCommitment[]
+  supplierOrders SupplierOrder[]
+}
+
+model PoolCommitment {
+  id                   Int      @id @default(autoincrement())
+  poolId               Int
+  customerId           Int
+  qty                  Int
+  /// The most this buyer agreed to pay per unit — never exceeded.
+  maxUnitHkdCents      Int
+  paymentMethodRef     String?
+  /// PENDING_SETUP | COMMITTED | AUTHORIZED | CHARGED | DECLINED | RELEASED | REFUNDED
+  status               String   @default("PENDING_SETUP")
+  authorizationRef     String?
+  chargedUnitHkdCents  Int?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  pool     Pool            @relation(fields: [poolId], references: [id], onDelete: Cascade)
+  customer Customer        @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  payments PaymentRecord[]
+
+  @@unique([poolId, customerId])
+}
+
+// ─── Money ───────────────────────────────────────────────────────────────────
+
+/// The only record of money that actually moved. Projections live elsewhere.
+model LedgerEntry {
+  id             Int       @id @default(autoincrement())
+  /// AFFILIATE | SALE | SUPPLIER_COST | SHIPPING | FX_GAIN | FEE | REFUND
+  kind           String
+  /// Signed: positive = money in, negative = money out.
+  amountHkdCents Int
+  realness       String // TEST | REAL
+  sourceRef      String    @unique
+  orderId        String?
+  poolId         Int?
+  productId      Int?
+  channel        String?
+  memo           String?
+  occurredAt     DateTime  @default(now())
+  clearedAt      DateTime?
+  reversedAt     DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@index([kind, realness])
+}
+
+/// Append-only cap on cash tied up in pools and unpaid supplier orders.
+model CapitalEnvelope {
+  id                       Int      @id @default(autoincrement())
+  version                  Int      @unique
+  maxOpenExposureHkdCents  Int
+  note                     String?
+  createdAt                DateTime @default(now())
+}
+
+// ─── Channels ────────────────────────────────────────────────────────────────
+
+model ChannelAccount {
+  platform         String   @id // STOREFRONT | EBAY | SHOPIFY | META | TIKTOK_SHOP | SHOPEE | HKTVMALL
+  /// NOT_CONNECTED | CONNECTED | NOT_AVAILABLE | ERROR
+  status           String   @default("NOT_CONNECTED")
+  displayName      String?
+  commissionPct    Float    @default(0)
+  paymentFeePct    Float    @default(0)
+  fixedFeeHkdCents Int      @default(0)
+  marginFloorPct   Float    @default(0.08)
+  lastError        String?
+  updatedAt        DateTime @updatedAt
+}
+
+model ChannelListing {
+  id                Int       @id @default(autoincrement())
+  productId         Int
+  platform          String
+  externalId        String?
+  /// DRAFT | PENDING_APPROVAL | LIVE | DELISTED | FAILED
+  status            String    @default("DRAFT")
+  priceHkdCents     Int
+  qty               Int       @default(5)
+  title             String
+  description       String
+  lastGuardCheckAt  DateTime?
+  lastGuardVerdict  String?
+  delistReason      String?
+  actionRequestId   String?
+  dryRun            Boolean   @default(true)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, platform])
+}
+
+model SocialPost {
+  id              Int       @id @default(autoincrement())
+  productId       Int?
+  platform        String // FACEBOOK | INSTAGRAM
+  caption         String
+  imageUrl        String?
+  /// DRAFT | PENDING_APPROVAL | PUBLISHED | FAILED | BLOCKED
+  status          String    @default("DRAFT")
+  externalId      String?
+  lintIssues      String    @default("[]")
+  actionRequestId String?
+  dryRun          Boolean   @default(true)
+  publishedAt     DateTime?
+  createdAt       DateTime  @default(now())
+
+  product Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+}
+
+model Notification {
+  id         Int       @id @default(autoincrement())
+  email      String
+  /// When set, the same alert also goes to this Telegram chat.
+  telegramChatId String?
+  subject    String
+  body       String
+  /// QUEUED | SENT | DRY | FAILED
+  status     String    @default("QUEUED")
+  error      String?
+  dedupeKey  String?   @unique
+  createdAt  DateTime  @default(now())
+  sentAt     DateTime?
+}
+
+// ─── Control plane ───────────────────────────────────────────────────────────
+
+model ActionRequest {
+  id             String    @id @default(cuid())
+  kind           String
+  title          String
+  payload        String
+  preview        String?
+  /// pending | executed | rejected | blocked | failed | deferred
+  status         String    @default("pending")
+  policyMode     String
+  runMode        String // DRY | LIVE
+  reason         String?
+  result         String?
+  idempotencyKey String?   @unique
+  requestedBy    String    @default("system")
+  decidedBy      String?
+  createdAt      DateTime  @default(now())
+  decidedAt      DateTime?
+  executedAt     DateTime?
+
+  @@index([status, kind])
+}
+
+model ActionAudit {
+  seq       Int      @id @default(autoincrement())
+  prevHash  String   @unique
+  hash      String
+  actor     String
+  kind      String
+  verdict   String
+  actionId  String?
+  detail    String
+  createdAt DateTime @default(now())
+}
+
+model ActionPolicy {
+  kind       String  @id
+  mode       String // AUTO | APPROVE | BLOCK
+  dailyLimit Int?
+}
+
+model SystemFlag {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+model Job {
+  id          Int       @id @default(autoincrement())
+  type        String
+  status      String    @default("PENDING")
+  payload     String    @default("{}")
+  result      String?
+  error       String?
+  attempts    Int       @default(0)
+  dedupeKey   String?
+  createdAt   DateTime  @default(now())
+  startedAt   DateTime?
+  heartbeatAt DateTime?
+  finishedAt  DateTime?
+
+  @@index([status, createdAt])
+  @@index([type, dedupeKey])
+}
+
+model PlatformSession {
+  id            Int       @id @default(autoincrement())
+  platform      String    @unique
+  status        String    @default("LOGGED_OUT")
+  profileDir    String?
+  lastCheckedAt DateTime?
+}
+
+/// One line of a programme's commission report (Amazon Associates, eBay EPN).
+/// Not money: LedgerEntry is. A BOOKED row points at the ledger line it produced;
+/// PENDING rows are shown on /admin/affiliate and never summed into P&L.
+model AffiliateCommission {
+  id             Int       @id @default(autoincrement())
+  /// AMAZON | EBAY
+  programme      String
+  externalRef    String
+  subId          String?
+  clickId        Int?
+  productId      Int?
+  amount         Float
+  currency       String
+  amountHkdCents Int
+  /// BOOKED | PENDING | REVERSED | SKIPPED
+  status         String
+  reason         String?
+  occurredAt     String?
+  ledgerRef      String?
+  importedAt     DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@unique([programme, externalRef])
+  @@index([clickId])
+}
+
+/// First-party page views, for the admin funnel and return rate. No IP, no
+/// user agent, no account id: a random first-party session cookie only.
+/// Purged after 180 days by HOUSEKEEPING.
+model PageEvent {
+  id        Int      @id @default(autoincrement())
+  sessionId String
+  /// view | search | watch | basket
+  event     String   @default("view")
+  path      String
+  /// Referring host only (e.g. "www.google.com"), never the full URL.
+  refHost   String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([sessionId, createdAt])
+}
+
+/// A shopper's supermarket list, kept on the account so it follows them to
+/// another device and can be priced in the weekly digest.
+model SavedBasket {
+  id           Int       @id @default(autoincrement())
+  customerId   Int       @unique
+  /// JSON [{ productId, qty }]
+  lines        String    @default("[]")
+  /// Weekly 慳錢清單 by Telegram/email — explicit opt-in only (the Subscribe button).
+  digestOptIn  Boolean   @default(false)
+  lastDigestAt DateTime?
+  /// Best total in the last digest, for "HK$12 cheaper than last week".
+  lastBestCents Int?
+  updatedAt    DateTime  @updatedAt
+  createdAt    DateTime  @default(now())
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+}
+
+/// A browser's Web Push endpoint (from the installed PWA). Tied to an email so
+/// the same watches reach it; deleted when the push service says it is gone.
+model PushSubscription {
+  id        Int      @id @default(autoincrement())
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  email     String?
+  createdAt DateTime @default(now())
+
+  @@index([email])
+}
+
+/// "Tell me about deals on 『keyword』" (Slickdeals/OzBargain-style). Fires for a
+/// newly listed match, a match at or under the target, or a real new promotion.
+model KeywordAlert {
+  id             Int      @id @default(autoincrement())
+  email          String
+  keyword        String
+  customerId     Int?
+  telegramChatId String?
+  maxHkdCents    Int?
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
+  hits KeywordAlertHit[]
+
+  @@unique([email, keyword])
+}
+
+/// One row per product and state already told (or baselined at creation) — so a
+/// keyword alert never repeats itself.
+model KeywordAlertHit {
+  id        Int      @id @default(autoincrement())
+  alertId   Int
+  productId Int
+  /// seen | new | max | promo:<signature>
+  stateKey  String
+  createdAt DateTime @default(now())
+
+  alert KeywordAlert @relation(fields: [alertId], references: [id], onDelete: Cascade)
+
+  @@unique([alertId, productId, stateKey])
+}
